@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>原型B · 侧边常驻 + 浮层双形态 — dsh-cc-studio</title>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--line:#262c3a;--text:#e6e8ee;--muted:#9aa3b8;--acc:#7c5cff;--acc2:#2ee6a6;--warn:#ffb020;--radius:14px}
+  *{box-sizing:border-box} html,body{height:100%} body{margin:0;background:#0b0d11;color:var(--text);font:14px/1.6 ui-sans,system-ui,Segoe UI,Roboto,Helvetica,Arial}
+  .topbar{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1px solid var(--line);background:#0f1218;position:sticky;top:0;z-index:5}
+  .pill{padding:4px 8px;border-radius:999px;background:#1a1f2e;border:1px solid #2a3350;color:#aeb8d4;font-size:12px}
+  .layout{display:grid;grid-template-columns:320px 1fr 340px;min-height:calc(100vh - 44px)}
+  .left{border-right:1px solid var(--line);background:#0f1218;display:flex;flex-direction:column;min-height:0}
+  .left-head{padding:12px 12px 10px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+  .left-body{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
+  .card{background:#171a21;border:1px solid var(--line);border-radius:12px;padding:12px}
+  .card h4{margin:0 0 8px;font-size:12px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+  .progress{height:6px;background:#0b0f1b;border:1px solid #26314d;border-radius:999px;overflow:hidden}
+  .progress i{display:block;height:100%;width:62%;background:linear-gradient(90deg,var(--acc),#4ea1ff)}
+  .field{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+  .field label{font-size:12px;color:var(--muted)}
+  .field textarea,.field input{width:100%;background:#0b0f1b;border:1px solid #26314d;border-radius:8px;color:var(--text);padding:8px 10px}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{font-size:11px;padding:4px 8px;border-radius:999px;background:#12182a;border:1px solid #28365a;color:#aebde0}
+  .chip.on{background:var(--acc);border-color:var(--acc);color:white}
+  .center{background: radial-gradient(900px 500px at 20% -10%, #1a1f3a 0, transparent 60%), linear-gradient(180deg,#0d0f14,#0b0d11);padding:16px;display:flex;flex-direction:column;gap:14px;min-height:0;overflow:auto}
+  .msg{max-width:760px;background:#171a21;border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+  .msg.user{margin-left:auto;background:#1a1d27;border-color:#2a3147}
+  .composer{position:sticky;bottom:0;background:linear-gradient(180deg, transparent, #0b0d11 30%);padding:10px 0 14px}
+  .dock{max-width:760px;margin:0 auto 8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .capsule{appearance:none;border:1px solid #2d3655;background:#171c2e;color:#c8d1ec;border-radius:999px;padding:6px 12px;font-size:12px;display:inline-flex;gap:8px;align-items:center;cursor:pointer}
+  .capsule.active{border-color:var(--acc);background:#1c2240}
+  .inputbar{max-width:760px;margin:0 auto;background:#171a21;border:1px solid var(--line);border-radius:16px;padding:10px;display:flex;gap:10px;align-items:flex-end}
+  .inputbar textarea{flex:1;min-height:44px;background:#0f1218;border:1px solid #242b3d;border-radius:10px;padding:10px 12px;color:var(--text);resize:none}
+  .btn{appearance:none;border:1px solid transparent;background:var(--acc);color:white;border-radius:10px;padding:8px 14px;font-weight:600;cursor:pointer}
+  .btn.ghost{background:transparent;border-color:var(--line);color:var(--text)}
+  .btn.small{padding:6px 10px;font-size:12px;border-radius:8px}
+  .right{border-left:1px solid var(--line);background:#0e1220;display:flex;flex-direction:column;min-height:0}
+  .right-head{padding:12px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+  .right-body{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
+  .mini-chat{border:1px solid #26314d;border-radius:12px;background:#0b0f1b;padding:10px;display:flex;flex-direction:column;gap:8px}
+  .mini-chat .bubble{background:#171a21;border:1px solid #2a3350;border-radius:10px;padding:8px 10px;font-size:12px}
+  .overlay{position:fixed;inset:0;background:rgba(3,6,12,.62);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;padding:18px;z-index:30}
+  .overlay.open{display:flex}
+  .workshop{width:min(1180px,96vw);height:min(860px,92vh);background:linear-gradient(180deg,#171c2a,#11141d);border:1px solid #2a324b;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 80px rgba(0,0,0,.55)}
+  .ws-head{height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid #242d47;background:#131827}
+  .steps{display:flex;gap:6px}
+  .step{padding:6px 10px;border-radius:999px;font-size:12px;border:1px solid #2a334e;color:var(--muted);background:#0f1422}
+  .step.active{background:var(--acc);border-color:var(--acc);color:white}
+  .ws-body{display:grid;grid-template-columns:220px 1fr 360px;flex:1;min-height:0}
+  .ws-nav{border-right:1px solid #242d47;background:#0f1320;padding:12px;display:flex;flex-direction:column;gap:10px}
+  .ws-nav button{width:100%;text-align:left;padding:10px 12px;border-radius:10px;border:1px solid transparent;background:transparent;color:#cbd5f0;cursor:pointer}
+  .ws-nav button.active{background:#1a2140;border-color:#2d3a66;color:white}
+  .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+  .json{white-space:pre-wrap;word-break:break-all;background:#0b0f1b;border:1px solid #26314d;border-radius:10px;padding:10px;max-height:360px;overflow:auto}
+  .badge{font-size:11px;padding:2px 6px;border-radius:999px;border:1px solid #2a3350;background:#11182e;color:#9fb0d8}
+  .dim-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .dim{border:1px dashed #2a3552;border-radius:12px;padding:10px;background:#0c1020}
+  @media (max-width:1180px){.layout{grid-template-columns:1fr}.left,.right{display:none}}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div style="display:flex;gap:10px;align-items:center;font-weight:700">⬢ DSH <span style="color:var(--muted);font-weight:400">· 侧边常驻 + 浮层双形态</span></div>
+  <div style="display:flex;gap:8px"><span class="pill">CCv3</span><span class="pill" style="background:#1a2a1f;border-color:#2a4a3a;color:#a6e8c8">● 模型就绪</span></div>
+</div>
+
+<div class="layout">
+  <!-- LEFT persistent studio -->
+  <div class="left">
+    <div class="left-head"><strong style="font-size:13px">🎭 角色卡工坊</strong><span class="badge">常驻侧边</span></div>
+    <div class="left-body">
+      <div class="card"><h4>草稿进度</h4>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px"><span>雨城烛坊 · 岚烟</span><span style="color:var(--acc2)">62%</span></div>
+        <div class="progress"><i></i></div>
+        <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap"><span class="badge" style="background:#1a2a1f;border-color:#2a4a3a;color:#a6e8c8">✓ 点子</span><span class="badge" style="background:#1a2a1f;border-color:#2a4a3a;color:#a6e8c8">✓ 5维</span><span class="badge">角色细化</span><span class="badge">世界书 5条</span></div>
+        <div style="display:flex;gap:8px;margin-top:10px"><button class="btn small" style="flex:1" onclick="openB()">全屏工坊</button><button class="btn ghost small" style="flex:1" onclick="exportJSON()">导出 JSON</button></div>
+      </div>
+      <div class="card"><h4>5维快览</h4>
+        <div style="display:flex;flex-direction:column;gap:8px;font-size:12px">
+          <div>① 年表：2127 记忆软资产化</div><div>② 势力：烛坊 / 雨梯局 / 盗忆人</div><div>③ 地理：环形雨城</div><div>④ 力量：自愿+嗅觉</div><div>⑤ 日常：蜡烛夜市</div>
+        </div>
+        <button class="btn ghost small" style="width:100%;margin-top:10px" onclick="openB();cur=1;renderB()">✎ 去 5维编辑</button>
+      </div>
+      <div class="card"><h4>世界书快切</h4>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="padding:8px;border:1px solid #26314d;border-radius:10px;background:#0b0f1b;font-size:12px"><b>雨城常雨</b> <span class="badge">@@position after_desc</span><div class="mono" style="color:var(--muted)">雨梯…霓虹倒影导航</div></div>
+          <div style="padding:8px;border:1px solid #26314d;border-radius:10px;background:#0b0f1b;font-size:12px"><b>蜡烛=记忆</b> <span class="badge">@@activate</span><div class="mono" style="color:var(--muted)">银线密度=情绪强度</div></div>
+        </div>
+        <button class="btn ghost small" style="width:100%;margin-top:10px" onclick="openB();cur=3;renderB()">打开世界书</button>
+      </div>
+      <div class="card"><h4>校验</h4><div style="font-size:12px;color:var(--muted)">group_only_greetings: <span style="color:var(--acc2)">1 条 ✓</span> · assets 主图标唯一 ✓ · 正则 0 错误</div></div>
+    </div>
+  </div>
+
+  <!-- CENTER conversation -->
+  <div class="center">
+    <div class="msg"><div style="font-size:11px;color:var(--muted);letter-spacing:.06em">ASSISTANT</div>我在侧边常驻着，你边聊边改，不用来回开关。试试：“把蜡烛夜市写得更拥挤一点”</div>
+    <div class="msg user"><div style="font-size:11px;color:var(--muted)">YOU</div>我想让盗忆人更可怜一点，不是纯反派</div>
+    <div class="msg"><div style="font-size:11px;color:var(--muted)">ASSISTANT · 已联动工坊</div>已把 “盗忆人：被雨梯局吊销嗅觉执照的前调香师，只能靠盗忆续命” 写进 5维→势力，并生成一条 lorebook：<span class="mono" style="background:#0b0f1b;border:1px solid #26314d;padding:2px 6px;border-radius:6px">@@depth 4 盗忆人银线发黑…</span></div>
+    <div class="composer">
+      <div class="dock">
+        <button class="capsule active" onclick="openB()">🎭 全屏工坊</button>
+        <button class="capsule" onclick="document.querySelector('.left').scrollIntoView({behavior:'smooth'})">⬅ 查看侧边</button>
+        <span class="badge">边聊边改 · 侧边实时同步</span>
+      </div>
+      <div class="inputbar"><textarea placeholder="直接聊，侧边会自动同步到草稿…"></textarea><button class="btn">发送</button></div>
+      <div style="max-width:760px;margin:8px auto 0;color:var(--muted);font-size:12px">B 形态的核心差异：<b style="color:#cbd5f0">侧边常驻</b>，不需要打开浮层也能看到进度/快改；浮层仍保留用于沉浸式编辑。</div>
+    </div>
+  </div>
+
+  <!-- RIGHT mini preview + CBS chat -->
+  <div class="right">
+    <div class="right-head"><strong style="font-size:13px">实时预览</strong><span class="badge">JSON</span></div>
+    <div class="right-body">
+      <div class="card" style="margin:0"><h4>CCv3 JSON</h4><pre class="json mono" id="jsonB"></pre><button class="btn ghost small" style="width:100%;margin-top:8px" onclick="exportJSON()">⬇ 导出 card.json</button></div>
+      <div class="mini-chat"><h4 style="margin:0;font-size:12px;color:var(--muted)">工坊小助手（走 DSH llm）</h4>
+        <div class="bubble">“把雨梯管理局写得官僚一点？”</div>
+        <div class="bubble" style="background:#1a2140;border-color:#2d3a66">已改：增加“干燥配额抽签 + 记忆税滞纳金”两条 lorebook。</div>
+        <div style="display:flex;gap:6px"><input placeholder="对工坊说句话…" style="flex:1;background:#0b0f1b;border:1px solid #26314d;border-radius:8px;padding:6px 8px;color:var(--text)"/><button class="btn small">发送</button></div>
+      </div>
+      <div class="card" style="margin:0"><h4>CBS 提示</h4><div class="chips"><span class="chip">{{char}}</span><span class="chip">{{user}}</span><span class="chip">{{random:A,B}}</span></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Overlay workshop (same core as A, but triggered from B) -->
+<div class="overlay" id="overlayB">
+  <div class="workshop" role="dialog" aria-modal="true">
+    <div class="ws-head"><div style="display:flex;gap:12px;align-items:center"><strong>🎭 角色卡工坊 · 全屏</strong><span class="badge">B 的浮层 = A 的工坊</span><div class="steps" id="stepsB"></div></div><div style="display:flex;gap:8px"><button class="btn ghost small" onclick="closeB()">返回侧边</button><button class="btn small" onclick="exportJSON()">导出 JSON</button></div></div>
+    <div class="ws-body">
+      <div class="ws-nav" id="navB"></div>
+      <div style="padding:16px;overflow:auto" id="mainB"></div>
+      <div style="border-left:1px solid #242d47;background:#0e1220;padding:12px;overflow:auto"><div class="card"><h4>预览</h4><pre class="json mono" id="jsonB2"></pre></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const steps=["点子","5维","角色","世界书","导出"];
+let cur=0;
+const draft={spec:"chara_card_v3",spec_version:"3.0",data:{name:"雨城烛坊 · 岚烟",nickname:"岚烟",tags:["记忆","雨城","香薰"],creator:"you",character_version:"0.1",description:"雨城常雨，岚烟的烛坊以蜡封记忆。",personality:"外柔内韧，嗅觉共情",scenario:"你推开木门，雨气与蜡味扑面",system_prompt:"You are 岚烟",post_history_instructions:"保持蜡烛隐喻",first_mes:"“想典当哪一段？”",alternate_greetings:["“今晚适合想起旧人。”"],group_only_greetings:["（群聊）“一盏一盏来。”"],mes_example:"{{user}}: 还我夏夜\n{{char}}: 会很吵，你确定吗？",creator_notes:"B 原型",assets:[{type:"icon",uri:"ccdefault:",name:"main",ext:"png"}],creation_date:Math.floor(Date.now()/1000),modification_date:Math.floor(Date.now()/1000),character_book:{name:"雨城 lorebook",scan_depth:4,token_budget:1200,recursive_scanning:false,extensions:{},entries:[
+  {enabled:true,insertion_order:0,use_regex:false,constant:false,name:"雨城常雨",keys:["雨城"],content:"@@position after_desc\n雨梯与霓虹",priority:10},
+  {enabled:true,insertion_order:1,use_regex:false,constant:true,name:"蜡烛=记忆",keys:[],content:"@@activate\n蜡烛即记忆",priority:9},
+  {enabled:true,insertion_order:2,use_regex:false,constant:false,name:"盗忆人",keys:["盗忆人"],content:"@@depth 4\n前调香师，被吊销执照，银线发黑",priority:8},
+]}}};
+function renderSteps(){
+  const el=document.getElementById('stepsB');
+  el.innerHTML=steps.map((s,i)=>`<span class="step ${i===cur?'active':''}" onclick="cur=${i};renderB()">${i+1}. ${s}</span>`).join("");
+}
+function renderNav(){
+  const nav=document.getElementById('navB');
+  const items=[{t:"点子投喂",d:"一句话+风格"},{t:"世界观 5维",d:"年表/势力/地理/力量/日常"},{t:"角色细化",d:"六件套"},{t:"世界书",d:"Lorebook"},{t:"校验导出",d:"JSON"}];
+  nav.innerHTML=items.map((x,i)=>`<button class="${i===cur?'active':''}" onclick="cur=${i};renderB()">${x.t}<div style="font-size:11px;color:var(--muted)">${x.d}</div></button>`).join("") + `<div style="margin-top:auto;padding-top:12px;border-top:1px solid #242d47;display:flex;gap:8px"><button class="btn ghost small" style="flex:1">AI 扩写</button><button class="btn small" style="flex:1">校验</button></div>`;
+}
+function renderB(){
+  renderSteps(); renderNav();
+  const m=document.getElementById('mainB');
+  if(cur===0) m.innerHTML=`<div class="card"><h4>点子投喂</h4><div class="field"><label>一句话点子</label><textarea>雨城记忆典当行老板娘，蜡烛封记忆</textarea></div><div class="chips"><span class="chip on">雨城</span><span class="chip on">感官系</span><span class="chip">治愈</span></div><div style="margin-top:10px"><button class="btn small">✦ AI 扩写</button></div></div><div class="card"><h4>AI 初稿</h4><div class="field"><label>description</label><textarea>${draft.data.description}</textarea></div></div>`;
+  else if(cur===1) m.innerHTML=`<div class="card"><h4>世界观 5维（B 的侧边会同步）</h4><div class="dim-grid"><div class="dim"><h4>① 年表</h4><textarea style="width:100%;min-height:70px;background:#0b0f1b;border:1px solid #26314d;border-radius:8px;color:var(--text);padding:8px">2127 雨城独立，记忆软资产化</textarea></div><div class="dim"><h4>② 势力</h4><textarea style="width:100%;min-height:70px;background:#0b0f1b;border:1px solid #26314d;border-radius:8px;color:var(--text);padding:8px">烛坊 / 雨梯局 / 盗忆人(前调香师)</textarea></div><div class="dim"><h4>③ 地理</h4><textarea style="width:100%;min-height:70px;background:#0b0f1b;border:1px solid #26314d;border-radius:8px;color:var(--text);padding:8px">环形雨城，内干外雨</textarea></div><div class="dim"><h4>④ 力量</h4><textarea style="width:100%;min-height:70px;background:#0b0f1b;border:1px solid #26314d;border-radius:8px;color:var(--text);padding:8px">自愿+嗅觉，银线=情绪强度</textarea></div><div class="dim" style="grid-column:span 2"><h4>⑤ 日常</h4><textarea style="width:100%;min-height:70px;background:#0b0f1b;border:1px solid #26314d;border-radius:8px;color:var(--text);padding:8px">蜡烛夜市、雨声电台、记忆税</textarea></div></div><button class="btn small" style="margin-top:12px">✦ 5维→生成 Lorebook</button></div>`;
+  else if(cur===2) m.innerHTML=`<div class="card"><h4>角色细化</h4><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="field"><label>name</label><input value="${draft.data.name}"/></div><div class="field"><label>nickname</label><input value="${draft.data.nickname}"/></div></div><div class="field"><label>description</label><textarea>${draft.data.description}</textarea></div></div>`;
+  else if(cur===3) m.innerHTML=`<div class="card"><h4>世界书</h4>${draft.data.character_book.entries.map(e=>`<div style="padding:10px;border:1px solid #26314d;border-radius:10px;background:#0b0f1b;margin-bottom:8px"><b>${e.name}</b> <span class="badge">${e.keys.join(',')||'constant'}</span><div class="mono" style="color:var(--muted)">${e.content}</div></div>`).join("")}<button class="btn small">+ 新增条目</button></div>`;
+  else m.innerHTML=`<div class="card"><h4>校验与导出（仅 JSON）</h4><div style="display:flex;gap:8px;margin:10px 0"><button class="btn small" onclick="exportJSON()">⬇ 导出 card.json</button><button class="btn ghost small">校验</button></div><div style="color:var(--muted);font-size:12px">CHARX/PNG 二期</div></div>`;
+  document.getElementById('jsonB2').textContent=JSON.stringify(draft,null,2);
+  document.getElementById('jsonB').textContent=JSON.stringify(draft,null,2);
+}
+function openB(){document.getElementById('overlayB').classList.add('open'); renderB();}
+function closeB(){document.getElementById('overlayB').classList.remove('open');}
+function exportJSON(){const b=new Blob([JSON.stringify(draft,null,2)],{type:"application/json"});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download="card.json";a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
+document.getElementById('overlayB').addEventListener('click',e=>{if(e.target.id==='overlayB')closeB();});
+renderB();
+document.getElementById('jsonB').textContent=JSON.stringify(draft,null,2);
+</script>
+</body>
+</html>

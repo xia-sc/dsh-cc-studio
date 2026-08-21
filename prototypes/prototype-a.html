@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>原型A · 轻量浮层工坊 — dsh-cc-studio</title>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--panel2:#1e232e;--line:#262c3a;--text:#e6e8ee;--muted:#9aa3b8;--acc:#7c5cff;--acc2:#2ee6a6;--warn:#ff6b6b;--radius:14px}
+  *{box-sizing:border-box} html,body{height:100%} body{margin:0;background:#0b0d11;color:var(--text);font:14px/1.6 ui-sans,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+  a{color:var(--acc)}
+  .topbar{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1px solid var(--line);background:#0f1218;position:sticky;top:0;z-index:5}
+  .topbar .brand{display:flex;gap:10px;align-items:center;font-weight:700;letter-spacing:.2px}
+  .pill{padding:4px 8px;border-radius:999px;background:#1a1f2e;border:1px solid #2a3350;color:#aeb8d4;font-size:12px}
+  .shell{display:grid;grid-template-columns:280px 1fr;min-height:calc(100vh - 44px)}
+  .sidebar{border-right:1px solid var(--line);background:#0f1218;padding:14px;display:flex;flex-direction:column;gap:14px}
+  .side-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
+  .side-card h4{margin:0 0 8px;font-size:12px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+  .conv{padding:16px;display:flex;flex-direction:column;gap:16px;background: radial-gradient(1200px 600px at 30% -10%, #1a1f3a 0, transparent 60%), linear-gradient(180deg,#0d0f14,#0b0d11)}
+  .msg{max-width:760px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+  .msg.user{margin-left:auto;background:#1a1d27;border-color:#2a3147}
+  .msg .role{font-size:11px;color:var(--muted);margin-bottom:6px;letter-spacing:.06em}
+  .composer{position:sticky;bottom:0;background:linear-gradient(180deg, transparent, #0b0d11 28%);padding:12px 0 16px}
+  .dock{max-width:760px;margin:0 auto 8px;display:flex;gap:8px;align-items:center}
+  .capsule{appearance:none;border:1px solid #2d3655;background:#171c2e;color:#c8d1ec;border-radius:999px;padding:6px 12px;font-size:12px;display:inline-flex;gap:8px;align-items:center;cursor:pointer;transition:.15s}
+  .capsule:hover{border-color:#3a4670;background:#1c2240;transform:translateY(-1px)}
+  .capsule .dot{width:7px;height:7px;border-radius:50%;background:var(--acc2);box-shadow:0 0 10px var(--acc2)}
+  .inputbar{max-width:760px;margin:0 auto;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:10px;display:flex;gap:10px;align-items:flex-end}
+  .inputbar textarea{flex:1;min-height:44px;max-height:120px;resize:none;background:#0f1218;border:1px solid #242b3d;border-radius:10px;padding:10px 12px;color:var(--text);outline:none}
+  .btn{appearance:none;border:1px solid transparent;background:var(--acc);color:white;border-radius:10px;padding:8px 14px;font-weight:600;cursor:pointer}
+  .btn.ghost{background:transparent;border-color:var(--line);color:var(--text)}
+  .btn.small{padding:6px 10px;font-size:12px;border-radius:8px}
+  /* overlay */
+  .overlay{position:fixed;inset:0;background:rgba(3,6,12,.62);backdrop-filter: blur(8px);display:none;align-items:center;justify-content:center;padding:18px;z-index:30}
+  .overlay.open{display:flex}
+  .workshop{width:min(1280px, 96vw);height:min(860px, 92vh);background:linear-gradient(180deg,#171c2a,#11141d);border:1px solid #2a324b;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 80px rgba(0,0,0,.55)}
+  .ws-head{height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid #242d47;background:#131827}
+  .steps{display:flex;gap:6px;align-items:center}
+  .step{padding:6px 10px;border-radius:999px;font-size:12px;border:1px solid #2a334e;color:var(--muted);background:#0f1422}
+  .step.active{background:var(--acc);border-color:var(--acc);color:white;box-shadow:0 6px 16px rgba(124,92,255,.35)}
+  .ws-body{flex:1;display:grid;grid-template-columns:220px 1fr 360px;min-height:0}
+  .ws-nav{border-right:1px solid #242d47;background:#0f1320;padding:12px;display:flex;flex-direction:column;gap:10px}
+  .ws-nav button{width:100%;text-align:left;padding:10px 12px;border-radius:10px;border:1px solid transparent;background:transparent;color:#cbd5f0;cursor:pointer}
+  .ws-nav button.active{background:#1a2140;border-color:#2d3a66;color:white}
+  .ws-nav button small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+  .ws-main{padding:16px;overflow:auto}
+  .ws-side{border-left:1px solid #242d47;background:#0e1220;padding:12px;overflow:auto}
+  .card{background:#0f1422;border:1px solid #242d47;border-radius:12px;padding:12px;margin-bottom:12px}
+  .card h3{margin:0 0 8px;font-size:13px}
+  .field{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+  .field label{font-size:12px;color:var(--muted)}
+  .field input,.field textarea,.field select{width:100%;background:#0b0f1b;border:1px solid #26314d;border-radius:8px;color:var(--text);padding:8px 10px;outline:none}
+  .field textarea{min-height:84px;resize:vertical}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{font-size:11px;padding:4px 8px;border-radius:999px;background:#12182a;border:1px solid #28365a;color:#aebde0;cursor:pointer}
+  .chip.on{background:var(--acc);border-color:var(--acc);color:white}
+  .lore-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;background:#0b0f1b;border:1px solid #26314d;border-radius:10px;padding:10px;margin-bottom:8px}
+  .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+  .json{white-space:pre-wrap;word-break:break-all;background:#0b0f1b;border:1px solid #26314d;border-radius:10px;padding:10px;max-height:420px;overflow:auto}
+  .badge{font-size:11px;padding:2px 6px;border-radius:999px;border:1px solid #2a3350;background:#11182e;color:#9fb0d8}
+  .dim-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .dim{border:1px dashed #2a3552;border-radius:12px;padding:10px;background:#0c1020}
+  .dim h4{margin:0 0 6px;font-size:12px;color:#cbd5f0}
+  .kpi{display:flex;gap:8px;flex-wrap:wrap}
+  @media (max-width:1100px){.ws-body{grid-template-columns:1fr}.ws-side{border-left:none;border-top:1px solid #242d47}.shell{grid-template-columns:1fr}.sidebar{display:none}}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">⬢ DSH <span style="color:var(--muted);font-weight:400">· web — 会话内角色卡工坊</span></div>
+  <div style="display:flex;gap:8px;align-items:center"><span class="pill">CCv3 Living Standard</span><span class="pill" style="background:#1a2a1f;border-color:#2a4a3a;color:#a6e8c8">● 模型就绪</span></div>
+</div>
+<div class="shell">
+  <div class="sidebar">
+    <div class="side-card"><h4>工作区</h4><div class="mono" style="color:#cbd5f0">E:\demo\my-cards</div><div style="color:var(--muted);font-size:12px;margin-top:6px">会话 cwd 实时跟随（dsh-git 同款 store）</div></div>
+    <div class="side-card"><h4>最近草稿</h4><div style="display:flex;flex-direction:column;gap:8px"><div style="padding:8px 10px;border:1px solid #26314d;border-radius:10px;background:#0b0f1b"><div style="font-weight:600">星港遗民 · 琉璃</div><div style="color:var(--muted);font-size:12px">未导出 · 5 lorebook</div></div><div style="padding:8px 10px;border:1px dashed #26314d;border-radius:10px;color:var(--muted)">+ 新建角色卡</div></div></div>
+    <div class="side-card"><h4>原型说明</h4><div style="color:var(--muted);font-size:12px">A = 轻量浮层：平时只占输入框上方一行胶囊，点开全屏工坊。适合“写完再导”的沉浸式创作。</div></div>
+  </div>
+  <div class="conv">
+    <div class="msg"><div class="role">ASSISTANT</div>试着丢一句点子给我，比如“废土上开面馆的仿生人奶奶，会修收音机”。我帮你把世界观补齐到可导出的 CCv3。</div>
+    <div class="msg user"><div class="role">YOU</div>我想做一个雨城里的记忆典当行老板娘，能把记忆做成香薰蜡烛，客人闻到就能重温那段记忆。但我世界观很薄…</div>
+    <div class="composer">
+      <div class="dock">
+        <button class="capsule" id="openA">🎭 角色卡工坊 <span class="dot"></span> 未导出 · 点此展开</button>
+        <span class="badge">CCv3 校验：<span style="color:var(--warn)">缺 nickname / group_only_greetings</span></span>
+        <span class="badge">草稿自动保存 ✓</span>
+      </div>
+      <div class="inputbar">
+        <textarea placeholder="继续聊点子，或直接在工坊里编辑…  Shift+Enter 换行"></textarea>
+        <button class="btn">发送</button>
+      </div>
+      <div style="max-width:760px;margin:8px auto 0;color:var(--muted);font-size:12px">按回车发送 · 工坊里每个 “AI 扩写” 都会走 DSH 的 llm.stream，失败可重试</div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlayA">
+  <div class="workshop" role="dialog" aria-modal="true">
+    <div class="ws-head">
+      <div style="display:flex;gap:12px;align-items:center"><strong>🎭 角色卡工坊</strong><span class="badge">dsh-cc-studio · A 浮层</span>
+        <div class="steps" id="stepsA"></div>
+      </div>
+      <div style="display:flex;gap:8px"><button class="btn ghost small" onclick="closeA()">收起</button><button class="btn small" onclick="exportJSON()">导出 JSON</button></div>
+    </div>
+    <div class="ws-body">
+      <div class="ws-nav" id="navA"></div>
+      <div class="ws-main" id="mainA"></div>
+      <div class="ws-side">
+        <div class="card"><h3>实时 CCv3 预览</h3><div class="kpi" style="margin-bottom:8px"><span class="badge">spec: chara_card_v3</span><span class="badge">校验: <span id="validA" style="color:var(--acc2)">通过</span></span></div><pre class="json mono" id="jsonA"></pre></div>
+        <div class="card"><h3>CBS 速查</h3><div class="chips"><span class="chip">{{char}}</span><span class="chip">{{user}}</span><span class="chip">{{random:A,B}}</span><span class="chip">{{roll:d6}}</span><span class="chip">{{// 注释}}</span></div><div style="color:var(--muted);font-size:12px;margin-top:8px">输入时自动补全，导出前会做大小写不敏感校验。</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const steps = ["点子","世界观 5维","角色细化","世界书","校验导出"];
+let cur = 0;
+const draft = {
+  spec:"chara_card_v3", spec_version:"3.0",
+  data:{
+    name:"雨城烛坊 · 岚烟", nickname:"岚烟", tags:["记忆","雨城","香薰","典当"], creator:"you", character_version:"0.1",
+    description:"雨城常年细雨，霓虹在水膜上化开。岚烟经营一家无招牌的记忆典当行，将客人的记忆抽丝封进蜡烛。",
+    personality:"外柔内韧，嗅觉共情，话少但记性极好；对“自愿”有执念，拒绝强行抽取。",
+    scenario:"你推开吱呀的木门，铃铛轻响，雨气混着蜡与旧纸味扑面而来。岚烟在柜台后抬头，手中烛芯正袅袅成线。",
+    system_prompt:"You are 岚烟, keeper of memory candles. Reply in Chinese, sensory, restrained romance.",
+    post_history_instructions:"保持蜡烛=记忆的隐喻一致性，不主动破坏客人自愿原则。",
+    first_mes:"“雨又大了。先烤烤手吧——想典当哪一段？” 她把一盏未点的乳白蜡烛推到你面前，烛体里有细细的银线游动。",
+    alternate_greetings:["“今晚的雨适合想起旧人。你带记忆来了吗？”","“这盏是上周一位航行员留下的，里面有海风。”"],
+    group_only_greetings:["（群聊限定）“诸位若同时点烛，记忆会串味——我得一盏一盏来。”"],
+    mes_example:"{{user}}: 能把我5岁那年的夏夜还给我吗？\n{{char}}: 可以，但那段有蝉鸣和西瓜味，烧起来会很吵。你确定要现在闻吗？",
+    creator_notes:"雨城世界观薄弱用户的示例草稿", creator_notes_multilingual:{en:"Example draft for thin-worldbuilding user"}, source:[], assets:[{type:"icon",uri:"ccdefault:",name:"main",ext:"png"}], creation_date: Math.floor(Date.now()/1000), modification_date: Math.floor(Date.now()/1000),
+    character_book:{ name:"雨城烛坊 lorebook", description:"随卡私有世界书", scan_depth:4, token_budget:1200, recursive_scanning:false, extensions:{}, entries:[
+      {enabled:true, insertion_order:0, use_regex:false, constant:false, name:"雨城常雨", keys:["雨城","霓虹","潮气"], content:"@@position after_desc\n雨城年均降水 1800mm，排水系统以“雨梯”著称，霓虹倒影是导航。", priority:10},
+      {enabled:true, insertion_order:1, use_regex:false, constant:true, name:"蜡烛=记忆", keys:[], content:"@@activate\n蜡烛即记忆容器，银线密度=情绪强度。闻香即重温，不可食用。", priority:9},
+    ]}
+  }
+};
+let idea="雨城里的记忆典当行老板娘，能把记忆做成香薰蜡烛";
+let world={timeline:"2127 雨城独立后，记忆被列为可交易软资产", factions:"烛坊/雨梯管理局/盗忆人", geo:"环形雨城，内环干燥外环常雨", power:"抽忆术需自愿+嗅觉天赋", daily:"雨声电台、蜡烛夜市、记忆税"};
+
+function renderSteps(){
+  const el=document.getElementById('stepsA');
+  el.innerHTML=steps.map((s,i)=>`<span class="step ${i===cur?'active':''}" onclick="cur=${i};renderA()">${i+1}. ${s}</span>`).join("");
+}
+function renderNav(){
+  const nav=document.getElementById('navA');
+  const items=[
+    {t:"点子投喂",d:"一句话点子 + 风格"},
+    {t:"世界观 5维",d:"年表/势力/地理/力量/日常"},
+    {t:"角色细化",d:"六件套 + 开场"},
+    {t:"世界书",d:"Lorebook + Decorator"},
+    {t:"校验导出",d:"JSON 预览与下载"},
+  ];
+  nav.innerHTML=items.map((x,i)=>`<button class="${i===cur?'active':''}" onclick="cur=${i};renderA()">${x.t}<small>${x.d}</small></button>`).join("") +
+    `<div style="margin-top:auto;padding-top:12px;border-top:1px solid #242d47;display:flex;gap:8px"><button class="btn ghost small" style="flex:1" onclick="autoFill()">AI 扩写</button><button class="btn small" style="flex:1" onclick="validateA()">校验</button></div>`;
+}
+function renderA(){
+  renderSteps(); renderNav();
+  const m=document.getElementById('mainA');
+  if(cur===0){
+    m.innerHTML=`
+      <div class="card"><h3>点子投喂（薄世界观友好）</h3>
+        <div class="field"><label>一句话点子</label><textarea id="idea">${idea}</textarea></div>
+        <div class="field"><label>风格标签</label><div class="chips" id="tags"><span class="chip on">雨城</span><span class="chip on">感官系</span><span class="chip">赛博</span><span class="chip">治愈</span><span class="chip">微克苏鲁</span></div></div>
+        <div style="display:flex;gap:8px"><button class="btn small" onclick="expandIdea()">✦ AI 扩写成设定</button><button class="btn ghost small" onclick="cur=1;renderA()">跳过→世界观</button></div>
+        <div style="margin-top:10px;color:var(--muted);font-size:12px">会生成 description/personality/scenario 初稿 + 5维大纲草案，可一键采纳。</div>
+      </div>
+      <div class="card"><h3>AI 初稿（可直接采纳）</h3>
+        <div class="field"><label>description</label><textarea>${draft.data.description}</textarea></div>
+        <div class="field"><label>personality</label><textarea>${draft.data.personality}</textarea></div>
+        <div class="field"><label>scenario</label><textarea>${draft.data.scenario}</textarea></div>
+      </div>`;
+  } else if(cur===1){
+    m.innerHTML=`
+      <div class="card"><h3>世界观 5维（Q2-B 深度问卷）</h3><div style="color:var(--muted);font-size:12px;margin-bottom:10px">每维填 1-2 句即可，AI 会据此生成 Lorebook 条目（带 @@position/@@depth）。</div>
+        <div class="dim-grid">
+          <div class="dim"><h4>① 年表 Timeline</h4><textarea style="width:100%;min-height:70px;background:#0b0f1b;border:1px solid #26314d;border-radius:8px;color:var(--text);padding:8px">${world.timeline}</textarea></div>
+          <div class="dim"><h4>② 势力 Factions</h4><textarea style="width:100%;min-height:70px;background:#0b0f1b;border:1px solid #26314d;border-radius:8px;color:var(--text);padding:8px">${world.factions}</textarea></div>
+          <div class="dim"><h4>③ 地理 Geography</h4><textarea style="width:100%;min-height:70px;background:#0b0f1b;border:1px solid #26314d;border-radius:8px;color:var(--text);padding:8px">${world.geo}</textarea></div>
+          <div class="dim"><h4>④ 力量 Power</h4><textarea style="width:100%;min-height:70px;background:#0b0f1b;border:1px solid #26314d;border-radius:8px;color:var(--text);padding:8px">${world.power}</textarea></div>
+          <div class="dim" style="grid-column:span 2"><h4>⑤ 日常 Daily</h4><textarea style="width:100%;min-height:70px;background:#0b0f1b;border:1px solid #26314d;border-radius:8px;color:var(--text);padding:8px">${world.daily}</textarea></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px"><button class="btn small" onclick="genLore()">✦ 5维→生成 6 条 Lorebook</button><button class="btn ghost small" onclick="cur=2;renderA()">下一步</button></div>
+      </div>`;
+  } else if(cur===2){
+    m.innerHTML=`
+      <div class="card"><h3>角色细化 — 六件套</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="field"><label>name</label><input value="${draft.data.name}"/></div>
+          <div class="field"><label>nickname ({{char}} 用)</label><input value="${draft.data.nickname}"/></div>
+        </div>
+        <div class="field"><label>tags</label><input value="${draft.data.tags.join(', ')}"/></div>
+        <div class="field"><label>description</label><textarea>${draft.data.description}</textarea></div>
+        <div class="field"><label>personality</label><textarea>${draft.data.personality}</textarea></div>
+        <div class="field"><label>scenario</label><textarea>${draft.data.scenario}</textarea></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="field"><label>system_prompt</label><textarea>${draft.data.system_prompt}</textarea></div>
+          <div class="field"><label>post_history_instructions</label><textarea>${draft.data.post_history_instructions}</textarea></div>
+        </div>
+      </div>
+      <div class="card"><h3>开场与示例</h3>
+        <div class="field"><label>first_mes</label><textarea>${draft.data.first_mes}</textarea></div>
+        <div class="field"><label>alternate_greetings (每行一条)</label><textarea>${draft.data.alternate_greetings.join('\n')}</textarea></div>
+        <div class="field"><label>group_only_greetings *必填</label><textarea>${draft.data.group_only_greetings.join('\n')}</textarea></div>
+        <div class="field"><label>mes_example ({{user}}/{{char}})</label><textarea style="min-height:110px">${draft.data.mes_example}</textarea></div>
+      </div>`;
+  } else if(cur===3){
+    const entries=draft.data.character_book.entries.map((e,i)=>`
+      <div class="lore-row">
+        <div><div style="font-weight:600">${e.name} <span class="badge">${e.constant?'constant':e.keys.join(', ')||'—'}</span> <span class="badge">order ${e.insertion_order}</span></div>
+        <div class="mono" style="color:#aebde0;margin-top:4px;white-space:pre-wrap">${e.content}</div>
+        <div class="chips" style="margin-top:6px"><span class="chip">@@depth 2</span><span class="chip">@@role system</span><span class="chip">@@position after_desc</span></div></div>
+        <div style="display:flex;flex-direction:column;gap:6px"><label style="font-size:12px"><input type="checkbox" ${e.enabled?'checked':''}/> enabled</label><button class="btn ghost small">编辑</button></div>
+      </div>`).join("");
+    m.innerHTML=`
+      <div class="card"><h3>世界书 Lorebook</h3><div style="display:flex;gap:8px;margin-bottom:8px"><span class="badge">scan_depth: ${draft.data.character_book.scan_depth}</span><span class="badge">token_budget: ${draft.data.character_book.token_budget}</span><span class="badge">entries: ${draft.data.character_book.entries.length}</span><button class="btn small" style="margin-left:auto" onclick="addEntry()">+ 新增条目</button></div>${entries}
+        <div style="margin-top:10px;display:flex;gap:8px"><button class="btn small" onclick="genLore()">✦ 用 5维再生成一批</button><button class="btn ghost small">导入 Lorebook JSON</button></div>
+      </div>`;
+  } else {
+    m.innerHTML=`
+      <div class="card"><h3>校验与导出 — 首版仅 JSON（最稳）</h3>
+        <div class="kpi"><span class="badge" style="border-color:#2a5a3a;color:#a6e8c8">✓ spec/spec_version 正确</span><span class="badge">group_only_greetings: 1 条</span><span class="badge">assets: 1</span></div>
+        <div style="display:flex;gap:8px;margin:12px 0"><button class="btn small" onclick="exportJSON()">⬇ 导出 card.json</button><button class="btn ghost small" onclick="validateA()">重新校验</button><span style="color:var(--muted);font-size:12px;align-self:center">CHARX/PNG 二期再上</span></div>
+        <div class="field"><label>creator_notes / 多语言</label><textarea>${draft.data.creator_notes}</textarea></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="field"><label>creation_date</label><input value="${draft.data.creation_date}" readonly/></div><div class="field"><label>modification_date (导出自动刷新)</label><input value="${draft.data.modification_date}" readonly/></div></div>
+      </div>`;
+  }
+  document.getElementById('jsonA').textContent = JSON.stringify(draft, null, 2);
+}
+function expandIdea(){ idea=document.getElementById('idea')?.value||idea; draft.data.description="雨城的雨是活的，会在玻璃上写字。岚烟的烛坊藏在雨梯夹层，蜡烛银线随记忆温度变色。"; renderA(); }
+function genLore(){ draft.data.character_book.entries.push({enabled:true, insertion_order: draft.data.character_book.entries.length, use_regex:false, constant:false, name:"雨梯管理局", keys:["雨梯","管理局"], content:"@@depth 4\n雨梯管理局负责分配干燥配额，烛坊因“记忆税”与其周旋。", priority:8}); renderA(); }
+function addEntry(){ draft.data.character_book.entries.push({enabled:true, insertion_order: draft.data.character_book.entries.length, use_regex:false, constant:false, name:"新条目", keys:["关键词"], content:"@@position personality\n新 lore 内容…", priority:5}); renderA(); }
+function validateA(){ document.getElementById('validA').textContent="通过"; document.getElementById('validA').style.color="var(--acc2)"; }
+function autoFill(){ expandIdea(); }
+function exportJSON(){
+  const blob=new Blob([JSON.stringify(draft,null,2)],{type:"application/json"});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download="card.json"; a.click(); URL.revokeObjectURL(a.href);
+}
+function openA(){ document.getElementById('overlayA').classList.add('open'); renderA(); }
+function closeA(){ document.getElementById('overlayA').classList.remove('open'); }
+document.getElementById('openA').addEventListener('click', openA);
+document.getElementById('overlayA').addEventListener('click', (e)=>{ if(e.target.id==='overlayA') closeA(); });
+renderA();
+</script>
+</body>
+</html>

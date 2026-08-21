@@ -1,0 +1,34 @@
+{
+  "name": "@dsh-plugins/dsh-cc-studio",
+  "version": "0.1.1",
+  "description": "CCv3 角色卡工坊：/cc 唤出 + 自定义风格标签 + 5维世界观补全 + Lorebook Decorator（融合形态，胶囊仅 /cc 后显示）",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "prototypes"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-layout"
+      ]
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  }
+}

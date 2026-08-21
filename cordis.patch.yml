@@ -1,0 +1,6 @@
+# @dsh-plugins/dsh-cc-studio — CCv3 角色卡工坊
+# 融合形态：conversation.input.dock 胶囊常驻 + shell.overlay 全屏/侧边抽屉工坊
+# Host 挂 /dsh-cc-studio-rpc，Client 挂 dock + overlay + settings.section
+- insert:
+    - id: dsh-cc-studio
+      name: '@dsh-plugins/dsh-cc-studio'
