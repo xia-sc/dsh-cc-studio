@@ -4,23 +4,27 @@
 
 ## 特性
 
-- **融合工坊**：输入框上方胶囊（默认隐藏，仅 CC 模式自动出现）→ 点击展开 `shell.overlay` 全屏工坊（左侧步骤导航，右侧实时 `card.json` 预览）。
+- **融合工坊**：输入框上方胶囊（CC 模式自动出现，`conversation.input.dock`）→ 点击展开 `shell.overlay` 全屏工坊（220px 导航 / 自适应主区 / 280px 已存角色侧栏 / 360px 实时 `card.json` 预览），深浅色自适应（DSW Token + 品牌紫 `#7c5cff` 固定）。
 - **风格标签自定义**：预设候选 `雨城 / 感官系 / 赛博 ...` + 任意输入（回车添加，点击已选移除），实时写回 `data.tags`。
-- **CC 模式（推荐）**：新增 Agent Preset `CC 模式`，通过 6 个 Tool 让 LLM 引导填表，胶囊实时同步：
+- **CC 模式（推荐）**：新增 Agent Preset `CC 模式`，通过 6 个 Tool 让 LLM 引导填表，胶囊实时同步（`per-session` 草稿 + 2.5s 轻量轮询）：
   - `cc_get_card` / `cc_patch_character` / `cc_patch_world` / `cc_add_lorebook_entries` / `cc_patch_greetings` / `cc_validate`
-- **5 维世界观**：年表 / 势力 / 地理 / 力量体系 / 日常 → 自动生成带 `@@position / @@depth / @@activate / @@additional_keys` 的 Lorebook 条目。
+  - 强制 6 步工作流：角色四件套 → 五维≥3 → 世界书≥5 → 问候语 → `cc_validate` 才可收口，未齐时 `validate` 会按 `errors` 逐项拦截。
+- **5 维世界观**：年表 / 势力 / 地理 / 力量体系 / 日常 → `cc_patch_world(autoLorebook=true)` 自动生成带 `@@position / @@depth / @@activate` 的 Lorebook 条目（至少 1 条 `constant` 常驻）。
 - **CCv3 全覆盖**：`name / nickname / tags / description / personality / scenario / system_prompt / post_history_instructions / first_mes / alternate_greetings / group_only_greetings / mes_example / creator_notes / assets / character_book`，含 CBS `{{char}} / {{random}} / {{roll}}`。
-- **校验与导出**：Host 实时校验（`spec / group_only_greetings` 必填、主图标唯一性、正则合法性），首版仅 `card.json`（`spec: chara_card_v3 / spec_version: 3.0`），`CHARX / PNG` 二期。
+- **已存角色侧栏**：280px 可折叠（收起为 40px 竖条 + ★ 快捷保存），搜索（名称/标签）、保存当前草稿 / 载入 / 导出 JSON / 删除，落盘 `~/.dsh/cc-library/<id>.json`，按 `updatedAt` 排序。
+- **校验与导出**：Host 实时校验（`spec / group_only_greetings` 必填、主图标唯一性、正则合法性，`spec: chara_card_v3 / spec_version: 3.0`），首版仅 `card.json`，`CHARX / PNG` 二期。
+- **深浅色自适应**：全量切 `var(--dsw-alias-bg-* / border-l1/l2 / label-primary/secondary)`，浅色白底黑字、深色暗底浅字，主按钮/选中态固定紫色，刷新即生效。
 
 ## 结构
 
 ```
 dsh-cc-studio/
-├── package.json          # @dsh-plugins/dsh-cc-studio, dsh.bundle.patch + dsh.client
-├── cordis.patch.yml      # 宿主行插入
+├── package.json          # @dsh-plugins/dsh-cc-studio, dsh.bundle.patch + dsh.client, exports ./agent
+├── cordis.patch.yml      # 宿主行插入：id dsh-cc-studio
 ├── lib/
-│   ├── index.js          # host: /dsh-cc-studio-rpc (validate, cc_getDraft, cc_setDraft, cc_patchDraft)
-│   └── client.js         # client: dock 胶囊 + overlay 工坊 + settings.section
+│   ├── index.js          # host: /dsh-cc-studio-rpc（validate, cc_getDraft/cc_setDraft/cc_patchDraft, cc_isCcMode, cc_validateDraft, library: cc_listLibrary/cc_saveToLibrary/cc_loadFromLibrary/cc_deleteFromLibrary/cc_renameInLibrary/cc_getLibraryEntry）
+│   ├── agent.js          # CC 模式 Tools（已合并原 dsh-cc-agent）：6 Tools + workflowStatus（角色/五维≥3/世界书≥5/问候语 gate）
+│   └── client.js         # client: dock 胶囊 + overlay 工坊（DSW Token 深浅色，品牌紫 #7c5cff） + settings.section
 ├── prototypes/           # A/B 融合前的对比原型（H5，可直接用浏览器打开）
 │   ├── index.html
 │   ├── prototype-a.html  # 轻量浮层
@@ -28,7 +32,7 @@ dsh-cc-studio/
 └── README.md
 ```
 
-`dsh-cc-agent`（`@dsh-plugins/dsh-cc-agent`）为 CC 模式的 Tool 宿主，仅在 `CC 模式` 预设中挂载，不污染标准/PTC 模式。
+> `dsh-cc-agent` 已于 `5f95110` 合并为 `lib/agent.js`（`@dsh-plugins/dsh-cc-studio/agent`），无需单独安装；`CC 模式` 预设仅挂该单一来源，不污染 `standard`。
 
 ## 安装
 
@@ -37,32 +41,40 @@ dsh-cc-studio/
 git clone https://github.com/xia-sc/dsh-cc-studio.git
 # 安装到 web profile（需 danger-full-access）
 dsh plugin --profile web add ./dsh-cc-studio
-# 若使用 CC 模式，需同时安装 Agent Tools
-dsh plugin --profile web add ./dsh-cc-agent  # 或已在 CC preset 中通过 @dsh-plugins/dsh-cc-agent 引用
 
 # 重启 dsh web（宿主行在启动时组合）
 # 验证
-curl http://127.0.0.1:3080/plugins/@dsh-plugins/dsh-cc-studio/client.js
-# 应 200
+dsh --profile web --dump-config | findstr dsh-cc-studio
+curl http://127.0.0.1:3080/plugins/@dsh-plugins/dsh-cc-studio/client.js  # 应 200
+# RPC 自检
+# POST /dsh-cc-studio-rpc/ping  -> {ok:true}
 ```
 
-CC 预设位于 `~/.dsh/.agent-presets/cc/`（`preset.yml` + `agent.cordis.yml`），切换后胶囊自动出现。
+CC 预设位于 `~/.dsh/.agent-presets/cc/`（`preset.yml` + `agent.cordis.yml`，后者在一份 `standard` 拷贝上追加 `id: cc-studio-agent, name: '@dsh-plugins/dsh-cc-studio/agent'`），切换后胶囊自动出现。若不存在可按 `agent-rp` 拷贝后追加该行，或直接用本仓库 `fix-theme` 分支的脚本生成。
 
 ## 使用
 
-1. 切换到 **CC 模式**（模式下拉）。
+1. 切换到 **CC 模式**（会话模式下拉）。
 2. 直接对话：“我想做雨城记忆典当行老板娘，世界观很薄”。
-3. LLM 会 `cc_get_card → 引导问 1-2 个薄弱点 → cc_patch_character / cc_patch_world → cc_add_lorebook_entries → cc_patch_greetings → cc_validate`，每调一次胶囊实时刷新。
-4. 随时在工坊手改，导出前点 **导出 JSON**。
-
-原型预览（本地直接打开）：
+3. LLM 严格按 `cc_get_card → cc_patch_character（name/description/personality/scenario 四件套） → cc_patch_world（timeline/factions/geo/power/daily ≥3，autoLorebook=true） → cc_add_lorebook_entries（补到 ≥5，至少 1 条 constant，带 @@decorator） → cc_patch_greetings（first_mes + alternate_greetings≥2 + group_only_greetings≥1） → cc_validate（valid=true 才可收口）` 推进，每调一次胶囊/工坊实时刷新。
+4. 随时在工坊手改；校验通过后点 **导出 JSON** 或侧栏 **★ 保存当前**（落盘 `~/.dsh/cc-library`），后续可在侧栏载入/导出/删除；原型预览（本地直接打开）：
 - `prototypes/index.html` 总览
 - `prototypes/prototype-a.html` / `prototypes/prototype-b.html` 对比
+
+## 外观
+
+深浅色通过 `var(--dsw-alias-*)` 自动适配（`body[data-ds-dark-theme]`），主操作固定 `#7c5cff` 保证对比度。切换路径：设置 → 外观 → 浅色/深色/跟随系统，刷新后工坊立即生效。
 
 ## 规范依据
 
 - [CCv3 SPEC_V3.md](https://github.com/kwaroran/character-card-spec-v3/blob/main/SPEC_V3.md)（权威）
 - [concepts.md](https://github.com/kwaroran/character-card-spec-v3/blob/main/concepts.md) 已过时，仅参考
+
+## 版本
+
+- `0.2.4` 深浅色自适应，深色下修复品牌按钮白底刺眼
+- `0.2.3` workflow + UI 细节（maxWidth/boxSizing、40px 折叠栏、6 步强制校验）
+- `0.2.2` 已存角色侧栏（280px 可折叠/落盘 `~/.dsh/cc-library`）
 
 ## License
 
