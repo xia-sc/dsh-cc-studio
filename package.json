@@ -1,12 +1,13 @@
 {
   "name": "@dsh-plugins/dsh-cc-studio",
-  "version": "0.1.1",
-  "description": "CCv3 角色卡工坊：/cc 唤出 + 自定义风格标签 + 5维世界观补全 + Lorebook Decorator（融合形态，胶囊仅 /cc 后显示）",
+  "version": "0.2.0",
+  "description": "CCv3 角色卡工坊：融合工坊 + CC 模式（LLM Tools 引导）+ 自定义标签，空白模板",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
     "./client": "./lib/client.js",
+    "./agent": "./lib/agent.js",
     "./package.json": "./package.json"
   },
   "files": [
