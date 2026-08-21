@@ -1,6 +1,6 @@
 {
   "name": "@dsh-plugins/dsh-cc-studio",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "CCv3 角色卡工坊：融合工坊 + CC 模式（LLM Tools 引导）+ 自定义标签，空白模板",
   "type": "module",
   "main": "lib/index.js",
