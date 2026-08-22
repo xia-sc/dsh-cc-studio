@@ -11,7 +11,7 @@
   - 强制 6 步工作流 + 共创约束：每步前 LLM 必须用 1-2 个开放问题征求用户偏好（气质/关系/世界侧重/触发词/开场场景等），严禁未与用户讨论就一次性推断填满；角色四件套 → 五维≥3 → 世界书≥5 → 问候语 → `cc_validate` 才可收口。
 - **5 维世界观**：年表 / 势力 / 地理 / 力量体系 / 日常 → `cc_patch_world(autoLorebook=true)` 自动生成带 `@@position / @@depth / @@activate` 的 Lorebook 条目（至少 1 条 `constant` 常驻；再次调用时自动覆盖旧自动条目、保留 `cc_add_lorebook_entries` 手动条目，配合 `cc_delete/update_lorebook_entry` 可精细管理）。
 - **CCv3 全覆盖**：`name / nickname / tags / description / personality / scenario / system_prompt / post_history_instructions / first_mes / alternate_greetings / group_only_greetings / mes_example / creator_notes / assets / character_book`，含 CBS `{{char}} / {{random}} / {{roll}}`。
-- **已存角色侧栏**：280px 可折叠（收起为 40px 竖条 + ★ 快捷保存），搜索（名称/标签）、保存当前草稿 / 载入 / 导出 JSON / 删除，落盘 `~/.dsh/cc-library/<id>.json`，按 `updatedAt` 排序。
+- **已存角色侧栏（ID 化 CRUD）**：280px 可折叠（收起为 40px 竖条），高亮当前载入卡（紫框，顶部显示 `已载入 ID:xxxx`）；`↻ 更新` 按唯一 ID 原地覆盖（载入后修改再保存无需删旧卡）、`＋ 另存为新` 强制新建、`✎ 重命名`/`＋ 新建`，搜索（名称/标签/ID 前 8 位）/ 载入 / 导出 / 删除，落盘 `~/.dsh/cc-library/<id>.json` 按 `updatedAt` 排序。
 - **校验与导出**：Host 实时校验（`spec / group_only_greetings` 必填、主图标唯一性、正则合法性，`spec: chara_card_v3 / spec_version: 3.0`），首版仅 `card.json`，`CHARX / PNG` 二期。
 - **深浅色自适应**：全量切 `var(--dsw-alias-bg-* / border-l1/l2 / label-primary/secondary)`，浅色白底黑字、深色暗底浅字，主按钮/选中态固定紫色，刷新即生效。
 
@@ -60,7 +60,7 @@ CC 预设位于 `~/.dsh/.agent-presets/cc/`（`preset.yml` + `agent.cordis.yml`�
 1. 切换到 **CC 模式**（会话模式下拉）。
 2. 直接对话：“我想做雨城记忆典当行老板娘，世界观很薄”。
 3. LLM 严格按 `cc_get_card（先总结进度并提问） → cc_patch_character（与用户讨论气质/关系后再填四件套） → cc_patch_world（与用户讨论世界侧重后再补 ≥3 维，autoLorebook） → cc_add_lorebook_entries（与用户讨论触发词后再补 ≥5，至少 1 constant） → cc_patch_greetings（与用户讨论场景后再补问候语） → cc_validate` 推进，每调一次胶囊/工坊实时刷新；好的角色是讨论出来的，LLM 会多问你、少自行推断。
-4. 随时在工坊手改；校验通过后点 **导出 JSON** 或侧栏 **★ 保存当前**（落盘 `~/.dsh/cc-library`），后续可在侧栏载入/导出/删除；原型预览（本地直接打开）：
+4. 随时在工坊手改；校验通过后侧栏 `↻ 更新`（按 ID 覆盖当前载入卡）或 `＋ 另存为新`（新建 ID），或 **导出 JSON**，后续可在侧栏按 ID 载入/重命名/导出/删除（`ID:xxxx` 高亮当前）；原型预览（本地直接打开）：
 - `prototypes/index.html` 总览
 - `prototypes/prototype-a.html` / `prototypes/prototype-b.html` 对比
 
@@ -75,6 +75,7 @@ CC 预设位于 `~/.dsh/.agent-presets/cc/`（`preset.yml` + `agent.cordis.yml`�
 
 ## 版本
 
+- `0.2.8` 已存角色 ID 化 CRUD：载入后 `↻ 更新` 按唯一 `ID` 原地覆盖（无需删旧再存），`＋ 另存为新`/`✎ 重命名`/`＋ 新建`，高亮当前卡与 `ID:xxxx` 显示
 - `0.2.7` 修复 `cc_patch_world(autoLorebook=true)` 重复追加导致过期条目堆积（#1）：覆盖旧自动条目、保留手动条目，新增 `cc_delete/update_lorebook_entries` 管理能力
 - `0.2.6` 共创约束：每步先与用户讨论（Tool 描述 + persona 强制“先问再填”），修复“LLM 自行推断填满”问题
 - `0.2.5` 修复工坊五维回显丢失（`draft.extensions.cc_world ↔ state.world` 双向同步）
