@@ -9,7 +9,7 @@
 - **CC 模式（推荐·共创）**：新增 Agent Preset `CC 模式`，通过 6 个 Tool 让 LLM **先问再填**、与用户讨论共创，胶囊实时同步（`per-session` 草稿 + 2.5s 轻量轮询）：
   - `cc_get_card` / `cc_patch_character` / `cc_patch_world` / `cc_add_lorebook_entries` / `cc_patch_greetings` / `cc_validate`
   - 强制 6 步工作流 + 共创约束：每步前 LLM 必须用 1-2 个开放问题征求用户偏好（气质/关系/世界侧重/触发词/开场场景等），严禁未与用户讨论就一次性推断填满；角色四件套 → 五维≥3 → 世界书≥5 → 问候语 → `cc_validate` 才可收口。
-- **5 维世界观**：年表 / 势力 / 地理 / 力量体系 / 日常 → `cc_patch_world(autoLorebook=true)` 自动生成带 `@@position / @@depth / @@activate` 的 Lorebook 条目（至少 1 条 `constant` 常驻）。
+- **5 维世界观**：年表 / 势力 / 地理 / 力量体系 / 日常 → `cc_patch_world(autoLorebook=true)` 自动生成带 `@@position / @@depth / @@activate` 的 Lorebook 条目（至少 1 条 `constant` 常驻；再次调用时自动覆盖旧自动条目、保留 `cc_add_lorebook_entries` 手动条目，配合 `cc_delete/update_lorebook_entry` 可精细管理）。
 - **CCv3 全覆盖**：`name / nickname / tags / description / personality / scenario / system_prompt / post_history_instructions / first_mes / alternate_greetings / group_only_greetings / mes_example / creator_notes / assets / character_book`，含 CBS `{{char}} / {{random}} / {{roll}}`。
 - **已存角色侧栏**：280px 可折叠（收起为 40px 竖条 + ★ 快捷保存），搜索（名称/标签）、保存当前草稿 / 载入 / 导出 JSON / 删除，落盘 `~/.dsh/cc-library/<id>.json`，按 `updatedAt` 排序。
 - **校验与导出**：Host 实时校验（`spec / group_only_greetings` 必填、主图标唯一性、正则合法性，`spec: chara_card_v3 / spec_version: 3.0`），首版仅 `card.json`，`CHARX / PNG` 二期。
@@ -75,6 +75,7 @@ CC 预设位于 `~/.dsh/.agent-presets/cc/`（`preset.yml` + `agent.cordis.yml`�
 
 ## 版本
 
+- `0.2.7` 修复 `cc_patch_world(autoLorebook=true)` 重复追加导致过期条目堆积（#1）：覆盖旧自动条目、保留手动条目，新增 `cc_delete/update_lorebook_entries` 管理能力
 - `0.2.6` 共创约束：每步先与用户讨论（Tool 描述 + persona 强制“先问再填”），修复“LLM 自行推断填满”问题
 - `0.2.5` 修复工坊五维回显丢失（`draft.extensions.cc_world ↔ state.world` 双向同步）
 - `0.2.4` 深浅色自适应，深色下修复品牌按钮白底刺眼
