@@ -1,0 +1,2 @@
+﻿name: CC 模式
+description: CCv3 角色卡工坊 — LLM 通过 6 个 Tool 引导填表（cc_get_card / cc_patch_character / cc_patch_world / cc_add_lorebook_entries / cc_patch_greetings / cc_validate），胶囊实时同步，工坊全屏编辑，导出 chara_card_v3。

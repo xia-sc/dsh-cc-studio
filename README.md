@@ -6,9 +6,9 @@
 
 - **融合工坊**：输入框上方胶囊（CC 模式自动出现，`conversation.input.dock`）→ 点击展开 `shell.overlay` 全屏工坊（220px 导航 / 自适应主区 / 280px 已存角色侧栏 / 360px 实时 `card.json` 预览），深浅色自适应（DSW Token + 品牌紫 `#7c5cff` 固定）。
 - **风格标签自定义**：预设候选 `雨城 / 感官系 / 赛博 ...` + 任意输入（回车添加，点击已选移除），实时写回 `data.tags`。
-- **CC 模式（推荐）**：新增 Agent Preset `CC 模式`，通过 6 个 Tool 让 LLM 引导填表，胶囊实时同步（`per-session` 草稿 + 2.5s 轻量轮询）：
+- **CC 模式（推荐·共创）**：新增 Agent Preset `CC 模式`，通过 6 个 Tool 让 LLM **先问再填**、与用户讨论共创，胶囊实时同步（`per-session` 草稿 + 2.5s 轻量轮询）：
   - `cc_get_card` / `cc_patch_character` / `cc_patch_world` / `cc_add_lorebook_entries` / `cc_patch_greetings` / `cc_validate`
-  - 强制 6 步工作流：角色四件套 → 五维≥3 → 世界书≥5 → 问候语 → `cc_validate` 才可收口，未齐时 `validate` 会按 `errors` 逐项拦截。
+  - 强制 6 步工作流 + 共创约束：每步前 LLM 必须用 1-2 个开放问题征求用户偏好（气质/关系/世界侧重/触发词/开场场景等），严禁未与用户讨论就一次性推断填满；角色四件套 → 五维≥3 → 世界书≥5 → 问候语 → `cc_validate` 才可收口。
 - **5 维世界观**：年表 / 势力 / 地理 / 力量体系 / 日常 → `cc_patch_world(autoLorebook=true)` 自动生成带 `@@position / @@depth / @@activate` 的 Lorebook 条目（至少 1 条 `constant` 常驻）。
 - **CCv3 全覆盖**：`name / nickname / tags / description / personality / scenario / system_prompt / post_history_instructions / first_mes / alternate_greetings / group_only_greetings / mes_example / creator_notes / assets / character_book`，含 CBS `{{char}} / {{random}} / {{roll}}`。
 - **已存角色侧栏**：280px 可折叠（收起为 40px 竖条 + ★ 快捷保存），搜索（名称/标签）、保存当前草稿 / 载入 / 导出 JSON / 删除，落盘 `~/.dsh/cc-library/<id>.json`，按 `updatedAt` 排序。
@@ -23,8 +23,11 @@ dsh-cc-studio/
 ├── cordis.patch.yml      # 宿主行插入：id dsh-cc-studio
 ├── lib/
 │   ├── index.js          # host: /dsh-cc-studio-rpc（validate, cc_getDraft/cc_setDraft/cc_patchDraft, cc_isCcMode, cc_validateDraft, library: cc_listLibrary/cc_saveToLibrary/cc_loadFromLibrary/cc_deleteFromLibrary/cc_renameInLibrary/cc_getLibraryEntry）
-│   ├── agent.js          # CC 模式 Tools（已合并原 dsh-cc-agent）：6 Tools + workflowStatus（角色/五维≥3/世界书≥5/问候语 gate）
-│   └── client.js         # client: dock 胶囊 + overlay 工坊（DSW Token 深浅色，品牌紫 #7c5cff） + settings.section
+│   ├── agent.js          # CC 模式 Tools（已合并原 dsh-cc-agent）：6 Tools + workflowStatus（角色/五维≥3/世界书≥5/问候语 gate，提示“先与用户讨论”）
+│   └── client.js         # client: dock 胶囊 + overlay 工坊（DSW Token 深浅色，品牌紫 #7c5cff + 五维回显修复） + settings.section
+├── presets/cc/           # CC 模式预设模板（共创 persona + cc-studio-agent）
+│   ├── preset.yml
+│   └── agent.cordis.yml
 ├── prototypes/           # A/B 融合前的对比原型（H5，可直接用浏览器打开）
 │   ├── index.html
 │   ├── prototype-a.html  # 轻量浮层
@@ -50,13 +53,13 @@ curl http://127.0.0.1:3080/plugins/@dsh-plugins/dsh-cc-studio/client.js  # 应 2
 # POST /dsh-cc-studio-rpc/ping  -> {ok:true}
 ```
 
-CC 预设位于 `~/.dsh/.agent-presets/cc/`（`preset.yml` + `agent.cordis.yml`，后者在一份 `standard` 拷贝上追加 `id: cc-studio-agent, name: '@dsh-plugins/dsh-cc-studio/agent'`），切换后胶囊自动出现。若不存在可按 `agent-rp` 拷贝后追加该行，或直接用本仓库 `fix-theme` 分支的脚本生成。
+CC 预设位于 `~/.dsh/.agent-presets/cc/`（`preset.yml` + `agent.cordis.yml`，后者在一份 `standard` 拷贝上追加 `id: cc-studio-agent, name: '@dsh-plugins/dsh-cc-studio/agent'` 并将 `persona` 改为“共创搭档”——先问再填、每步 1-2 问）。模板见 `presets/cc/`，可直接拷贝到该路径，切换后胶囊自动出现。
 
 ## 使用
 
 1. 切换到 **CC 模式**（会话模式下拉）。
 2. 直接对话：“我想做雨城记忆典当行老板娘，世界观很薄”。
-3. LLM 严格按 `cc_get_card → cc_patch_character（name/description/personality/scenario 四件套） → cc_patch_world（timeline/factions/geo/power/daily ≥3，autoLorebook=true） → cc_add_lorebook_entries（补到 ≥5，至少 1 条 constant，带 @@decorator） → cc_patch_greetings（first_mes + alternate_greetings≥2 + group_only_greetings≥1） → cc_validate（valid=true 才可收口）` 推进，每调一次胶囊/工坊实时刷新。
+3. LLM 严格按 `cc_get_card（先总结进度并提问） → cc_patch_character（与用户讨论气质/关系后再填四件套） → cc_patch_world（与用户讨论世界侧重后再补 ≥3 维，autoLorebook） → cc_add_lorebook_entries（与用户讨论触发词后再补 ≥5，至少 1 constant） → cc_patch_greetings（与用户讨论场景后再补问候语） → cc_validate` 推进，每调一次胶囊/工坊实时刷新；好的角色是讨论出来的，LLM 会多问你、少自行推断。
 4. 随时在工坊手改；校验通过后点 **导出 JSON** 或侧栏 **★ 保存当前**（落盘 `~/.dsh/cc-library`），后续可在侧栏载入/导出/删除；原型预览（本地直接打开）：
 - `prototypes/index.html` 总览
 - `prototypes/prototype-a.html` / `prototypes/prototype-b.html` 对比
@@ -72,6 +75,8 @@ CC 预设位于 `~/.dsh/.agent-presets/cc/`（`preset.yml` + `agent.cordis.yml`�
 
 ## 版本
 
+- `0.2.6` 共创约束：每步先与用户讨论（Tool 描述 + persona 强制“先问再填”），修复“LLM 自行推断填满”问题
+- `0.2.5` 修复工坊五维回显丢失（`draft.extensions.cc_world ↔ state.world` 双向同步）
 - `0.2.4` 深浅色自适应，深色下修复品牌按钮白底刺眼
 - `0.2.3` workflow + UI 细节（maxWidth/boxSizing、40px 折叠栏、6 步强制校验）
 - `0.2.2` 已存角色侧栏（280px 可折叠/落盘 `~/.dsh/cc-library`）
