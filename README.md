@@ -10,6 +10,7 @@
   - `cc_get_card` / `cc_patch_character` / `cc_patch_world` / `cc_add_lorebook_entries` / `cc_patch_greetings` / `cc_validate`
   - 强制 6 步工作流 + 共创约束：每步前 LLM 必须用 1-2 个开放问题征求用户偏好（气质/关系/世界侧重/触发词/开场场景等），严禁未与用户讨论就一次性推断填满；角色四件套 → 五维≥3 → 世界书≥5 → 问候语 → `cc_validate` 才可收口。
 - **5 维世界观**：年表 / 势力 / 地理 / 力量体系 / 日常 → `cc_patch_world(autoLorebook=true)` 自动生成带 `@@position / @@depth / @@activate` 的 Lorebook 条目（至少 1 条 `constant` 常驻；再次调用时自动覆盖旧自动条目、保留 `cc_add_lorebook_entries` 手动条目，配合 `cc_delete/update_lorebook_entry` 可精细管理）；工坊中每维为**预览卡片 + 展开大框编辑**（小卡显示 140 字预览/字数，点击卡片或“⛶ 编辑”弹出 720px 大框，适合长文）。
+- **全量长文本大框编辑**：`一句话点子 / description / personality / scenario / system_prompt / first_mes / alternate_greetings / mes_example / creator_notes` 等所有长文本均支持小框 + 右上 `⛶ 大框` 按钮，弹出 720px 大框实时同步，解决多行长文在小框内难预览/编辑问题。
 - **CCv3 全覆盖**：`name / nickname / tags / description / personality / scenario / system_prompt / post_history_instructions / first_mes / alternate_greetings / group_only_greetings / mes_example / creator_notes / assets / character_book`，含 CBS `{{char}} / {{random}} / {{roll}}`。
 - **已存角色侧栏（ID 化 CRUD）+ 模型侧 Tools**：工坊侧栏 280px 可折叠，高亮当前载入卡（紫框，顶部 `已载入 ID:xxxx`），`↻ 更新` 按唯一 ID 原地覆盖、`＋ 另存为新` 强制新建、`✎ 重命名`/`＋ 新建`，搜索/载入/导出/删除落盘 `~/.dsh/cc-library/<id>.json`；模型侧同步暴露 `cc_list_library / cc_save_to_library / cc_load_from_library / cc_delete_from_library / cc_rename_in_library / cc_get_library_entry` 6 个 Tools（与侧栏共享 ID），用户说“帮我更新/载入 ID xxxx”时模型可直接操作，无需手动点 UI。
 - **校验与导出**：Host 实时校验（`spec / group_only_greetings` 必填、主图标唯一性、正则合法性，`spec: chara_card_v3 / spec_version: 3.0`），首版仅 `card.json`，`CHARX / PNG` 二期。
@@ -24,7 +25,7 @@ dsh-cc-studio/
 ├── lib/
 │   ├── index.js          # host: /dsh-cc-studio-rpc（validate, cc_getDraft/cc_setDraft/cc_patchDraft, cc_isCcMode, cc_validateDraft, library: cc_listLibrary/cc_saveToLibrary/cc_loadFromLibrary/cc_deleteFromLibrary/cc_renameInLibrary/cc_getLibraryEntry）
 │   ├── agent.js          # CC 模式 Tools（已合并）：6 步共创 + 2 Lorebook 管理 + 6 已存库 CRUD（与侧栏共享 ID），共 14 Tools，含 workflowStatus 提示“先与用户讨论”
-│   └── client.js         # client: dock 胶囊 + overlay 工坊（DSW Token 深浅色，品牌紫 #7c5cff + 五维回显修复 + 世界观大框编辑） + settings.section
+│   └── client.js         # client: dock 胶囊 + overlay 工坊（DSW Token 深浅色，品牌紫 #7c5cff + 五维回显修复 + 世界观/全量长文本大框编辑） + settings.section
 ├── presets/cc/           # CC 模式预设模板（共创 persona + cc-studio-agent）
 │   ├── preset.yml
 │   └── agent.cordis.yml
@@ -75,6 +76,7 @@ CC 预设位于 `~/.dsh/.agent-presets/cc/`（`preset.yml` + `agent.cordis.yml`�
 
 ## 版本
 
+- `0.2.11` 全量长文本大框编辑：`一句话点子 / description / personality / scenario / system_prompt / first_mes 等` 所有长文本新增右上 `⛶ 大框` 按钮，弹出 720px 大框实时同步，彻底解决小框难编辑问题
 - `0.2.10` 世界观大框编辑：每维预览 140 字 + 字数，卡片点击/“⛶ 编辑”弹出 720px 大框（320px 高，实时同步草稿），解决长文在 70px 小框内难编辑/预览问题
 - `0.2.9` 模型侧暴露已存库 CRUD：`cc_list/save/load/delete/rename/get_library` 6 Tools（与工坊侧栏共享 ID），支持“帮我更新/载入 ID xxxx”自然语言持久化
 - `0.2.8` 已存角色 ID 化 CRUD：载入后 `↻ 更新` 按唯一 `ID` 原地覆盖（无需删旧再存），`＋ 另存为新`/`✎ 重命名`/`＋ 新建`，高亮当前卡与 `ID:xxxx` 显示
