@@ -10,7 +10,7 @@
   - `cc_get_card` / `cc_patch_character` / `cc_patch_world` / `cc_add_lorebook_entries` / `cc_patch_greetings` / `cc_validate`
   - 强制 6 步工作流 + 共创约束：每步前 LLM 必须用 1-2 个开放问题征求用户偏好（气质/关系/世界侧重/触发词/开场场景等），严禁未与用户讨论就一次性推断填满；角色四件套 → 五维≥3 → 世界书≥5 → 问候语 → `cc_validate` 才可收口。
 - **5 维世界观**：年表 / 势力 / 地理 / 力量体系 / 日常 → `cc_patch_world(autoLorebook=true)` 自动生成带 `@@position / @@depth / @@activate` 的 Lorebook 条目（至少 1 条 `constant` 常驻；再次调用时自动覆盖旧自动条目、保留 `cc_add_lorebook_entries` 手动条目，配合 `cc_delete/update_lorebook_entry` 可精细管理）；工坊中每维为**预览卡片 + 展开大框编辑**（小卡显示 140 字预览/字数，点击卡片或“⛶ 编辑”弹出 720px 大框，适合长文）。
-- **全量长文本大框编辑**：`一句话点子 / description / personality / scenario / system_prompt / first_mes / alternate_greetings / mes_example / creator_notes` 等所有长文本均支持小框 + 右上 `⛶ 大框` 按钮，弹出 720px 大框实时同步，解决多行长文在小框内难预览/编辑问题。
+- **全量长文本大框编辑**：`description / personality / scenario / system_prompt / first_mes / alternate_greetings / mes_example / creator_notes` 等所有长文本均支持小框 + 右上 `⛶ 大框` 按钮，弹出 720px 大框实时同步，解决多行长文在小框内难预览/编辑问题；`点子投喂（一句话点子/风格标签）`卡片已移除，`1. 点子` 现为纯 **本地草稿搜索**（过滤已存侧栏）。
 - **CCv3 全覆盖**：`name / nickname / tags / description / personality / scenario / system_prompt / post_history_instructions / first_mes / alternate_greetings / group_only_greetings / mes_example / creator_notes / assets / character_book`，含 CBS `{{char}} / {{random}} / {{roll}}`。
 - **已存角色侧栏（ID 化 CRUD）+ 模型侧 Tools**：工坊侧栏 280px 可折叠，高亮当前载入卡（紫框，顶部 `已载入 ID:xxxx`），`↻ 更新` 按唯一 ID 原地覆盖、`＋ 另存为新` 强制新建、`✎ 重命名`/`＋ 新建`，搜索/载入/导出/删除落盘 `~/.dsh/cc-library/<id>.json`；模型侧同步暴露 `cc_list_library / cc_save_to_library / cc_load_from_library / cc_delete_from_library / cc_rename_in_library / cc_get_library_entry` 6 个 Tools（与侧栏共享 ID），用户说“帮我更新/载入 ID xxxx”时模型可直接操作，无需手动点 UI。
 - **校验与导出**：Host 实时校验（`spec / group_only_greetings` 必填、主图标唯一性、正则合法性，`spec: chara_card_v3 / spec_version: 3.0`），首版仅 `card.json`，`CHARX / PNG` 二期。
@@ -76,6 +76,7 @@ CC 预设位于 `~/.dsh/.agent-presets/cc/`（`preset.yml` + `agent.cordis.yml`�
 
 ## 版本
 
+- `0.2.14` 移除“点子投喂”卡片：`1. 点子` 现仅保留 **本地草稿搜索**（`一句话点子/风格标签` 输入已移除，标签改在“角色细化”中逗号分隔编辑），界面更简洁
 - `0.2.13` 合并：全量长文本大框（所有 textarea ⛶ 720px 大框）+ 点子步本地搜索（紫框过滤已存侧栏）+ 设置页修复（`settings.section` 补 `locale`）
 - `0.2.12` 点子步改为本地搜索：紫框不再是点子输入/标签候选，直接过滤右侧已存侧栏（输入/芯片一键筛，实时预览前 3 条，“载入”直达），与侧栏搜索双向同步
 - `0.2.11` 全量长文本大框编辑 + 设置页修复：`一句话点子 / description / personality / scenario / system_prompt / first_mes 等` 所有长文本新增右上 `⛶ 大框` 按钮；`settings.section` 漏 `locale: NS` 修复，已存数/落盘 `~/.dsh/cc-library` 展示
