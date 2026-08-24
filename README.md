@@ -75,6 +75,7 @@ CC 预设位于 `~/.dsh/.agent-presets/cc/`（`preset.yml` + `agent.cordis.yml`�
 
 ## 版本
 
+- `0.2.11` 设置页修复：`settings.section` 漏 `locale: NS` 导致空白，补 `inject: store` + `t` 兜底，现显示已存数/落盘 `~/.dsh/cc-library`、CC 使用说明与刷新按钮
 - `0.2.10` 世界观大框编辑：每维预览 140 字 + 字数，卡片点击/“⛶ 编辑”弹出 720px 大框（320px 高，实时同步草稿），解决长文在 70px 小框内难编辑/预览问题
 - `0.2.9` 模型侧暴露已存库 CRUD：`cc_list/save/load/delete/rename/get_library` 6 Tools（与工坊侧栏共享 ID），支持“帮我更新/载入 ID xxxx”自然语言持久化
 - `0.2.8` 已存角色 ID 化 CRUD：载入后 `↻ 更新` 按唯一 `ID` 原地覆盖（无需删旧再存），`＋ 另存为新`/`✎ 重命名`/`＋ 新建`，高亮当前卡与 `ID:xxxx` 显示
