@@ -1,7 +1,7 @@
 {
   "name": "@dsh-plugins/dsh-cc-studio",
-  "version": "0.2.16",
-  "description": "CCv3 角色卡工坊：融合工坊 + CC 模式（LLM Tools 引导）+ 导入 JSON + 可配置心跳",
+  "version": "0.2.17",
+  "description": "CCv3 角色卡工坊：融合工坊 + CC 模式（LLM Tools 引导）+ JSON/PNG/CHARX 导入导出",
   "type": "module",
   "main": "lib/index.js",
   "exports": {

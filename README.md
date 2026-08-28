@@ -13,7 +13,7 @@
 - **全量长文本大框编辑**：`description / personality / scenario / system_prompt / first_mes / alternate_greetings / mes_example / creator_notes` 等所有长文本均支持小框 + 右上 `⛶ 大框` 按钮，弹出 720px 大框实时同步，解决多行长文在小框内难预览/编辑问题；`点子投喂（一句话点子/风格标签）`卡片已移除，`1. 点子` 现为纯 **本地草稿搜索**（过滤已存侧栏）。
 - **CCv3 全覆盖**：`name / nickname / tags / description / personality / scenario / system_prompt / post_history_instructions / first_mes / alternate_greetings / group_only_greetings / mes_example / creator_notes / assets / character_book`，含 CBS `{{char}} / {{random}} / {{roll}}`。
 - **已存角色侧栏（ID 化 CRUD）+ 模型侧 Tools**：工坊侧栏 280px 可折叠，高亮当前载入卡（紫框，顶部 `已载入 ID:xxxx`），`↻ 更新` 按唯一 ID 原地覆盖、`＋ 另存为新` 强制新建、`✎ 重命名`/`＋ 新建`，搜索/载入/导出/删除落盘 `~/.dsh/cc-library/<id>.json`；模型侧同步暴露 `cc_list_library / cc_save_to_library / cc_load_from_library / cc_delete_from_library / cc_rename_in_library / cc_get_library_entry` 6 个 Tools（与侧栏共享 ID），用户说“帮我更新/载入 ID xxxx”时模型可直接操作，无需手动点 UI。
-- **校验与导出**：Host 实时校验（`spec / group_only_greetings` 必填、主图标唯一性、正则合法性，`spec: chara_card_v3 / spec_version: 3.0`），首版仅 `card.json`，`CHARX / PNG` 二期。
+- **校验与导出**：Host 实时校验（`spec / group_only_greetings` 必填、主图标唯一性、正则合法性，`spec: chara_card_v3 / spec_version: 3.0`），支持 `JSON / PNG(tEXt ccv3) / CHARX(ZIP card.json)` 三容器互通：`⬇ PNG` 生成 1×1 占位图、`⬆ 写入 PNG` 将当前卡写入用户上传的任意 PNG（自动剥离旧 `ccv3/chara` 块，`CRC32` 重算）、`⬇ CHARX` 打包 `card.json`，导入侧 `⬆ 导入 JSON/PNG/CHARX` 自动识别。
 - **深浅色自适应**：全量切 `var(--dsw-alias-bg-* / border-l1/l2 / label-primary/secondary)`，浅色白底黑字、深色暗底浅字，主按钮/选中态固定紫色，刷新即生效。
 
 ## 结构
@@ -23,9 +23,9 @@ dsh-cc-studio/
 ├── package.json          # @dsh-plugins/dsh-cc-studio, dsh.bundle.patch + dsh.client, exports ./agent
 ├── cordis.patch.yml      # 宿主行插入：id dsh-cc-studio
 ├── lib/
-│   ├── index.js          # host: /dsh-cc-studio-rpc（validate, cc_getDraft/cc_setDraft/cc_patchDraft, cc_isCcMode, cc_validateDraft, library: cc_listLibrary/cc_saveToLibrary/cc_loadFromLibrary/cc_deleteFromLibrary/cc_renameInLibrary/cc_getLibraryEntry）
+│   ├── index.js          # host: /dsh-cc-studio-rpc（validate, cc_getDraft/cc_setDraft/cc_patchDraft, cc_isCcMode, cc_validateDraft, library: cc_listLibrary/cc_saveToLibrary/cc_loadFromLibrary/cc_deleteFromLibrary/cc_renameInLibrary/cc_getLibraryEntry, 容器: cc_importFromPng/cc_exportPng(+imageB64 写入)/cc_importFromCharx/cc_exportCharx, CRC32/ZIP/STORE&DEFLATE）
 │   ├── agent.js          # CC 模式 Tools（已合并）：6 步共创 + 2 Lorebook 管理 + 6 已存库 CRUD（与侧栏共享 ID），共 14 Tools，含 workflowStatus 提示“先与用户讨论”
-│   └── client.js         # client: dock 胶囊 + overlay 工坊（DSW Token 深浅色，品牌紫 #7c5cff + 五维回显修复 + 世界观/全量长文本大框编辑） + settings.section
+│   └── client.js         # client: dock 胶囊 + overlay 工坊（DSW Token 深浅色，品牌紫 #7c5cff + 五维回显修复 + 世界观/全量长文本大框编辑 + JSON/PNG/CHARX 导入导出/写入） + settings.section
 ├── presets/cc/           # CC 模式预设模板（共创 persona + cc-studio-agent）
 │   ├── preset.yml
 │   └── agent.cordis.yml
@@ -76,6 +76,9 @@ CC 预设位于 `~/.dsh/.agent-presets/cc/`（`preset.yml` + `agent.cordis.yml`�
 
 ## 版本
 
+- `0.2.17` 容器互通：`JSON / PNG(tEXt ccv3) / CHARX(ZIP)` 导入导出打通，`⬆ 写入 PNG` 支持将当前卡写入用户上传的任意 PNG（剥离旧 `ccv3/chara` 块，`CRC32` 重算，`STORE&DEFLATE` ZIP 兼容），校验页 `⬇ JSON / ⬇ PNG / ⬆ 写入 PNG / ⬇ CHARX` 四键
+- `0.2.16` 导入与可调心跳：侧边栏 `⬆ 导入本地 JSON(CCv3)`、导入后自动校验/自动保存开关、CC 心跳间隔 1–30s 可调（0 关闭，`localStorage:dsh-cc-studio-settings`），修复 `{{char}}` 变量误用导致的 `unknown prompt variable`，`presets/cc` 同步修复
+- `0.2.15` 首切 CC 不显示修复：`conversation.input.dock` 会话域 + `shell.overlay` 根域按 `[currentId,sessions]` 订阅与 900ms 重试，`cc_getDraft` 轮询收敛为 CC 模式下 4s/1s 基座 + 500ms 去重，关闭即停
 - `0.2.14` 移除“点子投喂”卡片：`1. 点子` 现仅保留 **本地草稿搜索**（`一句话点子/风格标签` 输入已移除，标签改在“角色细化”中逗号分隔编辑），界面更简洁
 - `0.2.13` 合并：全量长文本大框（所有 textarea ⛶ 720px 大框）+ 点子步本地搜索（紫框过滤已存侧栏）+ 设置页修复（`settings.section` 补 `locale`）
 - `0.2.12` 点子步改为本地搜索：紫框不再是点子输入/标签候选，直接过滤右侧已存侧栏（输入/芯片一键筛，实时预览前 3 条，“载入”直达），与侧栏搜索双向同步
