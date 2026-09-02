@@ -1,3 +1,9 @@
+<div align="right">
+
+[English](./README_EN.md) | 中文
+
+</div>
+
 # dsh-cc-studio · CCv3 角色卡工坊
 
 > 从一句话点子到可导入 SillyTavern / Risu 的 `chara_card_v3`。专治「只有点子，世界观薄弱」。
@@ -14,6 +20,7 @@
 - **CCv3 全覆盖**：`name / nickname / tags / description / personality / scenario / system_prompt / post_history_instructions / first_mes / alternate_greetings / group_only_greetings / mes_example / creator_notes / assets / character_book`，含 CBS `{{char}} / {{random}} / {{roll}}`。
 - **已存角色侧栏（ID 化 CRUD）+ 模型侧 Tools**：工坊侧栏 280px 可折叠，高亮当前载入卡（紫框，顶部 `已载入 ID:xxxx`），`↻ 更新` 按唯一 ID 原地覆盖、`＋ 另存为新` 强制新建、`✎ 重命名`/`＋ 新建`，搜索/载入/导出/删除落盘 `~/.dsh/cc-library/<id>.json`；模型侧同步暴露 `cc_list_library / cc_save_to_library / cc_load_from_library / cc_delete_from_library / cc_rename_in_library / cc_get_library_entry` 6 个 Tools（与侧栏共享 ID），用户说“帮我更新/载入 ID xxxx”时模型可直接操作，无需手动点 UI。
 - **校验与导出**：Host 实时校验（`spec / group_only_greetings` 必填、主图标唯一性、正则合法性，`spec: chara_card_v3 / spec_version: 3.0`），支持 `JSON / PNG(tEXt ccv3) / CHARX(ZIP card.json)` 三容器互通：`⬇ PNG` 生成 1×1 占位图、`⬆ 写入 PNG` 将当前卡写入用户上传的任意 PNG（自动剥离旧 `ccv3/chara` 块，`CRC32` 重算）、`⬇ CHARX` 打包 `card.json`，导入侧 `⬆ 导入 JSON/PNG/CHARX` 自动识别。
+- **中英双语**：完整 `zh / en` 词表（`locale: dshCcStudio`），跟随系统语言自动切换，设置页内可手动 `中文 / English` 一键切换（`ctx.locale.setLocale` 持久化，胶囊/步骤/设置即时刷新），与全局 `设置 → 通用 → 语言` 联动。
 - **深浅色自适应**：全量切 `var(--dsw-alias-bg-* / border-l1/l2 / label-primary/secondary)`，浅色白底黑字、深色暗底浅字，主按钮/选中态固定紫色，刷新即生效。
 
 ## 结构
@@ -76,6 +83,7 @@ CC 预设位于 `~/.dsh/.agent-presets/cc/`（`preset.yml` + `agent.cordis.yml`�
 
 ## 版本
 
+- `0.2.18` 中英双语：`zh / en` 全量词表 + 设置页 `语言 / Language` 手动切换（`locale.setLocale`，与全局语言联动，胶囊/步骤/设置即时中英切换），`settings.section` 标题亦随语言变化
 - `0.2.17` 容器互通：`JSON / PNG(tEXt ccv3) / CHARX(ZIP)` 导入导出打通，`⬆ 写入 PNG` 支持将当前卡写入用户上传的任意 PNG（剥离旧 `ccv3/chara` 块，`CRC32` 重算，`STORE&DEFLATE` ZIP 兼容），校验页 `⬇ JSON / ⬇ PNG / ⬆ 写入 PNG / ⬇ CHARX` 四键
 - `0.2.16` 导入与可调心跳：侧边栏 `⬆ 导入本地 JSON(CCv3)`、导入后自动校验/自动保存开关、CC 心跳间隔 1–30s 可调（0 关闭，`localStorage:dsh-cc-studio-settings`），修复 `{{char}}` 变量误用导致的 `unknown prompt variable`，`presets/cc` 同步修复
 - `0.2.15` 首切 CC 不显示修复：`conversation.input.dock` 会话域 + `shell.overlay` 根域按 `[currentId,sessions]` 订阅与 900ms 重试，`cc_getDraft` 轮询收敛为 CC 模式下 4s/1s 基座 + 500ms 去重，关闭即停
