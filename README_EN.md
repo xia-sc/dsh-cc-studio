@@ -20,7 +20,7 @@
 - **Full CCv3 Coverage**: `name / nickname / tags / description / personality / scenario / system_prompt / post_history_instructions / first_mes / alternate_greetings / group_only_greetings / mes_example / creator_notes / assets / character_book` with CBS `{{char}} / {{random}} / {{roll}}`.
 - **Saved Sidebar (ID-based CRUD) + Model Tools**: 280px collapsible sidebar, highlights the active card (purple border, `Loaded ID:xxxx` on top), `↻ Update` overwrites by ID, `＋ Save as New` creates new, `✎ Rename`/`＋ New`, search/load/export/delete persisted to `~/.dsh/cc-library/<id>.json`; model side exposes 6 Tools `cc_list_library / cc_save_to_library / cc_load_from_library / cc_delete_from_library / cc_rename_in_library / cc_get_library_entry` sharing the same IDs, so "update/load ID xxxx" works via natural language.
 - **Validate & Export**: live validation (`spec / group_only_greetings` required, single main icon, regex validity, `spec: chara_card_v3 / spec_version: 3.0`), supports `JSON / PNG(tEXt ccv3) / CHARX(ZIP card.json)` interchange: `⬇ PNG` creates a 1×1 placeholder, `⬆ Embed into PNG` writes the current card into any PNG you upload (strips old `ccv3/chara` chunks, recalculates `CRC32`), `⬇ CHARX` packs `card.json`, importer `⬆ Import JSON/PNG/CHARX` auto-detects.
-- **Bilingual (zh/en)**: complete `zh / en` dictionaries (`locale: dshCcStudio`), follows system language and can be toggled manually in Settings via `中文 / English` (`ctx.locale.setLocale` persisted; capsule/steps/settings refresh instantly), linked to global `Settings → General → Language`.
+- **Bilingual (zh/en)**: complete `zh / en` dictionaries (`locale: dshCcStudio`), follows the global `Settings → General → Language` automatically (capsule/workshop/settings refresh instantly, no in-plugin toggle).
 - **Adaptive Theming**: full `var(--dsw-alias-bg-* / border-l1/l2 / label-primary/secondary)`, light = white/black, dark = dark/light, primary actions stay purple, live on refresh.
 
 ## Structure
@@ -84,6 +84,7 @@ Light/dark via `var(--dsw-alias-*)` (`body[data-ds-dark-theme]`), primary stays 
 
 ## Versions
 
+- `0.2.19` Follow global language: removes the in-plugin `Language / 语言` toggle card; the plugin only follows `Settings → General → Language` (`locale: dshCcStudio` + `t` auto re-render); CC preset stays Chinese-only (user presets bypass system translation, bilingual looked cluttered)
 - `0.2.18` Bilingual: full `zh / en` dictionaries + `Language / 语言` manual toggle in Settings (`locale.setLocale`, linked to global language; capsule/steps/settings switch instantly), `settings.section` title also follows language; fixes workshop untranslated strings and loader `t is not defined` crash
 - `0.2.17` Container interchange: `JSON / PNG(tEXt ccv3) / CHARX(ZIP)` import/export, `⬆ Embed into PNG` writes the current card into any PNG you upload (strips old `ccv3/chara` chunks, `CRC32`, `STORE&DEFLATE` ZIP), four buttons `⬇ JSON / ⬇ PNG / ⬆ Embed into PNG / ⬇ CHARX` on Validate page
 - `0.2.16` Import & tunable heartbeat: sidebar `⬆ Import JSON(CCv3)`, auto-validate/auto-save toggles, CC heartbeat 1–30s (0 = off, `localStorage:dsh-cc-studio-settings`), fix `{{char}}` `unknown prompt variable`, synced `presets/cc`
