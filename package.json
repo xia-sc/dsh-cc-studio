@@ -1,6 +1,6 @@
 {
   "name": "@dsh-plugins/dsh-cc-studio",
-  "version": "0.2.19",
+  "version": "0.2.20",
   "description": "CCv3 角色卡工坊：融合工坊 + CC 模式 + JSON/PNG/CHARX + 中英双语（跟随全局）",
   "type": "module",
   "main": "lib/index.js",

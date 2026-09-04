@@ -83,6 +83,7 @@ CC 预设位于 `~/.dsh/.agent-presets/cc/`（`preset.yml` + `agent.cordis.yml`�
 
 ## 版本
 
+- `0.2.20` 修复 `cc_isCcMode` 刷屏：胶囊/工坊改用 `current + preset` 窄订阅（流式更新不再重跑 effect），`checkIsCcMode` 同会话 5s 节流 + in-flight 去重，本地已判 CC 不再打 RPC，工坊只做兜底
 - `0.2.19` 跟随全局语言：移除设置页内 `语言 / Language` 手动切换卡，插件只跟随 `设置 → 通用 → 语言`（`locale: dshCcStudio` + `t` 自动重绘）；CC 预设保持纯中文（用户预设不走系统翻译，双语版显累赘已还原）
 - `0.2.18` 中英双语：`zh / en` 全量词表 + 设置页 `语言 / Language` 手动切换（`locale.setLocale`，与全局语言联动，胶囊/步骤/设置即时中英切换），`settings.section` 标题亦随语言变化
 - `0.2.17` 容器互通：`JSON / PNG(tEXt ccv3) / CHARX(ZIP)` 导入导出打通，`⬆ 写入 PNG` 支持将当前卡写入用户上传的任意 PNG（剥离旧 `ccv3/chara` 块，`CRC32` 重算，`STORE&DEFLATE` ZIP 兼容），校验页 `⬇ JSON / ⬇ PNG / ⬆ 写入 PNG / ⬇ CHARX` 四键

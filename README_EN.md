@@ -84,6 +84,7 @@ Light/dark via `var(--dsw-alias-*)` (`body[data-ds-dark-theme]`), primary stays 
 
 ## Versions
 
+- `0.2.20` Fix `cc_isCcMode` spam: capsule/workshop subscribe narrowly to `current + preset` (streaming no longer re-fires the effect), `checkIsCcMode` throttled to 5s per session + in-flight dedup, no RPC when locally detected as CC, workshop only as fallback
 - `0.2.19` Follow global language: removes the in-plugin `Language / 语言` toggle card; the plugin only follows `Settings → General → Language` (`locale: dshCcStudio` + `t` auto re-render); CC preset stays Chinese-only (user presets bypass system translation, bilingual looked cluttered)
 - `0.2.18` Bilingual: full `zh / en` dictionaries + `Language / 语言` manual toggle in Settings (`locale.setLocale`, linked to global language; capsule/steps/settings switch instantly), `settings.section` title also follows language; fixes workshop untranslated strings and loader `t is not defined` crash
 - `0.2.17` Container interchange: `JSON / PNG(tEXt ccv3) / CHARX(ZIP)` import/export, `⬆ Embed into PNG` writes the current card into any PNG you upload (strips old `ccv3/chara` chunks, `CRC32`, `STORE&DEFLATE` ZIP), four buttons `⬇ JSON / ⬇ PNG / ⬆ Embed into PNG / ⬇ CHARX` on Validate page
