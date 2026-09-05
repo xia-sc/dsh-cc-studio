@@ -84,6 +84,7 @@ Light/dark via `var(--dsw-alias-*)` (`body[data-ds-dark-theme]`), primary stays 
 
 ## Versions
 
+- `0.2.21` Fix #2 silent draft loss: drafts persist on every write to `~/.dsh/cc-drafts/<session>.json` and auto-restore per session after host restart/session switch (`creation_date` preserved); memory miss no longer silently blanks — fresh blanks warn (tool `notice`/`message` + orange workshop banner), successful restores notify (blue banner showing `creation_date`), both clear after the next write
 - `0.2.20` Fix `cc_isCcMode` spam: capsule/workshop subscribe narrowly to `current + preset` (streaming no longer re-fires the effect), `checkIsCcMode` throttled to 5s per session + in-flight dedup, no RPC when locally detected as CC, workshop only as fallback
 - `0.2.19` Follow global language: removes the in-plugin `Language / 语言` toggle card; the plugin only follows `Settings → General → Language` (`locale: dshCcStudio` + `t` auto re-render); CC preset stays Chinese-only (user presets bypass system translation, bilingual looked cluttered)
 - `0.2.18` Bilingual: full `zh / en` dictionaries + `Language / 语言` manual toggle in Settings (`locale.setLocale`, linked to global language; capsule/steps/settings switch instantly), `settings.section` title also follows language; fixes workshop untranslated strings and loader `t is not defined` crash
