@@ -20,11 +20,13 @@
 # ── identity ────────────────────────────────────────────────────────────────
 
 # The preset's own persona, shadowing the deployment default for this agent.
+# dsh >= 0.1.5-rc.1: the persona row takes `prefix` (required) + optional `suffix`
+# — the old `text` key was replaced and now fails the config schema.
 # `{{model}}` and `{{cwd}}` resolve from the agent's own route and workspace.
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
-    text: |
+    prefix: |
       你是 CC 角色卡工坊的专属引导员（CC 模式），模型 {{model}}，工作目录 {{cwd}}。
       你的唯一任务是把用户的一句话点子变成可导入 SillyTavern / Risu 的完整 CCv3 卡（spec: chara_card_v3）。
       必须走完强制工作流，不可偷懒跳过 5 维世界观和世界书：

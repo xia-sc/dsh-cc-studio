@@ -40,6 +40,8 @@ dsh-cc-studio/
 │   ├── index.html
 │   ├── prototype-a.html  # 轻量浮层
 │   └── prototype-b.html  # 侧边常驻
+├── tests/
+│   └── rpc-channel.test.mjs  # host 半 RPC 通道回归（假 ctx + 真实 http，23 项断言，`node tests/rpc-channel.test.mjs`）
 └── README.md
 ```
 
@@ -83,6 +85,7 @@ CC 预设位于 `~/.dsh/.agent-presets/cc/`（`preset.yml` + `agent.cordis.yml`�
 
 ## 版本
 
+- `0.2.22` 修复 dsh `0.1.5-rc.1` 启动崩溃 `cannot get property "webServer" without inject`：该版本起 `connection.rpc.handle()` 对外部插件不可用（`HostConnectionService.rpc` 用的是 connection 插件自己的 ctx，其 `inject` 仅 `["credentials"]`，`webServer` 在它的内层 `ctx.inject(["webServer"])` 作用域里，owner fiber 永远解析不到），host 半改为在 `webServer` 上自注册 `/dsh-cc-studio-rpc` 前缀路由并实现同一套 connection RPC 线上协议（含 `connection.requestRejection` 围栏 + `server-response` envelope）；请求体读取由 `for await` 改为 `data/end/error` 事件式（该运行时下 `IncomingMessage` 异步迭代读取会抛错，连 `client-connection` 自带 `/api` 帧也受影响）；新增 `tests/rpc-channel.test.mjs` 23 项回归；同步修 `presets/cc` 的 `persona` 行（`text` → 必填 `prefix`，否则切换 CC 模式报 `invalid config: S.prefix missing required value`）
 - `0.2.21` 修复 #2 草稿静默丢失：草稿变更即落盘 `~/.dsh/cc-drafts/<会话>.json`，host 重启/换会话后按会话 id 自动恢复（`creation_date` 不变）；内存 miss 不再静默建空——无存档建空会警告（工具 `notice`/`message` + 工坊橙色条），恢复成功会提示（蓝色条，展示 `creation_date`），下次写入后提示消失
 - `0.2.20` 修复 `cc_isCcMode` 刷屏：胶囊/工坊改用 `current + preset` 窄订阅（流式更新不再重跑 effect），`checkIsCcMode` 同会话 5s 节流 + in-flight 去重，本地已判 CC 不再打 RPC，工坊只做兜底
 - `0.2.19` 跟随全局语言：移除设置页内 `语言 / Language` 手动切换卡，插件只跟随 `设置 → 通用 → 语言`（`locale: dshCcStudio` + `t` 自动重绘）；CC 预设保持纯中文（用户预设不走系统翻译，双语版显累赘已还原）
