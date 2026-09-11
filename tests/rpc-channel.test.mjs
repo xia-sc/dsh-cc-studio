@@ -20,12 +20,16 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-// 隔离副作用：host 半用 homedir() 解析 ~/.dsh/cc-drafts，测试前改掉 HOME。
+// 隔离副作用：host 半用 homedir() 解析 ~/.dsh/cc-drafts，且 apply() 会把 CC 预设自动装到
+// <DSH_HOME>/.agent-presets/cc —— 必须同时改掉 HOME 与 DSH_HOME，否则会写进真实的用户预设目录
+// （DSH_HOME 优先于 homedir()，只改 HOME 不够）。
 const originalHome = process.env.HOME;
 const originalUserProfile = process.env.USERPROFILE;
+const originalDshHome = process.env.DSH_HOME;
 const sandboxHome = mkdtempSync(join(tmpdir(), 'dsh-cc-studio-test-'));
 process.env.HOME = sandboxHome;
 process.env.USERPROFILE = sandboxHome;
+process.env.DSH_HOME = sandboxHome;
 
 const host = await import('../lib/index.js');
 
@@ -206,9 +210,10 @@ async function post(path, body, { contentType = 'application/json', method = 'PO
 
 await new Promise((resolve) => server.close(resolve));
 
-// 还原 homedir 并清掉沙箱目录（host 半在测试期间只会写 cc-drafts）
+// 还原 homedir/DSH_HOME 并清掉沙箱目录（host 半在测试期间只会写 cc-drafts 与沙箱内的预设目录）
 if (originalHome === undefined) delete process.env.HOME; else process.env.HOME = originalHome;
 if (originalUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = originalUserProfile;
+if (originalDshHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = originalDshHome;
 try {
   rmSync(sandboxHome, { recursive: true, force: true });
 } catch {}

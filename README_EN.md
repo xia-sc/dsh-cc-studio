@@ -13,7 +13,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 | Item | Value |
 | --- | --- |
 | Package | `@dsh-plugins/dsh-cc-studio` |
-| Version | `0.2.22` |
+| Version | `0.3.0` |
 | Host RPC | `/dsh-cc-studio-rpc` (self-owned route, works on dsh ≥ `0.1.5-rc.1`) |
 | Client mounts | `conversation.input.dock` (capsule) + `shell.overlay` (workshop) + `settings.section` |
 | Persistence | `~/.dsh/cc-library/` (cards), `~/.dsh/cc-drafts/` (per-session drafts) |
@@ -28,7 +28,7 @@ dsh plugin --profile web add github:xia-sc/dsh-cc-studio
 
 `dsh plugin` only forwards the remaining arguments to pnpm inside the profile directory (`~/.dsh/profiles/web`); afterwards dsh appends `@dsh-plugins/dsh-cc-studio` to that profile's `dsh.profile.bundles` automatically — no manual `package.json` edit.
 
-- **Pin a version / branch**: `github:xia-sc/dsh-cc-studio#v0.2.22`, `...#master` (see the repo tags).
+- **Pin a version / branch**: `github:xia-sc/dsh-cc-studio#v0.3.0`, `...#master` (see the repo tags).
 - **`allowBuilds` notice**: this plugin has no `prepare` build script, so pnpm's build gate is normally not triggered; if pnpm still prints the notice, add the exact key it prints under `allowBuilds` in `~/.dsh/profiles/web/pnpm-workspace.yaml` and re-run.
 - **When an agent runs it inside a DSH session**: the write target is outside the session workspace, so switch file permissions to `danger-full-access` first. Running it yourself in a terminal has no such limit.
 
@@ -42,9 +42,42 @@ dsh plugin --profile web add .
 
 Relative paths resolve against **the directory you run the command from** (dsh rewrites `.` / `./xxx` to an absolute path before handing it to pnpm, so it cannot silently link inside the profile). The result is a `link:` to the source tree: editing `lib/*.js` takes effect after a dsh web restart; editing only `lib/client.js` needs just a page refresh (with `pnpm run dev:web` running from the dsh checkout the client bundle is rebuilt, so not even that).
 
-### 3. Install the CC preset
+### 3. CC preset (installed automatically — no manual copy)
 
-The preset is not auto-registered — copy the template into the user preset directory `<DSH_HOME>/.agent-presets/` (`DSH_HOME` defaults to `~/.dsh`). **The directory must be named `cc`**, because both the host and the client detect CC Mode by preset id `cc`.
+**When the plugin is mounted it installs `presets/cc` into `<DSH_HOME>/.agent-presets/cc`** (`DSH_HOME` defaults to `~/.dsh`); the directory name is always `cc`, because both the host and the client detect CC Mode by preset id `cc`. After installing the plugin and starting `dsh web`, `CC Mode` is selectable as a session mode.
+
+Why this step exists: dsh discovers presets from exactly three roots — the **shipped root** (bundled inside `dsh-agent-presets`), the deployment's **`config.roots`**, and the **user root `<DSH_HOME>/.agent-presets`**. A plugin package's own `presets/` is not among them: **shipping a preset is not registering it**. So the plugin installs it into the user root at startup.
+
+Updates are idempotent and **never silently overwrite your edits**:
+
+| State of the target file | What happens |
+| --- | --- |
+| missing | template is written |
+| identical to the template | left alone (install record refreshed) |
+| identical to what the plugin last wrote (you did not edit it) | safely updated on plugin upgrade |
+| you edited it / legacy manual copy (no install record) | **kept, with a warning** — never overwritten |
+
+The install record is `.dsh-cc-studio-preset.json` inside the preset directory (version plus each file's sha256 at write time). If you see the "kept, not overwritten" warning and want the plugin's template instead, pick one:
+
+```powershell
+# A. Delete the old directory and restart dsh web — it reinstalls automatically
+Remove-Item "$env:USERPROFILE\.dsh\.agent-presets\cc" -Recurse -Force
+```
+
+```bash
+# B. Force the overwrite via env var, then restart dsh web (macOS / Linux)
+DSH_CC_STUDIO_PRESET_INSTALL=force dsh web   # auto (default) | force | off
+```
+
+```powershell
+# B. Same (Windows PowerShell)
+$env:DSH_CC_STUDIO_PRESET_INSTALL = 'force'; dsh web
+```
+
+> You can also declare `config.presetInstall` on the plugin row (requires your own overlay patch); it takes precedence over the env var. With `off`, manage the preset manually as below.
+
+<details>
+<summary>Manual install (only needed when auto-install is off or failed)</summary>
 
 ```powershell
 # Windows PowerShell (GitHub install)
@@ -64,7 +97,11 @@ cp -R ~/.dsh/profiles/web/node_modules/@dsh-plugins/dsh-cc-studio/presets/cc/. ~
 
 `agent.cordis.yml` extends a copy of `standard` with `id: cc-studio-agent, name: '@dsh-plugins/dsh-cc-studio/agent'` and replaces `persona` with a co-creation partner — ask first, 1–2 questions per step. The capsule appears once you switch the session mode.
 
-> Removing the plugin does not delete `~/.dsh/.agent-presets/cc/`.
+> A hand-copied directory has **no** install record, so auto-install treats it as yours and skips it; delete it and restart to hand management back to the plugin.
+
+</details>
+
+> Removing the plugin does **not** delete `<DSH_HOME>/.agent-presets/cc/` (auto-install registers no delete action).
 
 ### 4. Restart and verify
 
@@ -75,19 +112,38 @@ dsh web
 # the composed config must contain the plugin row
 dsh --profile web --dump-config | grep dsh-cc-studio      # Windows: findstr
 
-# the client asset must return 200
-curl -s -o /dev/null -w '%{http_code}\n' \
-  http://127.0.0.1:3080/plugins/@dsh-plugins/dsh-cc-studio/client.js
+# —— both checks below need a session cookie: trade the token dsh web printed ——
+TOKEN='<the token dsh web printed>'
+COOKIE=$(curl -s -D - -o /dev/null "http://127.0.0.1:3080/?token=$TOKEN" \
+  | sed -n 's/^[Ss]et-[Cc]ookie:[[:space:]]*\(dsh-auth-[^;]*\).*/\1/p' | head -1)
 
-# RPC smoke test (same fence as any /api route: Host/Origin + browser session cookie)
+# the client asset must return 200. Its URL looks like /plugins/??<pkg>/client.js&rev=<content hash>:
+# without ?? or without rev it is a 404, and rev changes whenever lib/client.js changes, so read it from the index.
+ASSET=$(curl -s http://127.0.0.1:3080/ -H "cookie: $COOKIE" \
+  | grep -o '/plugins/??@dsh-plugins/dsh-cc-studio/client\.js&rev=[0-9a-f]*' | head -1)
+curl -s -o /dev/null -w "%{http_code}  $ASSET\n" "http://127.0.0.1:3080$ASSET" -H "cookie: $COOKIE"
+# -> 200  /plugins/??@dsh-plugins/dsh-cc-studio/client.js&rev=…
+
+# RPC smoke test (same fence as any /api route: Host/Origin + session cookie)
 curl -s http://127.0.0.1:3080/dsh-cc-studio-rpc/ping \
   -H 'content-type: application/json' \
-  -H 'cookie: dsh-auth-127.0.0.1:3080=<the dsh-auth-* cookie from your browser>' \
+  -H "cookie: $COOKIE" \
   --data '{"type":"client-request","rpcId":"smoke","method":"ping","payload":{}}'
 # -> {"type":"server-response","rpcId":"smoke","result":{"ok":true,"value":{"ok":true,"time":...}}}
 ```
 
-A bare `curl` without the cookie returns `401 dsh web authentication required` — that is expected and does not mean the plugin is missing. Refresh the page, switch to a `CC Mode` session, and the capsule above the composer means the install worked.
+Windows PowerShell equivalent (`rev` is likewise read from the index):
+
+```powershell
+$TOKEN='<the token dsh web printed>'
+$s=New-Object Microsoft.PowerShell.Commands.WebRequestSession
+$null=Invoke-WebRequest "http://127.0.0.1:3080/?token=$TOKEN" -WebSession $s -UseBasicParsing
+$idx=(Invoke-WebRequest 'http://127.0.0.1:3080/' -WebSession $s -UseBasicParsing).Content
+$asset=[regex]::Match($idx,'/plugins/\?\?@dsh-plugins/dsh-cc-studio/client\.js&rev=[0-9a-f]+').Value
+Invoke-WebRequest "http://127.0.0.1:3080$asset" -WebSession $s -UseBasicParsing | Select-Object StatusCode
+```
+
+The index (`/`) and the RPC route are both fenced by the session cookie, so a bare call returns `401 dsh web authentication required` — that is expected and does not mean the plugin is missing. The session cookie's **name is not** `dsh-auth-127.0.0.1:3080`; it is `dsh-auth-` + base64url(sha256(authority)), which on this host is `dsh-auth-VPhEEcLKeqRDBoBalzN2Nm7CnfxKhLE00pKIDWxt1sw` — copy it from devtools, or mint it from the token as above. Note the asset route `/plugins/??…&rev=…` itself is *not* fenced, so a missing `??` / `rev` shows up as a 404 rather than an auth failure. Refresh the page, switch to a `CC Mode` session, and the capsule above the composer means the install worked.
 
 ### 5. Update and uninstall
 
@@ -109,7 +165,7 @@ Cards in `~/.dsh/cc-library/` and drafts in `~/.dsh/cc-drafts/` survive uninstal
 
 | Symptom | Fix |
 | --- | --- |
-| No capsule above the composer | Make sure the session mode is `CC Mode`; make sure `~/.dsh/.agent-presets/cc/` contains both `preset.yml` and `agent.cordis.yml` and that the directory is named `cc`; restart dsh web and refresh |
+| No capsule above the composer | Make sure the session mode is `CC Mode`; make sure `~/.dsh/.agent-presets/cc/` contains both `preset.yml` and `agent.cordis.yml` and that the directory is named `cc` (normally the plugin auto-installs it; if missing, check the startup log for a `[dsh-cc-studio]` warning); restart dsh web and refresh |
 | Orange "draft recreated" banner | That session has no stored draft (first creation, or the draft directory was cleared); a successful restore shows a blue banner with `creation_date` instead, and either banner clears after the next write |
 | Switching to CC Mode fails with `invalid config: S.prefix missing required value` | `presets/cc/agent.cordis.yml` predates 0.2.22 (persona used `text:`); copy the new template again |
 | dsh boot fails with `cannot get property "webServer" without inject` | The plugin is older than 0.2.22; update it |
@@ -127,10 +183,10 @@ Cards in `~/.dsh/cc-library/` and drafts in `~/.dsh/cc-drafts/` survive uninstal
 
 ### Fusion workshop (client)
 
-- **Layout**: capsule above the composer (auto in CC Mode) → `shell.overlay` fullscreen workshop: 220px nav / fluid main / 280px saved sidebar / 360px live `card.json` preview. Adaptive light/dark via DSW Tokens + brand purple `#7c5cff`.
-- **Custom style tags**: candidates `Rain City / Sensory / Cyber ...` + free input (Enter to add, click to remove), written back to `data.tags` live.
+- **Layout**: capsule above the composer (auto in CC Mode) → `shell.overlay` fullscreen workshop with 4 nav pages (**5D World / Character / Lorebook / Validate & Export**) / fluid main / 280px saved sidebar / 360px live `card.json` preview. Adaptive light/dark via DSW Tokens + brand purple `#7c5cff`.
+- **Style tags**: edit `tags` as a comma-separated field on the Character page; written back to `data.tags` live.
 - **5D worldbuilding**: Timeline / Factions / Geography / Power / Daily → `cc_patch_world(autoLorebook=true)` auto-generates Lorebook entries with `@@position / @@depth / @@activate` (≥1 `constant`; re-calling overwrites previous auto entries and keeps manual ones). Each dimension is a **preview card + large modal editor** (140-char preview + count; click the card or `⛶ Edit` for a 720px modal).
-- **Large editors for all long texts**: `description / personality / scenario / system_prompt / first_mes / alternate_greetings / mes_example / creator_notes` all have a small field plus a top-right `⛶ Large` 720px modal that syncs live. `1. Idea` is now pure **local draft search** (filters the saved sidebar; the old "idea dump" card is gone).
+- **Large editors for all long texts**: `description / personality / scenario / system_prompt / post_history_instructions / first_mes / alternate_greetings / group_only_greetings / mes_example / creator_notes` all use a "label + top-right `⛶`" small field plus a 720px modal that syncs live.
 - **Saved sidebar (ID-based CRUD)**: 280px, collapsible, highlights the active card (purple border + `Loaded ID:xxxx`, first 8 chars); `★ Save Current` overwrites when an ID is loaded, `＋ Save as New` always creates a new one, `✎ Rename` / `＋ New`; search/load/export/delete persist to `~/.dsh/cc-library/<id>.json`.
 - **Import / export**: `⬆ Import JSON/PNG/CHARX` auto-detects the container; `⬇ JSON` / `⬇ PNG` (1×1 placeholder) / `⬆ Embed into PNG` (writes into any PNG you upload, stripping old `ccv3/chara` chunks and recalculating `CRC32`) / `⬇ CHARX` (packs `card.json`).
 - **Bilingual (zh/en)**: complete `zh / en` dictionaries (`locale: dshCcStudio`) that follow the global `Settings → General → Language` (capsule/workshop/settings refresh instantly, no in-plugin toggle).
@@ -201,9 +257,9 @@ Light/dark via `var(--dsw-alias-*)` (`body[data-ds-dark-theme]`), primary stays 
 
 Full history lives in [CHANGELOG.md](./CHANGELOG.md) (Chinese). Latest three:
 
+- `0.3.0` Removed the "Idea" page: the workshop now has 4 nav pages (5D World / Character / Lorebook / Validate & Export), the `⛶` large-editor capability moved to a shared `fieldHead()` covering every long-text string field, sidebar search kept. Also fixes the array round-trip regression that change introduced (`[]` was rewritten as `[""]`, i.e. a phantom blank greeting), and turns the greeting fields into **per-entry editors** (one box = one entry), removing the silent corruption where editing a multi-paragraph greeting split it into several; adds greeting add/remove and aligns the 10-entry cap. Makes the large editor's "Cancel" actually roll back, removes the `expandIdea` / `expandWorld` dead code unreachable since 67172fd, and **completes the i18n wiring** (the locale table existed but many call sites hard-coded Chinese, so English still showed Chinese; all 122 Chinese literals are now wired, with the Chinese UI byte-for-byte unchanged), **installs the CC preset automatically** (previously a manual copy), and fixes **the capsule not appearing on the first switch to CC Mode** (detection read the wrong field, `projectionValues.agentPreset`, so it only appeared after a refresh or session switch).
 - `0.2.22` Fix the dsh `0.1.5-rc.1` boot crash: `connection.rpc.handle()` is unusable by an outside plugin, so the host half now registers the `/dsh-cc-studio-rpc` prefix route on `webServer` and implements the same RPC wire protocol; request bodies are read with events; fixes the `presets/cc` persona `prefix`; adds 23 regression assertions.
 - `0.2.21` Fix #2 silent draft loss: every draft write persists to `~/.dsh/cc-drafts/<session>.json` and restores per session after a restart; fresh blanks warn, successful restores notify.
-- `0.2.20` Fix `cc_isCcMode` spam: capsule/workshop use a narrow `current + preset` subscription plus 5s throttling and in-flight dedup.
 
 ## License
 

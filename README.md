@@ -13,7 +13,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 | 项目 | 值 |
 | --- | --- |
 | 插件包名 | `@dsh-plugins/dsh-cc-studio` |
-| 当前版本 | `0.2.22` |
+| 当前版本 | `0.3.0` |
 | 宿主 RPC | `/dsh-cc-studio-rpc`（自带路由，适配 dsh ≥ `0.1.5-rc.1`） |
 | 客户端挂载点 | `conversation.input.dock`（胶囊）+ `shell.overlay`（工坊）+ `settings.section` |
 | 落盘位置 | `~/.dsh/cc-library/`（角色卡）、`~/.dsh/cc-drafts/`（会话草稿） |
@@ -28,7 +28,7 @@ dsh plugin --profile web add github:xia-sc/dsh-cc-studio
 
 `dsh plugin` 只是把参数转发给 profile 目录（`~/.dsh/profiles/web`）里的 pnpm；装完 dsh 会把 `@dsh-plugins/dsh-cc-studio` 自动追加到该 profile 的 `dsh.profile.bundles`，不需要手改 `package.json`。
 
-- **锁定版本 / 指定分支**：`github:xia-sc/dsh-cc-studio#v0.2.22`、`...#master`（tag 见仓库 Tags）。
+- **锁定版本 / 指定分支**：`github:xia-sc/dsh-cc-studio#v0.3.0`、`...#master`（tag 见仓库 Tags）。
 - **`allowBuilds` 提示**：本插件没有 `prepare` 构建脚本，正常安装不会触发 pnpm 的构建拦截；若 pnpm 仍打印该提示，把提示里给出的键加进 `~/.dsh/profiles/web/pnpm-workspace.yaml` 的 `allowBuilds` 后重跑。
 - **在 DSH 会话里由 Agent 执行时**：写入位置在会话工作区之外，需先把文件权限切到 `danger-full-access`；自己在终端执行则无此限制。
 
@@ -42,9 +42,42 @@ dsh plugin --profile web add .
 
 相对路径按**你执行命令时所在的目录**解析（dsh 会先把 `.`、`./xxx` 重写成绝对路径再交给 pnpm，避免误链到 profile 目录）。装出来的是 `link:` 到源码目录：改 `lib/*.js` 后重启 dsh web 生效；只改 `lib/client.js` 时刷新页面即可（若同时跑着 dsh 仓库的 `pnpm run dev:web`，客户端 bundle 会重建，连刷新都省了）。
 
-### 3. 安装 CC 预设
+### 3. CC 预设（已自动安装，无需手工拷贝）
 
-预设不随插件自动注册，需要把模板拷到用户预设目录 `<DSH_HOME>/.agent-presets/`（`DSH_HOME` 默认 `~/.dsh`）。**目录名必须是 `cc`**——宿主与客户端都按 preset id `cc` 判定 CC 模式。
+**插件挂载时会自动把 `presets/cc` 装到 `<DSH_HOME>/.agent-presets/cc`**（`DSH_HOME` 默认 `~/.dsh`），目录名固定为 `cc`——宿主与客户端都按 preset id `cc` 判定 CC 模式。装完插件、启动 `dsh web` 后即可在会话模式里选到 `CC 模式`。
+
+之所以需要这一步：dsh 的预设发现只扫三个根——**shipped 根**（`dsh-agent-presets` 包内自带）+ **部署 `config.roots`** + **用户根 `<DSH_HOME>/.agent-presets`**；插件包内的 `presets/` 不在其中，**「随包分发」≠「已注册」**。所以由插件在启动时把它装进用户根。
+
+更新策略是幂等的，且**绝不静默覆盖你的改动**：
+
+| 目标文件状态 | 行为 |
+| --- | --- |
+| 不存在 | 写入模板 |
+| 与模板一致 | 不动（只补记安装记录） |
+| 与插件上次写入的内容一致（你没改过） | 插件升级时安全更新 |
+| 你改过 / 是旧版手工拷贝（无安装记录） | **保留并告警**，不覆盖 |
+
+安装记录是预设目录里的 `.dsh-cc-studio-preset.json`（记版本与各文件写入时的 sha256）。若出现「已保留未覆盖」的告警而你想改用插件模板，二选一：
+
+```powershell
+# A. 删掉旧目录，重启 dsh web 即重新自动安装
+Remove-Item "$env:USERPROFILE\.dsh\.agent-presets\cc" -Recurse -Force
+```
+
+```bash
+# B. 用环境变量强制覆盖后重启 dsh web（macOS / Linux）
+DSH_CC_STUDIO_PRESET_INSTALL=force dsh web   # auto（默认）| force | off
+```
+
+```powershell
+# B. 同上（Windows PowerShell）
+$env:DSH_CC_STUDIO_PRESET_INSTALL = 'force'; dsh web
+```
+
+> 也可在插件行声明 `config.presetInstall`（需自己写 overlay patch），它的优先级高于环境变量。`off` 时请按下面的手工方式自行管理预设。
+
+<details>
+<summary>手工安装（仅在自动安装被关闭或失败时需要）</summary>
 
 ```powershell
 # Windows PowerShell（GitHub 安装）
@@ -64,7 +97,11 @@ cp -R ~/.dsh/profiles/web/node_modules/@dsh-plugins/dsh-cc-studio/presets/cc/. ~
 
 `agent.cordis.yml` 在一份 `standard` 拷贝上追加 `id: cc-studio-agent, name: '@dsh-plugins/dsh-cc-studio/agent'`，并把 `persona` 改为「共创搭档」——先问再填、每步 1-2 问。切换会话模式后胶囊自动出现。
 
-> 卸载/删除插件不会删除 `~/.dsh/.agent-presets/cc/`。
+> 手工拷贝的目录**没有**安装记录，因此会被自动安装流程视为「你的自有文件」而跳过；想交回插件管理，删掉该目录后重启即可。
+
+</details>
+
+> 卸载/删除插件**不会**删除 `<DSH_HOME>/.agent-presets/cc/`（自动安装也不注册删除动作）。
 
 ### 4. 重启与验证
 
@@ -76,19 +113,38 @@ dsh web
 dsh --profile web --dump-config | findstr dsh-cc-studio   # Windows
 dsh --profile web --dump-config | grep dsh-cc-studio      # macOS / Linux
 
-# 客户端资源应返回 200
-curl -s -o /dev/null -w '%{http_code}\n' \
-  http://127.0.0.1:3080/plugins/@dsh-plugins/dsh-cc-studio/client.js
+# —— 以下两项自检需要会话 cookie：用 dsh web 启动时打印的 token 换取 ——
+TOKEN='<dsh web 打印的 token>'
+COOKIE=$(curl -s -D - -o /dev/null "http://127.0.0.1:3080/?token=$TOKEN" \
+  | sed -n 's/^[Ss]et-[Cc]ookie:[[:space:]]*\(dsh-auth-[^;]*\).*/\1/p' | head -1)
 
-# RPC 自检（与其它 /api 同源：需要宿主/Origin 围栏 + 浏览器会话 cookie）
+# 客户端资源应返回 200。地址形如 /plugins/??<包名>/client.js&rev=<内容哈希>：
+# 缺 ?? 或缺 rev 都会 404，而 rev 每次改 lib/client.js 都会变，所以从首页里取。
+ASSET=$(curl -s http://127.0.0.1:3080/ -H "cookie: $COOKIE" \
+  | grep -o '/plugins/??@dsh-plugins/dsh-cc-studio/client\.js&rev=[0-9a-f]*' | head -1)
+curl -s -o /dev/null -w "%{http_code}  $ASSET\n" "http://127.0.0.1:3080$ASSET" -H "cookie: $COOKIE"
+# -> 200  /plugins/??@dsh-plugins/dsh-cc-studio/client.js&rev=…
+
+# RPC 自检（与其它 /api 同源：需要宿主/Origin 围栏 + 会话 cookie）
 curl -s http://127.0.0.1:3080/dsh-cc-studio-rpc/ping \
   -H 'content-type: application/json' \
-  -H 'cookie: dsh-auth-127.0.0.1:3080=<浏览器里的 dsh-auth-* cookie>' \
+  -H "cookie: $COOKIE" \
   --data '{"type":"client-request","rpcId":"smoke","method":"ping","payload":{}}'
 # -> {"type":"server-response","rpcId":"smoke","result":{"ok":true,"value":{"ok":true,"time":...}}}
 ```
 
-不带 cookie 直接 `curl` 会得到 `401 dsh web authentication required`，这是正常行为，不代表插件没装上。浏览器刷新页面后切到 `CC 模式` 会话，输入框上方出现胶囊即安装成功。
+Windows PowerShell 等价写法（`rev` 同样从首页取）：
+
+```powershell
+$TOKEN='<dsh web 打印的 token>'
+$s=New-Object Microsoft.PowerShell.Commands.WebRequestSession
+$null=Invoke-WebRequest "http://127.0.0.1:3080/?token=$TOKEN" -WebSession $s -UseBasicParsing
+$idx=(Invoke-WebRequest 'http://127.0.0.1:3080/' -WebSession $s -UseBasicParsing).Content
+$asset=[regex]::Match($idx,'/plugins/\?\?@dsh-plugins/dsh-cc-studio/client\.js&rev=[0-9a-f]+').Value
+Invoke-WebRequest "http://127.0.0.1:3080$asset" -WebSession $s -UseBasicParsing | Select-Object StatusCode
+```
+
+首页（`/`）与 RPC 端点都受会话 cookie 保护，不带 cookie 会得到 `401 dsh web authentication required`，这是正常行为，不代表插件没装上。会话 cookie 的**名字不是** `dsh-auth-127.0.0.1:3080`，而是 `dsh-auth-` + base64url(sha256(权威段))，本机即 `dsh-auth-VPhEEcLKeqRDBoBalzN2Nm7CnfxKhLE00pKIDWxt1sw`——从浏览器 devtools 抄，或用上面的 token 换取。另外，资源地址 `/plugins/??…&rev=…` 本身不走鉴权，缺 `??` / `rev` 只会 404，别把 404 误判成鉴权问题。浏览器刷新页面后切到 `CC 模式` 会话，输入框上方出现胶囊即安装成功。
 
 ### 5. 更新与卸载
 
@@ -110,7 +166,7 @@ dsh plugin --profile web remove @dsh-plugins/dsh-cc-studio
 
 | 现象 | 处理 |
 | --- | --- |
-| 输入框上方没有胶囊 | 确认当前会话模式是 `CC 模式`；确认 `~/.dsh/.agent-presets/cc/` 下 `preset.yml` 与 `agent.cordis.yml` 都在且目录名是 `cc`；重启 dsh web 后刷新页面 |
+| 输入框上方没有胶囊 | 确认当前会话模式是 `CC 模式`；确认 `~/.dsh/.agent-presets/cc/` 下 `preset.yml` 与 `agent.cordis.yml` 都在且目录名是 `cc`（正常应由插件自动安装；缺失则看启动日志里 `[dsh-cc-studio]` 的告警）；重启 dsh web 后刷新页面 |
 | 工坊出现橙色条「草稿已新建」 | 该会话没有历史草稿（首次创建或草稿目录被清）；已存档会话恢复时会改为蓝色条并显示 `creation_date`，下次写入后提示消失 |
 | 切 CC 模式报 `invalid config: S.prefix missing required value` | `presets/cc/agent.cordis.yml` 是 0.2.22 之前的旧版（persona 用了 `text:`），重新拷贝新模板 |
 | dsh 启动报 `cannot get property "webServer" without inject` | 插件版本低于 0.2.22，更新插件 |
@@ -128,10 +184,10 @@ dsh plugin --profile web remove @dsh-plugins/dsh-cc-studio
 
 ### 融合工坊（客户端）
 
-- **布局**：输入框上方胶囊（CC 模式自动出现）→ `shell.overlay` 全屏工坊：220px 导航 / 自适应主区 / 280px 已存角色侧栏 / 360px 实时 `card.json` 预览。深浅色自适应（DSW Token + 品牌紫 `#7c5cff` 固定）。
-- **风格标签自定义**：预设候选 `雨城 / 感官系 / 赛博 ...` + 任意输入（回车添加、点击已选移除），实时写回 `data.tags`。
+- **布局**：输入框上方胶囊（CC 模式自动出现）→ `shell.overlay` 全屏工坊，左侧导航 4 页（**5维世界观 / 角色细化 / 世界书 / 校验导出**）/ 自适应主区 / 280px 已存角色侧栏 / 360px 实时 `card.json` 预览。深浅色自适应（DSW Token + 品牌紫 `#7c5cff` 固定）。
+- **风格标签**：在「角色细化」中以逗号分隔编辑 `tags`，实时写回 `data.tags`。
 - **5 维世界观**：年表 / 势力 / 地理 / 力量体系 / 日常 → `cc_patch_world(autoLorebook=true)` 自动生成带 `@@position / @@depth / @@activate` 的 Lorebook 条目（至少 1 条 `constant` 常驻；再次调用自动覆盖旧自动条目、保留手动条目）。每维为**预览卡片 + 展开大框编辑**（小卡显示 140 字预览/字数，点击卡片或「⛶ 编辑」弹出 720px 大框）。
-- **全量长文本大框编辑**：`description / personality / scenario / system_prompt / first_mes / alternate_greetings / mes_example / creator_notes` 等所有长文本都是小框 + 右上 `⛶ 大框`，720px 大框实时同步，解决多行长文在小框里难预览/编辑。`1. 点子` 现为纯**本地草稿搜索**（过滤已存侧栏；「点子投喂」卡片已移除）。
+- **全量长文本大框编辑**：`description / personality / scenario / system_prompt / post_history_instructions / first_mes / alternate_greetings / group_only_greetings / mes_example / creator_notes` 全部是「标签 + 右上 `⛶`」的小框 + 720px 大框，实时同步，解决多行长文在小框里难预览/编辑。
 - **已存角色侧栏（ID 化 CRUD）**：280px 可折叠，高亮当前载入卡（紫框 + 顶部 `已载入 ID:xxxx`，显示 ID 前 8 位），`★ 保存当前` 在已载入 ID 时原地覆盖、`＋ 另存为新` 强制新建、`✎ 重命名` / `＋ 新建`；搜索/载入/导出/删除落盘 `~/.dsh/cc-library/<id>.json`。
 - **导入导出**：`⬆ 导入 JSON/PNG/CHARX` 自动识别容器；`⬇ JSON` / `⬇ PNG`（1×1 占位图）/ `⬆ 写入 PNG`（写入你上传的任意 PNG，自动剥离旧 `ccv3/chara` 块并 `CRC32` 重算）/ `⬇ CHARX`（打包 `card.json`）。
 - **中英双语**：完整 `zh / en` 词表（`locale: dshCcStudio`），跟随全局 `设置 → 通用 → 语言` 自动切换（胶囊/工坊/设置即时刷新，插件内无手动开关）。
@@ -202,9 +258,9 @@ node tests/rpc-channel.test.mjs            # host 半 RPC 通道回归（23 项�
 
 完整历史见 [CHANGELOG.md](./CHANGELOG.md)。最近三版：
 
+- `0.3.0` 移除「点子」页：工坊导航改为 4 页（5维世界观 / 角色细化 / 世界书 / 校验导出），`⛶ 大框` 能力改用统一 `fieldHead()` 落到全部长文本 string 字段，侧栏搜索保留。同步修掉该改动引入的数组往返回退（`[]` 会被写成 `[""]`，即凭空多一条空白问候语）；并把问候语字段改为**逐条独立编辑**（一条 = 一个编辑框），根除「多段问候语一编辑就被拆成多条」的静默损坏，顺带补上问候语增删与 10 条上限对齐。另修大框「取消」真正回滚、清掉自 67172fd 起就调不通的 `expandIdea` / `expandWorld` 死代码、**完成全量 i18n 接线**（此前词表已建好但大量调用点硬编码中文，切到 English 仍显示中文；现全部 122 条中文字面量接入词表，中文界面逐字未变）、**CC 预设改为自动安装**（此前需手工拷贝），并修掉**首次切到 CC 模式时胶囊不出现**（探测读错了 `projectionValues.agentPreset` 字段，导致必须刷新页面或切换会话才出现）。
 - `0.2.22` 适配 dsh `0.1.5-rc.1` 启动崩溃：`connection.rpc.handle()` 对外部插件不可用，host 半改为在 `webServer` 上自注册 `/dsh-cc-studio-rpc` 前缀路由并实现同一套 RPC 线上协议；请求体改事件式读取；修 `presets/cc` persona 的 `prefix`；新增 23 项回归测试。
 - `0.2.21` 修复 #2 草稿静默丢失：草稿变更即落盘 `~/.dsh/cc-drafts/<会话>.json`，重启/换会话自动恢复；建空会警告、恢复会提示。
-- `0.2.20` 修复 `cc_isCcMode` 刷屏：胶囊/工坊改 `current + preset` 窄订阅 + 5s 节流 + in-flight 去重。
 
 ## License
 
