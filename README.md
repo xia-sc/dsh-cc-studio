@@ -12,21 +12,32 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 
 | 项目 | 值 |
 | --- | --- |
-| 插件包名 | `@dsh-plugins/dsh-cc-studio` |
-| 当前版本 | `0.3.1` |
+| 插件包名 | `@xia-sc/dsh-cc-studio` |
+| 当前版本 | `0.3.2` |
 | 宿主 RPC | `/dsh-cc-studio-rpc`（自带路由，适配 dsh ≥ `0.1.5-rc.1`；已在 `0.1.6-alpha.1` 实测） |
 | 客户端挂载点 | `conversation.input.dock`（胶囊）+ `shell.overlay`（工坊）+ `settings.section` |
 | 落盘位置 | `~/.dsh/cc-library/`（角色卡）、`~/.dsh/cc-drafts/`（会话草稿） |
 
 ## 安装
 
-### 1. 从 GitHub 安装（推荐）
+### 1. 从 npm 安装（推荐）
+
+```bash
+dsh plugin --profile web add @xia-sc/dsh-cc-studio
+
+# 锁定版本
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.3.2
+```
+
+**或从 GitHub 源安装**：
 
 ```bash
 dsh plugin --profile web add github:xia-sc/dsh-cc-studio
 ```
 
-`dsh plugin` 只是把参数转发给 profile 目录（`~/.dsh/profiles/web`）里的 pnpm；装完 dsh 会把 `@dsh-plugins/dsh-cc-studio` 自动追加到该 profile 的 `dsh.profile.bundles`，不需要手改 `package.json`。
+`dsh plugin` 只是把参数转发给 profile 目录（`~/.dsh/profiles/web`）里的 pnpm；装完 dsh 会把 `@xia-sc/dsh-cc-studio` 自动追加到该 profile 的 `dsh.profile.bundles`，不需要手改 `package.json`。
+
+> **0.3.2 起包名由 `@dsh-plugins/dsh-cc-studio` 改为 `@xia-sc/dsh-cc-studio`**（前者不是本项目持有的 npm scope，发布不出去）。装过旧名的先按「5. 更新与卸载」移除旧包再装新包；`~/.dsh/cc-library/`、`~/.dsh/cc-drafts/`、`~/.dsh/.agent-presets/cc/` 以及插件设置都不受影响。
 
 - **锁定版本 / 指定分支**：`github:xia-sc/dsh-cc-studio#v0.3.0`、`...#master`（tag 见仓库 Tags）。
 - **`allowBuilds` 提示**：本插件没有 `prepare` 构建脚本，正常安装不会触发 pnpm 的构建拦截；若 pnpm 仍打印该提示，把提示里给出的键加进 `~/.dsh/profiles/web/pnpm-workspace.yaml` 的 `allowBuilds` 后重跑。
@@ -90,12 +101,12 @@ Copy-Item $src "$env:USERPROFILE\.dsh\.agent-presets\cc" -Recurse -Force
 ```bash
 # macOS / Linux（GitHub 安装）
 mkdir -p ~/.dsh/.agent-presets/cc
-cp -R ~/.dsh/profiles/web/node_modules/@dsh-plugins/dsh-cc-studio/presets/cc/. ~/.dsh/.agent-presets/cc/
+cp -R ~/.dsh/profiles/web/node_modules/@xia-sc/dsh-cc-studio/presets/cc/. ~/.dsh/.agent-presets/cc/
 ```
 
-> 若你自定义了 `DSH_HOME`，把上面命令里的 `~/.dsh` / `%USERPROFILE%\.dsh` 换成该路径；插件本体位于 `<DSH_HOME>/profiles/web/node_modules/@dsh-plugins/dsh-cc-studio/`。
+> 若你自定义了 `DSH_HOME`，把上面命令里的 `~/.dsh` / `%USERPROFILE%\.dsh` 换成该路径；插件本体位于 `<DSH_HOME>/profiles/web/node_modules/@xia-sc/dsh-cc-studio/`。
 
-`agent.cordis.yml` 在一份 `standard` 拷贝上追加 `id: cc-studio-agent, name: '@dsh-plugins/dsh-cc-studio/agent'`，并把 `persona` 改为「共创搭档」——先问再填、每步 1-2 问。切换会话模式后胶囊自动出现。
+`agent.cordis.yml` 在一份 `standard` 拷贝上追加 `id: cc-studio-agent, name: '@xia-sc/dsh-cc-studio/agent'`，并把 `persona` 改为「共创搭档」——先问再填、每步 1-2 问。切换会话模式后胶囊自动出现。
 
 > 手工拷贝的目录**没有**安装记录，因此会被自动安装流程视为「你的自有文件」而跳过；想交回插件管理，删掉该目录后重启即可。
 
@@ -121,9 +132,9 @@ COOKIE=$(curl -s -D - -o /dev/null "http://127.0.0.1:3080/?token=$TOKEN" \
 # 客户端资源应返回 200。地址形如 /plugins/??<包名>/client.js&rev=<内容哈希>：
 # 缺 ?? 或缺 rev 都会 404，而 rev 每次改 lib/client.js 都会变，所以从首页里取。
 ASSET=$(curl -s http://127.0.0.1:3080/ -H "cookie: $COOKIE" \
-  | grep -o '/plugins/??@dsh-plugins/dsh-cc-studio/client\.js&rev=[0-9a-f]*' | head -1)
+  | grep -o '/plugins/??@xia-sc/dsh-cc-studio/client\.js&rev=[0-9a-f]*' | head -1)
 curl -s -o /dev/null -w "%{http_code}  $ASSET\n" "http://127.0.0.1:3080$ASSET" -H "cookie: $COOKIE"
-# -> 200  /plugins/??@dsh-plugins/dsh-cc-studio/client.js&rev=…
+# -> 200  /plugins/??@xia-sc/dsh-cc-studio/client.js&rev=…
 
 # RPC 自检（与其它 /api 同源：需要宿主/Origin 围栏 + 会话 cookie）
 curl -s http://127.0.0.1:3080/dsh-cc-studio-rpc/ping \
@@ -140,7 +151,7 @@ $TOKEN='<dsh web 打印的 token>'
 $s=New-Object Microsoft.PowerShell.Commands.WebRequestSession
 $null=Invoke-WebRequest "http://127.0.0.1:3080/?token=$TOKEN" -WebSession $s -UseBasicParsing
 $idx=(Invoke-WebRequest 'http://127.0.0.1:3080/' -WebSession $s -UseBasicParsing).Content
-$asset=[regex]::Match($idx,'/plugins/\?\?@dsh-plugins/dsh-cc-studio/client\.js&rev=[0-9a-f]+').Value
+$asset=[regex]::Match($idx,'/plugins/\?\?@xia-sc/dsh-cc-studio/client\.js&rev=[0-9a-f]+').Value
 Invoke-WebRequest "http://127.0.0.1:3080$asset" -WebSession $s -UseBasicParsing | Select-Object StatusCode
 ```
 
@@ -149,15 +160,25 @@ Invoke-WebRequest "http://127.0.0.1:3080$asset" -WebSession $s -UseBasicParsing 
 ### 5. 更新与卸载
 
 ```bash
+# 更新到 npm 上的最新版
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@latest
+
 # 更新到默认分支（master）最新提交：重新执行 add，pnpm 会重新解析
 dsh plugin --profile web add github:xia-sc/dsh-cc-studio
 
 # 若解析未前移，先移除再装
-dsh plugin --profile web remove @dsh-plugins/dsh-cc-studio
-dsh plugin --profile web add github:xia-sc/dsh-cc-studio
+dsh plugin --profile web remove @xia-sc/dsh-cc-studio
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@latest
 
 # 卸载（dsh 会同步把它从 dsh.profile.bundles 移除）
+dsh plugin --profile web remove @xia-sc/dsh-cc-studio
+```
+
+**从旧包名 `@dsh-plugins/dsh-cc-studio` 迁移**：包名变了就是另一个包，必须显式换掉，否则 `dsh.profile.bundles` 里会留下一行永远解析不到的旧名。
+
+```bash
 dsh plugin --profile web remove @dsh-plugins/dsh-cc-studio
+dsh plugin --profile web add @xia-sc/dsh-cc-studio
 ```
 
 记录在 `~/.dsh/cc-library/` 的角色卡与 `~/.dsh/cc-drafts/` 的会话草稿不会被卸载流程删除。
@@ -171,6 +192,7 @@ dsh plugin --profile web remove @dsh-plugins/dsh-cc-studio
 | 切 CC 模式报 `invalid config: S.prefix missing required value` | `presets/cc/agent.cordis.yml` 是 0.2.22 之前的旧版（persona 用了 `text:`），重新拷贝新模板 |
 | dsh 启动报 `cannot get property "webServer" without inject` | 插件版本低于 0.2.22，更新插件 |
 | 校验报错 | 必填 `spec: chara_card_v3` / `spec_version: 3.0` / `group_only_greetings`；主图标需唯一；正则需合法 |
+| 重启后浏览器报 `Failed to load plugins` / `web boot: 1 entry did not activate` / `import failed` | 包名迁移后**没有按新名重装**：profile 里的安装身份（`dsh.profile.bundles` 那行与 `dependencies` 里的 `link:`）还是旧名 `@dsh-plugins/dsh-cc-studio`，而包内 `package.json` 与 `lib/client.js` 已改叫 `@xia-sc/dsh-cc-studio`，客户端资源就解析不上（宿主照样起，只有浏览器那一半挂）。看一眼 `~/.dsh/profiles/web/node_modules/` 下的目录名是否等于 `package.json` 的 `name` 即可确认；修法是按新名重装（见「5. 更新与卸载」的迁移命令）→ 重启 `dsh web` → **硬刷新**（`Ctrl+Shift+R`；旧页面的引导图是缓存，普通刷新会复现同一句错） |
 
 ## 快速上手
 
@@ -209,7 +231,7 @@ dsh plugin --profile web remove @dsh-plugins/dsh-cc-studio
 
 ```
 dsh-cc-studio/
-├── package.json          # @dsh-plugins/dsh-cc-studio, dsh.bundle.patch + dsh.client, exports ./client ./agent
+├── package.json          # @xia-sc/dsh-cc-studio, dsh.bundle.patch + dsh.client, exports ./client ./agent
 ├── cordis.patch.yml      # 宿主行插入：id dsh-cc-studio
 ├── lib/
 │   ├── index.js          # host: /dsh-cc-studio-rpc（validate, cc_getDraft/cc_setDraft/cc_patchDraft, cc_isCcMode,
@@ -232,7 +254,7 @@ dsh-cc-studio/
 └── README_EN.md          # English
 ```
 
-> `dsh-cc-agent` 已于 `5f95110` 合并为 `lib/agent.js`（`@dsh-plugins/dsh-cc-studio/agent`），无需单独安装；`CC 模式` 预设仅挂该单一来源，不污染 `standard`。
+> `dsh-cc-agent` 已于 `5f95110` 合并为 `lib/agent.js`（`@xia-sc/dsh-cc-studio/agent`），无需单独安装；`CC 模式` 预设仅挂该单一来源，不污染 `standard`。
 
 ## 开发与测试
 
@@ -256,8 +278,10 @@ node tests/rpc-channel.test.mjs            # host 半 RPC 通道回归（23 项�
 
 ## 更新日志
 
-完整历史见 [CHANGELOG.md](./CHANGELOG.md)。最近三版：
+完整历史见 [CHANGELOG.md](./CHANGELOG.md)。最近几版：
 
+- `0.3.2` 包名迁移至 `@xia-sc/dsh-cc-studio`（原 `@dsh-plugins` 不是本项目持有的 npm scope），并首次发布到 npm；新增 `publishConfig.access` / `prepublishOnly` 等发布元数据。
+- `0.3.1` 适配 dsh `0.1.6-alpha.1`：CC 预设里的 `workflow-worker-thread` 行换成 `workflow-ptc`，否则整份预设被判「加载失败」、CC 模式直接不可选。
 - `0.3.0` 移除「点子」页：工坊导航改为 4 页（5维世界观 / 角色细化 / 世界书 / 校验导出），`⛶ 大框` 能力改用统一 `fieldHead()` 落到全部长文本 string 字段，侧栏搜索保留。同步修掉该改动引入的数组往返回退（`[]` 会被写成 `[""]`，即凭空多一条空白问候语）；并把问候语字段改为**逐条独立编辑**（一条 = 一个编辑框），根除「多段问候语一编辑就被拆成多条」的静默损坏，顺带补上问候语增删与 10 条上限对齐。另修大框「取消」真正回滚、清掉自 67172fd 起就调不通的 `expandIdea` / `expandWorld` 死代码、**完成全量 i18n 接线**（此前词表已建好但大量调用点硬编码中文，切到 English 仍显示中文；现全部 122 条中文字面量接入词表，中文界面逐字未变）、**CC 预设改为自动安装**（此前需手工拷贝），并修掉**首次切到 CC 模式时胶囊不出现**（探测读错了 `projectionValues.agentPreset` 字段，导致必须刷新页面或切换会话才出现）。
 - `0.2.22` 适配 dsh `0.1.5-rc.1` 启动崩溃：`connection.rpc.handle()` 对外部插件不可用，host 半改为在 `webServer` 上自注册 `/dsh-cc-studio-rpc` 前缀路由并实现同一套 RPC 线上协议；请求体改事件式读取；修 `presets/cc` persona 的 `prefix`；新增 23 项回归测试。
 - `0.2.21` 修复 #2 草稿静默丢失：草稿变更即落盘 `~/.dsh/cc-drafts/<会话>.json`，重启/换会话自动恢复；建空会警告、恢复会提示。

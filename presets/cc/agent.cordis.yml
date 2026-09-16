@@ -273,6 +273,6 @@
 
 # ── CC 角色卡工坊（CC 模式专用） ───────────────────────────────────
 - id: cc-agent
-  name: '@dsh-plugins/dsh-cc-studio/agent'
+  name: '@xia-sc/dsh-cc-studio/agent'
 
 

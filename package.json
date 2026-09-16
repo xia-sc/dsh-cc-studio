@@ -1,7 +1,26 @@
 {
-  "name": "@dsh-plugins/dsh-cc-studio",
-  "version": "0.3.1",
+  "name": "@xia-sc/dsh-cc-studio",
+  "version": "0.3.2",
   "description": "CCv3 角色卡工坊：融合工坊 + CC 模式 + JSON/PNG/CHARX + 中英双语（跟随全局）",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "character-card",
+    "ccv3",
+    "charx",
+    "sillytavern",
+    "worldbook"
+  ],
+  "homepage": "https://github.com/xia-sc/dsh-cc-studio#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xia-sc/dsh-cc-studio.git"
+  },
+  "bugs": {
+    "url": "https://github.com/xia-sc/dsh-cc-studio/issues"
+  },
+  "license": "MIT",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -16,9 +35,9 @@
     "prototypes",
     "presets"
   ],
-  "license": "MIT",
   "scripts": {
-    "test": "node tests/rpc-channel.test.mjs && node tests/preset-install.test.mjs && node tests/cc-detection.test.mjs && node tests/client-greetings.test.mjs"
+    "test": "node tests/rpc-channel.test.mjs && node tests/preset-install.test.mjs && node tests/cc-detection.test.mjs && node tests/client-greetings.test.mjs",
+    "prepublishOnly": "npm test"
   },
   "dsh": {
     "bundle": {
@@ -35,5 +54,8 @@
   },
   "dependencies": {
     "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

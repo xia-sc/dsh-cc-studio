@@ -1,6 +1,6 @@
 # AGENTS.md — 给在本仓库工作的 Agent 的说明书
 
-`@dsh-plugins/dsh-cc-studio`：DSH（DeepSeek Harness）插件，CCv3 角色卡工坊。
+`@xia-sc/dsh-cc-studio`：DSH（DeepSeek Harness）插件，CCv3 角色卡工坊。
 一句话：**输入框上方的胶囊 → 全屏融合工坊**，配合 `CC 模式` 预设让 LLM 用 14 个 Tool 先问再填，最后导出 `JSON / PNG / CHARX`。
 
 用户文档看 `README.md`（中文）/ `README_EN.md`（英文），历史看 `CHANGELOG.md`。本文件只写**改代码前必须知道的事**。
@@ -26,7 +26,9 @@ dist/*.zip               ── 历史发布包（按版本命名），不是构
 | --- | --- | --- |
 | `.` | `lib/index.js` | 宿主组合（`cordis.patch.yml` 的插件行） |
 | `./client` | `lib/client.js` | 浏览器（`dsh.client` 声明 → `/plugins/??<包名>/client.js&rev=…`） |
-| `./agent` | `lib/agent.js` | 预设行 `@dsh-plugins/dsh-cc-studio/agent` |
+| `./agent` | `lib/agent.js` | 预设行 `@xia-sc/dsh-cc-studio/agent` |
+
+> 包名是 `@xia-sc/dsh-cc-studio`（0.3.2 起；此前叫 `@dsh-plugins/dsh-cc-studio`）。npm 的 scoped 包**只有该 scope 的成员能发布**，而 `@dsh-plugins` 不是本项目持有的（npm CLI 也没有 `npm org create`），所以旧名发不出去 —— 再改名时 scope 必须落在发布者自己的账号下。改名要同步 5 处：`package.json` 的 `name`、上表三行的加载方，以及 `lib/client.js` 里 `__ModuleLoader__.load({ id })` 的 `id`。最后这处是硬约束：`dsh-client-modules` 会拿宿主图里的包名精确匹配 `id`（该包 `lib/client.js:267,285`，`stripClientSuffix` 后相等），对不上直接抛 `bundle … loaded without registering "…"`，整个客户端半加载失败。
 
 ---
 
@@ -154,7 +156,8 @@ dsh 的预设发现（`dsh-agent-presets` → `unresolvableRows`）会对**每�
 
 - **改任何 bug 都要补回归测试**，并在 `CHANGELOG.md` 顶部写一条：**现象 → 根因 → 修法 → 生效方式**（重启 `dsh web` / 刷新页面 / 两者），这是本仓库既有的写法，照抄。
 - `package.json` 的 `version`、`README`/`README_EN` 里的「当前版本」、`CHANGELOG.md` 顶部小节三者同步。
-- `files` 决定发布内容（`lib` / `cordis.patch.yml` / `prototypes` / `presets`）；`tests/` **不进包**，所以测试可以随便依赖仓库内路径。
+- `files` 决定发布内容（`lib` / `cordis.patch.yml` / `prototypes` / `presets`）；`tests/` **不进包**，所以测试可以随便依赖仓库内路径。`README.md` 与 `LICENSE` 由 npm 强制带上；`README_EN.md` **不在** `files` 里，因此不进包（npm 页面也只渲染 `README.md`）。
+- **发布**：`npm publish`（`publishConfig.access = "public"` 已固化，不必再带 `--access public`；`prepublishOnly` 会先跑 `npm test`）。scoped 包要求 `npm whoami` 与包名 scope **完全一致**（登录后才能确认，猜错就是 403）。发完打 tag `v<version>`。
 - 中文注释是本仓库的叙事传统（解释「为什么」，尤其是踩过的坑），保留和沿用，别把它们删掉换成英文。
 - 不要动 `dist/*.zip`；发布包是手工归档的历史版本。
 - 大改客户端 UI 前先看 `prototypes/` —— 交互原型是设计意图的所在地。
@@ -170,13 +173,13 @@ npm test          # 4 个文件：23 + 34 + 32 + 62 = 151 项断言，全绿才�
 测试只跑纯函数与源码级守卫（不启动 dsh、不写真实用户目录），所以**还需要手工验证**：
 
 - **改宿主/客户端**：重启 `dsh web`（宿主改动）+ 刷新页面（客户端改动）。
-  - 客户端资源真实地址形如 `/plugins/??@dsh-plugins/dsh-cc-studio/client.js&rev=<内容哈希>`，**缺 `??` 或 `rev` 都会 404**，`rev` 随 `lib/client.js` 内容变化。
+  - 客户端资源真实地址形如 `/plugins/??@xia-sc/dsh-cc-studio/client.js&rev=<内容哈希>`，**缺 `??` 或 `rev` 都会 404**，`rev` 随 `lib/client.js` 内容变化。
 - **改预设**：预设只在插件挂载时安装。想强制重装：删掉 `<DSH_HOME>/.agent-presets/cc` 后重启，或把插件行配成 `presetInstall: force`。
 - **验证预设是否被判 broken**：在 GUI 设置 →「Agent 预设」里看 CC 模式是否显示「加载失败」；或用 `dsh-agent-presets` 的 `discoverPresets(roots, harnessBase)` 直接跑一遍发现逻辑。
 - **验证 RPC 通道**：`/`（首页）与 RPC 都受会话 cookie 保护，不带 cookie 只会得到 `401 unauthorized`；用 `dsh web` 启动时打印的 token 访问一次 `/?token=…` 换取 cookie（名字形如 `dsh-auth-<base64url>`），再 POST 带信封的 JSON。
 - **想整套隔离实测**（推荐，别拿真实 `~/.dsh` 试）：
   1. 建一个临时 `DSH_HOME`，在其中 `profiles/web/package.json` 声明 `dsh.profile.bundles`（`@deepseek-ai/dsh-base` + `@deepseek-ai/dsh-web-app` + 本插件）并装目标版本 dsh；
-  2. 把本仓库 symlink 进 `node_modules/@dsh-plugins/dsh-cc-studio`；
+  2. 把本仓库 symlink 进 `node_modules/@xia-sc/dsh-cc-studio`；
   3. `DSH_HOME=<临时目录> node <profile>/node_modules/@deepseek-ai/dsh/lib/bin.js web --no-open --port <空闲端口>`；
   4. 用 playwright/curl 验证设置页、预设 roster、RPC；
   5. 收工删掉临时目录（别留在仓库里，也别提交）。
@@ -193,12 +196,13 @@ npm test          # 4 个文件：23 + 34 + 32 + 62 = 151 项断言，全绿才�
 6. **测试没隔离 `DSH_HOME`** → 污染真实用户预设目录（2.6）。
 7. **UI 层写死中文** → 切到 English 仍显示中文；必须进 `zh`/`en` 词表。
 8. **大框「取消」与「完成」是同一个动作** → 输入即同步，取消必须携带打开时的快照真回滚。
+9. **改名后没重装 → 客户端报 `Failed to load plugins: web boot: 1 entry did not activate`**（0.3.2 换 scope 时真踩过）：profile 里的安装身份（`dsh.profile.bundles` 那一行 + `dependencies` 里的 `link:`）还是旧名，而包内 `package.json` / `lib/client.js` 已改名，客户端资源就解析不上——宿主照样起，只有浏览器那一半挂。判断只需一眼：`~/.dsh/profiles/web/node_modules/<scope>/` 的目录名是否等于 `package.json` 的 `name`。修法：按新名重装（`dsh plugin --profile web add <路径或包名>`）→ 重启 `dsh web` → **硬刷新**（旧页面的引导图是缓存的，普通刷新会复现同一句错）。宿主侧那条 RPC 路由也会一起消失，探测 `/dsh-cc-studio-rpc/ping` 返回 401（而非 404/405）可反推它确实被挂载了。
 
 ---
 
 ## 8. English summary
 
-`@dsh-plugins/dsh-cc-studio` is a DSH plugin (a CCv3 character-card studio). Key rules for agents working here:
+`@xia-sc/dsh-cc-studio` is a DSH plugin (a CCv3 character-card studio). Key rules for agents working here:
 
 - **No build step.** `lib/*.js` is the shipped artifact: plain ESM, and `lib/client.js` is a hand-written browser bundle wrapping `window.__ModuleLoader__.load(...)`. `React.createElement` only — no JSX, no TypeScript, no bundler.
 - **The host half owns its HTTP route.** `connection.rpc.handle()` is unusable by external plugins on dsh ≥ 0.1.5-rc.1, so the plugin registers `POST /dsh-cc-studio-rpc/<endpoint>` on `webServer` and speaks the connection RPC wire protocol itself. Read request bodies with `data`/`end`/`error` events — async iteration throws on this runtime.

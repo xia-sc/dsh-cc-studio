@@ -12,21 +12,32 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 
 | Item | Value |
 | --- | --- |
-| Package | `@dsh-plugins/dsh-cc-studio` |
-| Version | `0.3.1` |
+| Package | `@xia-sc/dsh-cc-studio` |
+| Version | `0.3.2` |
 | Host RPC | `/dsh-cc-studio-rpc` (self-owned route, works on dsh ≥ `0.1.5-rc.1`; verified on `0.1.6-alpha.1`) |
 | Client mounts | `conversation.input.dock` (capsule) + `shell.overlay` (workshop) + `settings.section` |
 | Persistence | `~/.dsh/cc-library/` (cards), `~/.dsh/cc-drafts/` (per-session drafts) |
 
 ## Install
 
-### 1. From GitHub (recommended)
+### 1. From npm (recommended)
+
+```bash
+dsh plugin --profile web add @xia-sc/dsh-cc-studio
+
+# pin a version
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.3.2
+```
+
+**Or from GitHub**:
 
 ```bash
 dsh plugin --profile web add github:xia-sc/dsh-cc-studio
 ```
 
-`dsh plugin` only forwards the remaining arguments to pnpm inside the profile directory (`~/.dsh/profiles/web`); afterwards dsh appends `@dsh-plugins/dsh-cc-studio` to that profile's `dsh.profile.bundles` automatically — no manual `package.json` edit.
+`dsh plugin` only forwards the remaining arguments to pnpm inside the profile directory (`~/.dsh/profiles/web`); afterwards dsh appends `@xia-sc/dsh-cc-studio` to that profile's `dsh.profile.bundles` automatically — no manual `package.json` edit.
+
+> **Since 0.3.2 the package was renamed from `@dsh-plugins/dsh-cc-studio` to `@xia-sc/dsh-cc-studio`** (the former is not an npm scope this project owns, so it could not be published). If you installed the old name, remove it first as shown in "5. Update and uninstall"; `~/.dsh/cc-library/`, `~/.dsh/cc-drafts/`, `~/.dsh/.agent-presets/cc/` and your plugin settings are unaffected.
 
 - **Pin a version / branch**: `github:xia-sc/dsh-cc-studio#v0.3.0`, `...#master` (see the repo tags).
 - **`allowBuilds` notice**: this plugin has no `prepare` build script, so pnpm's build gate is normally not triggered; if pnpm still prints the notice, add the exact key it prints under `allowBuilds` in `~/.dsh/profiles/web/pnpm-workspace.yaml` and re-run.
@@ -90,12 +101,12 @@ Copy-Item $src "$env:USERPROFILE\.dsh\.agent-presets\cc" -Recurse -Force
 ```bash
 # macOS / Linux (GitHub install)
 mkdir -p ~/.dsh/.agent-presets/cc
-cp -R ~/.dsh/profiles/web/node_modules/@dsh-plugins/dsh-cc-studio/presets/cc/. ~/.dsh/.agent-presets/cc/
+cp -R ~/.dsh/profiles/web/node_modules/@xia-sc/dsh-cc-studio/presets/cc/. ~/.dsh/.agent-presets/cc/
 ```
 
-> If you customized `DSH_HOME`, replace `~/.dsh` / `%USERPROFILE%\.dsh` above with it; the plugin itself lives at `<DSH_HOME>/profiles/web/node_modules/@dsh-plugins/dsh-cc-studio/`.
+> If you customized `DSH_HOME`, replace `~/.dsh` / `%USERPROFILE%\.dsh` above with it; the plugin itself lives at `<DSH_HOME>/profiles/web/node_modules/@xia-sc/dsh-cc-studio/`.
 
-`agent.cordis.yml` extends a copy of `standard` with `id: cc-studio-agent, name: '@dsh-plugins/dsh-cc-studio/agent'` and replaces `persona` with a co-creation partner — ask first, 1–2 questions per step. The capsule appears once you switch the session mode.
+`agent.cordis.yml` extends a copy of `standard` with `id: cc-studio-agent, name: '@xia-sc/dsh-cc-studio/agent'` and replaces `persona` with a co-creation partner — ask first, 1–2 questions per step. The capsule appears once you switch the session mode.
 
 > A hand-copied directory has **no** install record, so auto-install treats it as yours and skips it; delete it and restart to hand management back to the plugin.
 
@@ -120,9 +131,9 @@ COOKIE=$(curl -s -D - -o /dev/null "http://127.0.0.1:3080/?token=$TOKEN" \
 # the client asset must return 200. Its URL looks like /plugins/??<pkg>/client.js&rev=<content hash>:
 # without ?? or without rev it is a 404, and rev changes whenever lib/client.js changes, so read it from the index.
 ASSET=$(curl -s http://127.0.0.1:3080/ -H "cookie: $COOKIE" \
-  | grep -o '/plugins/??@dsh-plugins/dsh-cc-studio/client\.js&rev=[0-9a-f]*' | head -1)
+  | grep -o '/plugins/??@xia-sc/dsh-cc-studio/client\.js&rev=[0-9a-f]*' | head -1)
 curl -s -o /dev/null -w "%{http_code}  $ASSET\n" "http://127.0.0.1:3080$ASSET" -H "cookie: $COOKIE"
-# -> 200  /plugins/??@dsh-plugins/dsh-cc-studio/client.js&rev=…
+# -> 200  /plugins/??@xia-sc/dsh-cc-studio/client.js&rev=…
 
 # RPC smoke test (same fence as any /api route: Host/Origin + session cookie)
 curl -s http://127.0.0.1:3080/dsh-cc-studio-rpc/ping \
@@ -139,7 +150,7 @@ $TOKEN='<the token dsh web printed>'
 $s=New-Object Microsoft.PowerShell.Commands.WebRequestSession
 $null=Invoke-WebRequest "http://127.0.0.1:3080/?token=$TOKEN" -WebSession $s -UseBasicParsing
 $idx=(Invoke-WebRequest 'http://127.0.0.1:3080/' -WebSession $s -UseBasicParsing).Content
-$asset=[regex]::Match($idx,'/plugins/\?\?@dsh-plugins/dsh-cc-studio/client\.js&rev=[0-9a-f]+').Value
+$asset=[regex]::Match($idx,'/plugins/\?\?@xia-sc/dsh-cc-studio/client\.js&rev=[0-9a-f]+').Value
 Invoke-WebRequest "http://127.0.0.1:3080$asset" -WebSession $s -UseBasicParsing | Select-Object StatusCode
 ```
 
@@ -148,15 +159,25 @@ The index (`/`) and the RPC route are both fenced by the session cookie, so a ba
 ### 5. Update and uninstall
 
 ```bash
+# update to the latest npm release
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@latest
+
 # update to the latest commit on the default branch (master): re-run add, pnpm re-resolves
 dsh plugin --profile web add github:xia-sc/dsh-cc-studio
 
 # if the resolution does not move, remove and add again
-dsh plugin --profile web remove @dsh-plugins/dsh-cc-studio
-dsh plugin --profile web add github:xia-sc/dsh-cc-studio
+dsh plugin --profile web remove @xia-sc/dsh-cc-studio
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@latest
 
 # uninstall (dsh also drops it from dsh.profile.bundles)
+dsh plugin --profile web remove @xia-sc/dsh-cc-studio
+```
+
+**Migrating from the old name `@dsh-plugins/dsh-cc-studio`**: a rename makes it a different package, so swap it explicitly — otherwise `dsh.profile.bundles` keeps a row for a name that can no longer resolve.
+
+```bash
 dsh plugin --profile web remove @dsh-plugins/dsh-cc-studio
+dsh plugin --profile web add @xia-sc/dsh-cc-studio
 ```
 
 Cards in `~/.dsh/cc-library/` and drafts in `~/.dsh/cc-drafts/` survive uninstall.
@@ -170,6 +191,7 @@ Cards in `~/.dsh/cc-library/` and drafts in `~/.dsh/cc-drafts/` survive uninstal
 | Switching to CC Mode fails with `invalid config: S.prefix missing required value` | `presets/cc/agent.cordis.yml` predates 0.2.22 (persona used `text:`); copy the new template again |
 | dsh boot fails with `cannot get property "webServer" without inject` | The plugin is older than 0.2.22; update it |
 | Validation errors | Required `spec: chara_card_v3` / `spec_version: 3.0` / `group_only_greetings`; the main icon must be unique; regexes must be valid |
+| After a restart the browser shows `Failed to load plugins` / `web boot: 1 entry did not activate` / `import failed` | The rename was not followed by a reinstall under the new name: the profile's install identity (`dsh.profile.bundles` and the `link:` in `dependencies`) still says `@dsh-plugins/dsh-cc-studio`, while `package.json` and `lib/client.js` now say `@xia-sc/dsh-cc-studio`, so the client asset cannot be resolved (the host still boots — only the browser half dies). Confirm it by comparing the directory name under `~/.dsh/profiles/web/node_modules/` with the `name` in `package.json`; fix it by reinstalling under the new name (see the migration commands in "5. Update and uninstall"), restarting `dsh web`, and doing a **hard refresh** (`Ctrl+Shift+R`) — the old page's boot graph is cached, so a plain reload repeats the same error |
 
 ## Quick start
 
@@ -208,7 +230,7 @@ Cards in `~/.dsh/cc-library/` and drafts in `~/.dsh/cc-drafts/` survive uninstal
 
 ```
 dsh-cc-studio/
-├── package.json          # @dsh-plugins/dsh-cc-studio, dsh.bundle.patch + dsh.client, exports ./client ./agent
+├── package.json          # @xia-sc/dsh-cc-studio, dsh.bundle.patch + dsh.client, exports ./client ./agent
 ├── cordis.patch.yml      # host insert: id dsh-cc-studio
 ├── lib/
 │   ├── index.js          # host: /dsh-cc-studio-rpc (validate, cc_getDraft/cc_setDraft/cc_patchDraft, cc_isCcMode,
@@ -231,7 +253,7 @@ dsh-cc-studio/
 └── README_EN.md          # English
 ```
 
-> `dsh-cc-agent` was merged into `lib/agent.js` (`@dsh-plugins/dsh-cc-studio/agent`) at `5f95110`; no separate install needed; the `CC Mode` preset mounts only that single source and does not pollute `standard`.
+> `dsh-cc-agent` was merged into `lib/agent.js` (`@xia-sc/dsh-cc-studio/agent`) at `5f95110`; no separate install needed; the `CC Mode` preset mounts only that single source and does not pollute `standard`.
 
 ## Development and tests
 
@@ -255,8 +277,10 @@ Light/dark via `var(--dsw-alias-*)` (`body[data-ds-dark-theme]`), primary stays 
 
 ## Changelog
 
-Full history lives in [CHANGELOG.md](./CHANGELOG.md) (Chinese). Latest three:
+Full history lives in [CHANGELOG.md](./CHANGELOG.md) (Chinese). Latest:
 
+- `0.3.2` Renamed to `@xia-sc/dsh-cc-studio` (the former `@dsh-plugins` is not an npm scope this project owns, so it could not be published) and published to npm for the first time; adds `publishConfig.access` / `prepublishOnly` and other publishing metadata.
+- `0.3.1` dsh `0.1.6-alpha.1` compatibility: the CC preset's `workflow-worker-thread` row becomes `workflow-ptc`; otherwise the whole preset is marked broken and CC Mode becomes unselectable.
 - `0.3.0` Removed the "Idea" page: the workshop now has 4 nav pages (5D World / Character / Lorebook / Validate & Export), the `⛶` large-editor capability moved to a shared `fieldHead()` covering every long-text string field, sidebar search kept. Also fixes the array round-trip regression that change introduced (`[]` was rewritten as `[""]`, i.e. a phantom blank greeting), and turns the greeting fields into **per-entry editors** (one box = one entry), removing the silent corruption where editing a multi-paragraph greeting split it into several; adds greeting add/remove and aligns the 10-entry cap. Makes the large editor's "Cancel" actually roll back, removes the `expandIdea` / `expandWorld` dead code unreachable since 67172fd, and **completes the i18n wiring** (the locale table existed but many call sites hard-coded Chinese, so English still showed Chinese; all 122 Chinese literals are now wired, with the Chinese UI byte-for-byte unchanged), **installs the CC preset automatically** (previously a manual copy), and fixes **the capsule not appearing on the first switch to CC Mode** (detection read the wrong field, `projectionValues.agentPreset`, so it only appeared after a refresh or session switch).
 - `0.2.22` Fix the dsh `0.1.5-rc.1` boot crash: `connection.rpc.handle()` is unusable by an outside plugin, so the host half now registers the `/dsh-cc-studio-rpc` prefix route on `webServer` and implements the same RPC wire protocol; request bodies are read with events; fixes the `presets/cc` persona `prefix`; adds 23 regression assertions.
 - `0.2.21` Fix #2 silent draft loss: every draft write persists to `~/.dsh/cc-drafts/<session>.json` and restores per session after a restart; fresh blanks warn, successful restores notify.

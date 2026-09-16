@@ -2,6 +2,30 @@
 
 `dsh-cc-studio` 的版本变更记录，倒序排列（最新在上）。README 只保留最近几条，完整历史在本文件。
 
+## 0.3.2
+
+**包名迁移 + 首次发布到 npm**：`@dsh-plugins/dsh-cc-studio` → `@xia-sc/dsh-cc-studio`。
+
+### 变更
+
+- **包名换成 `@xia-sc/dsh-cc-studio`**：`@dsh-plugins` 不是本项目持有的 npm scope，发不出去 —— scoped 包只有该 scope 的成员能 publish，而 npm CLI **没有** `npm org create`（只有 `org set / rm / ls`），建组织只能在网页上做。
+  - 代码侧必须同步的 4 处，漏一处不是「那个功能不可用」而是**整体坏掉**：
+    1. `package.json` 的 `name`；
+    2. `cordis.patch.yml` 的宿主插件行 `name`；
+    3. `presets/cc/agent.cordis.yml` 的 `cc-agent` 行 `name` —— 包名解析不到会让整份 CC 预设被 `unresolvableRows` 判 `broken`，CC 模式直接消失（后果同 0.3.1）；
+    4. `lib/client.js` 里 `__ModuleLoader__.load({ id })` 的 `id` —— `dsh-client-modules` 拿宿主图里的包名精确匹配（`stripClientSuffix` 后相等，见该包 `lib/client.js:267,285`），对不上直接抛 `bundle … loaded without registering "…"`，客户端半整体加载失败。
+  - **不受影响**：宿主 RPC 通道 `/dsh-cc-studio-rpc`、预设目录名 `cc`、安装记录 `.dsh-cc-studio-preset.json`、`localStorage:dsh-cc-studio-settings`、`~/.dsh/cc-library/`、`~/.dsh/cc-drafts/` —— 这些取自短名 `dsh-cc-studio` 或独立常量，与包名无关。
+  - **迁移**：装过旧名的先 `dsh plugin --profile web remove @dsh-plugins/dsh-cc-studio`，再 `add @xia-sc/dsh-cc-studio`。包名变了就是另一个包，`dsh.profile.bundles` 里的旧行不会自己消失。
+- **不重装会当场坏掉（本机已实测）**：当 profile 里的安装身份（`dsh.profile.bundles` 那行 + `dependencies` 里的 `link:`）还是旧名、而包内已经改名时，**宿主照样能起，浏览器那一半会停在 `Failed to load plugins / web boot: 1 entry did not activate / import failed`** —— 客户端资源按旧名解析不上，只有浏览器半挂。此时插件自己的 `/dsh-cc-studio-rpc` 路由也不会注册（探测它得到 404/405，而不是缺 cookie 时的 401，可用来反推插件有没有被挂载）。修法就是按新名重装；重启后**必须硬刷新**（`Ctrl+Shift+R`），旧页面的引导图是缓存的，普通刷新会复现同一句错。一句话判断法：`~/.dsh/profiles/web/node_modules/<scope>/` 的目录名必须等于该包 `package.json` 的 `name`。
+- **补齐 npm 发布元数据**：`publishConfig.access = "public"`（scoped 包默认按私有发布，缺它报 `402 You must sign up for private packages`）、`repository` / `homepage` / `bugs` / `keywords`，以及 `prepublishOnly: npm test` 作为发布闸门。
+- 「安装」一节新增 npm 安装方式（此前只有 GitHub 源 / 本地仓库），并在「更新与卸载」里补上改名迁移的两条命令。
+
+### 生效方式
+
+- **插件行为未变**，只有包名与元数据：`npm test` 151 项断言仍全绿，打包内容仍是 12 个文件。
+- 生效方式：按新包名重新安装 + 重启 `dsh web` + 刷新页面。
+- 为什么是 `0.3.2` 而不是改 `0.3.1`：`v0.3.1` 已打 tag 并发布，改已发布版本的内容会让 tag 与包对不上。
+
 ## 0.3.1
 
 适配 dsh `0.1.6-alpha.1`：**CC 预设被该版本判定为「加载失败」**。
