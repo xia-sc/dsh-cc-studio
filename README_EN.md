@@ -6,6 +6,8 @@
 
 # dsh-cc-studio · CCv3 Character Card Studio
 
+[![npm version](https://img.shields.io/npm/v/@xia-sc/dsh-cc-studio?color=%237c5cff)](https://www.npmjs.com/package/@xia-sc/dsh-cc-studio)
+
 > From a one-line idea to an importable `chara_card_v3` for SillyTavern / Risu. Built for "only an idea, weak worldbuilding".
 
 A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen fusion workshop, and the `CC Mode` preset turns 14 LLM Tools into a **ask-first, co-create** workflow that ends in a one-click `JSON / PNG / CHARX` export.

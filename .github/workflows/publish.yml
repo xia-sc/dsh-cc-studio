@@ -1,7 +1,8 @@
 # 发布工作流
 #
 #   打 v* tag         → 版本守卫（tag 必须等于 package.json 的 version）→ npm test → npm publish --provenance
-#   手动 Run workflow → 默认只做安全自检（checkout / setup node / 升级 npm / test / pack），**不打 registry**
+#                       → 发布成功后自动建 GitHub Release（正文取自 CHANGELOG.md 的该版本小节）
+#   手动 Run workflow → 默认只做安全自检（checkout / setup node / 升级 npm / test / pack），**不发布**
 #                       要真发布就把 dry_run 取消勾选（补发场景：tag 那次跑挂了、修好后手动补）
 #
 # 认证走 npm 的 OIDC Trusted Publishing —— 不需要任何密钥（没有 NPM_TOKEN）。
@@ -16,7 +17,7 @@
 #     Allow npm publish    : 必须勾选（不勾就只能走 npm stage publish 两段式发布）
 #
 # 三个硬要求，缺一个就是 ENEEDAUTH / 401：
-#   1. 本 job 必须有 `permissions: id-token: write`
+#   1. publish job 必须有 `permissions: id-token: write`
 #   2. 运行器上的 npm 必须 >= 11.5.1（Node 22 自带 npm 10.x，所以有下面的升级步骤）
 #   3. npm 侧登记的 仓库 / workflow 文件名 / 环境 必须与这里逐字符一致
 #
@@ -95,3 +96,28 @@ jobs:
       - name: Publish (OIDC + provenance)
         if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)
         run: npm publish --provenance
+
+  # 发布成功后再建 Release，所以这里才需要 contents: write；
+  # publish job 自己保持 contents: read + id-token: write 的最小权限。
+  release:
+    needs: publish
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # 运行器自带 node，脚本只用 node:fs，不需要 setup-node
+      - name: Extract release notes from CHANGELOG.md
+        run: node .github/scripts/release-notes.mjs "$GITHUB_REF_NAME"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME — $(cat release-title.txt)" \
+            --notes-file release-notes.md \
+            --verify-tag

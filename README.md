@@ -6,6 +6,8 @@
 
 # dsh-cc-studio · CCv3 角色卡工坊
 
+[![npm version](https://img.shields.io/npm/v/@xia-sc/dsh-cc-studio?color=%237c5cff)](https://www.npmjs.com/package/@xia-sc/dsh-cc-studio)
+
 > 从一句话点子到可导入 SillyTavern / Risu 的 `chara_card_v3`。专治「只有点子，世界观薄弱」。
 
 DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工坊，配合 `CC 模式` 预设让 LLM 通过 14 个 Tool **先问再填**、与你共创角色卡，最后一键导出 `JSON / PNG / CHARX`。
