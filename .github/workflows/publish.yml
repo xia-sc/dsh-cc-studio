@@ -1,0 +1,88 @@
+# 发布工作流：打 tag v* → 校验 tag 与版本一致 → npm test → npm publish
+#
+# 认证走 npm 的 OIDC Trusted Publishing —— **不需要任何密钥**（没有 NPM_TOKEN）。
+#
+# 首次使用前要在 npm 侧登记一次（npm 要求包已存在才能登记；本包 0.3.2 已在 npm 上）：
+#   https://www.npmjs.com/package/@xia-sc/dsh-cc-studio → Settings → Trusted Publishers → Add publisher
+#     Publisher            : GitHub Actions
+#     Organization or user : xia-sc
+#     Repository           : dsh-cc-studio
+#     Workflow filename    : publish.yml    ← 必须与本文件名逐字符一致（只写文件名，不带路径）
+#     Environment          : 留空（最简单）
+#   若你想用「发布前需要人工批准」的闸门：在 npm 侧把 Environment 填成某个名字（例如 npm-publish），
+#   同时把下面 job 里那行 `environment:` 注释放开并写成同名，并确保仓库 Settings → Environments 里有它。
+#
+# 三个硬要求，缺一个就是 ENEEDAUTH / 401：
+#   1. 本 job 必须有 `permissions: id-token: write`
+#   2. 运行器上的 npm 必须 >= 11.5.1（Node 22 自带 npm 10.x，所以有下面的升级步骤）
+#   3. npm 侧登记的 仓库 / workflow 文件名 / 环境 必须与这里逐字符一致
+#
+# 本仓库零依赖（lib 与 tests 只 import node:* 内置模块）且没有 package-lock.json，
+# 所以刻意不跑 `npm ci`：干净 checkout 直接 `npm test` 即可。
+
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '只打包不发布（npm publish --dry-run）'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # environment: npm-publish     # ← 仅在 npm 侧也登记了同名 Environment 时才需要
+    permissions:
+      contents: read
+      id-token: write               # OIDC：npm 用这个短期令牌认证，取代长期 NPM_TOKEN
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          # 刻意不写 registry-url：setup-node 会据此生成
+          #   //registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}
+          # 而 OIDC 模式下没有这个变量（真实迁移案例里正是删掉这一行才通的）。
+
+      - name: Upgrade npm (trusted publishing needs >= 11.5.1)
+        run: |
+          npm install -g npm@latest
+          npm --version
+
+      - name: Version guard (tag 必须等于 package.json 的 version)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euo pipefail
+          pkg="$(node -p "require('./package.json').version")"
+          tag="${GITHUB_REF_NAME#v}"
+          echo "package.json=$pkg  tag=$tag"
+          if [ "$pkg" != "$tag" ]; then
+            echo "::error::tag v$tag 与 package.json 的 $pkg 不一致；先把版本三处同步（package.json / README / README_EN / CHANGELOG）再打 tag"
+            exit 1
+          fi
+
+      - name: Test
+        run: npm test
+
+      - name: Publish
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            npm publish --dry-run
+          else
+            npm publish --provenance
+          fi
