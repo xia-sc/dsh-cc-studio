@@ -163,6 +163,7 @@ dsh 的预设发现（`dsh-agent-presets` → `unresolvableRows`）会对**每�
   - 版本守卫会在 `tag ≠ package.json 的 version` 时直接 fail（专拦「tag 是 v0.3.3、包里还是 0.3.2」这类手滑）。
   - 认证是 npm 的 OIDC trusted publishing，**没有任何密钥**。三个硬要求：job 级 `id-token: write`、运行器 npm ≥ 11.5.1（Node 22 自带 10.x，故 workflow 里有升级步骤）、npm 侧登记的 workflow 文件名必须与 `.github/workflows/publish.yml` 逐字符一致（Environment 留空、勾选 Allow npm publish）。报 `ENEEDAUTH`/`401` 基本都是这三条对不上。
   - **手动发布（备用）**：`npm publish`（`publishConfig.access = "public"` 已固化，不必再带 `--access public`；`prepublishOnly` 会先跑 `npm test`）。账号 2FA 是 `auth-and-writes`，所以这条路每次都会走「浏览器授权（`PUT 401` → 授权 → `PUT 200`）」，属正常现象。scoped 包要求 `npm whoami` 与包名 scope **完全一致**（猜错就是 403）。
+  - **发布成功后 npm 有传播延迟，别误判成失败**（0.3.3 实测）：CLI 会打印 `Your package is being processed and may take a few minutes to become available.` + `+ <包名>@<版本>`。本次 `dist-tags`/`npm view` 约 **1 分钟**后才出现新版本，而 **tarball（`.../-/<短名>-<版本>.tgz`）约 3 分钟后**才从 404 变 200。所以：**以 Actions 日志里的 `+ …@x.y.z`、`Signed provenance statement`、sigstore 那行，以及 `dist.attestations` 为准**；刚发完就去 `npm view` / 拉 tarball 得到旧版本或 404 属正常，等几分钟再查，不要重发（重发会撞 `You cannot publish over the previously published versions`）。
   - **别指望手动跑法能验证 OIDC**：`npm publish --dry-run` 的版本查重与 `npm pack` 都**不做认证**（实测：把 token 换成假值，报错一字不差），所以第一次真实验证必然是下一个真版本打 tag。
 - 中文注释是本仓库的叙事传统（解释「为什么」，尤其是踩过的坑），保留和沿用，别把它们删掉换成英文。
 - 不要动 `dist/*.zip`；发布包是手工归档的历史版本。
