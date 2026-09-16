@@ -13,8 +13,8 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 | Item | Value |
 | --- | --- |
 | Package | `@dsh-plugins/dsh-cc-studio` |
-| Version | `0.3.0` |
-| Host RPC | `/dsh-cc-studio-rpc` (self-owned route, works on dsh ≥ `0.1.5-rc.1`) |
+| Version | `0.3.1` |
+| Host RPC | `/dsh-cc-studio-rpc` (self-owned route, works on dsh ≥ `0.1.5-rc.1`; verified on `0.1.6-alpha.1`) |
 | Client mounts | `conversation.input.dock` (capsule) + `shell.overlay` (workshop) + `settings.section` |
 | Persistence | `~/.dsh/cc-library/` (cards), `~/.dsh/cc-drafts/` (per-session drafts) |
 

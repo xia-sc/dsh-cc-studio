@@ -13,8 +13,8 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 | 项目 | 值 |
 | --- | --- |
 | 插件包名 | `@dsh-plugins/dsh-cc-studio` |
-| 当前版本 | `0.3.0` |
-| 宿主 RPC | `/dsh-cc-studio-rpc`（自带路由，适配 dsh ≥ `0.1.5-rc.1`） |
+| 当前版本 | `0.3.1` |
+| 宿主 RPC | `/dsh-cc-studio-rpc`（自带路由，适配 dsh ≥ `0.1.5-rc.1`；已在 `0.1.6-alpha.1` 实测） |
 | 客户端挂载点 | `conversation.input.dock`（胶囊）+ `shell.overlay`（工坊）+ `settings.section` |
 | 落盘位置 | `~/.dsh/cc-library/`（角色卡）、`~/.dsh/cc-drafts/`（会话草稿） |
 

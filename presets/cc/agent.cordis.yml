@@ -233,8 +233,14 @@
         backgroundMode: one-shot
         maxDepth: provider-managed
 
-    - id: workflow-worker-thread
-      name: '@deepseek-ai/dsh-workflow-worker-thread'
+    # dsh 0.1.6-alpha.1: `dsh-workflow-worker-thread` is gone from the release;
+    # the workflow engine is now `dsh-workflow-ptc` (sandboxed Node PTC runtime,
+    # host row `ptc-runtime` → `dsh-ptc-runtime-node`). Preset health check
+    # (`unresolvableRows`) rejects any started row whose package cannot be
+    # resolved, so the old name marks the WHOLE preset broken — unselectable in
+    # the roster. Keep this in sync with the shipped `standard` preset.
+    - id: workflow-ptc
+      name: '@deepseek-ai/dsh-workflow-ptc'
       config:
         provider: spawn
 

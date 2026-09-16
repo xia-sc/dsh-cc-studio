@@ -2,6 +2,22 @@
 
 `dsh-cc-studio` 的版本变更记录，倒序排列（最新在上）。README 只保留最近几条，完整历史在本文件。
 
+## 0.3.1
+
+适配 dsh `0.1.6-alpha.1`：**CC 预设被该版本判定为「加载失败」**。
+
+### 修复
+
+- **CC 预设引用了一个在 0.1.6 里被删掉的包**：`agent.cordis.yml` 的 `workflow-worker-thread` 行写着 `@deepseek-ai/dsh-workflow-worker-thread`，而该包已从 0.1.6-alpha.1 的依赖表中移除（换成 `@deepseek-ai/dsh-workflow-ptc`，宿主行 `ptc-runtime` → `@deepseek-ai/dsh-ptc-runtime-node`）。
+  - 后果不是「工作流不可用」这么轻：0.1.6 的预设发现会对每个**会真正启动**的行做包存在性检查（`dsh-agent-presets/lib/types/discovery.js` 的 `unresolvableRows`），任何一个取不到的行都会让**整个预设**带上 `broken` 标记；roster 里显示「加载失败 + row "workflow-worker-thread" names a plugin that cannot be resolved」，且**不可选中、不可复制**——CC 模式等于消失。
+  - 该行已改为 `workflow-ptc`（保留 `provider: spawn`，与 0.1.6 内置 `standard` 预设一致）。
+  - 已在本机用隔离环境实测：装上 `0.1.6-alpha.1` 后，改前行 → roster 标记「加载失败」；改后行 → 无 broken 标记，设置页「角色卡工坊」与工坊 RPC（`cc_getDraft` 返回 `server-response` 信封）均正常，浏览器控制台无报错。
+  - 生效方式：重启 `dsh web`（预设是挂载时安装的）。**若你的 `<DSH_HOME>/.agent-presets/cc` 已被手改过，插件会保留你的改动并告警**；想用新模板刷新，删掉该目录后重启，或把插件行配成 `presetInstall: force`。
+
+### 说明
+
+- 本次只动预设模板这一个文件，插件的宿主/客户端代码未变：0.1.6-alpha.1 下 `webServer.register`、connection RPC 线上协议（`client-request` / `server-response` 信封、channel/endpoint 命名约束）、`conversation.input.dock` / `shell.overlay` / `settings.section` 三个 slot 的契约、`ctx.locale.bind/translate`、`agents.currentInitiator/get`、`tools.register` 均与本插件现有用法一致。
+
 ## 0.3.0
 
 从 0.2 到 0.3：**移除「点子」页**（工坊改为 4 页）、**补齐全量中英双语**（此前切到 English 仍显示中文）、**CC 预设改为自动安装**（不再需要手工拷贝），并修掉若干会**静默改写卡数据**的问题（多段问候语被拆条、空数组被写成 `[""]`、大框「取消」实际仍在落盘）。
