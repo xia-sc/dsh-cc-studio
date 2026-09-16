@@ -15,7 +15,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 | 项目 | 值 |
 | --- | --- |
 | 插件包名 | `@xia-sc/dsh-cc-studio` |
-| 当前版本 | `0.3.2` |
+| 当前版本 | `0.3.3` |
 | 宿主 RPC | `/dsh-cc-studio-rpc`（自带路由，适配 dsh ≥ `0.1.5-rc.1`；已在 `0.1.6-alpha.1` 实测） |
 | 客户端挂载点 | `conversation.input.dock`（胶囊）+ `shell.overlay`（工坊）+ `settings.section` |
 | 落盘位置 | `~/.dsh/cc-library/`（角色卡）、`~/.dsh/cc-drafts/`（会话草稿） |
@@ -28,7 +28,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
 
 # 锁定版本
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.3.2
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.3.3
 ```
 
 **或从 GitHub 源安装**：
@@ -282,6 +282,7 @@ node tests/rpc-channel.test.mjs            # host 半 RPC 通道回归（23 项�
 
 完整历史见 [CHANGELOG.md](./CHANGELOG.md)。最近几版：
 
+- `0.3.3` 发布流程自动化：打 `v*` tag 即由 GitHub Actions 发布到 npm（OIDC trusted publishing，零密钥）并自动建 GitHub Release；手动触发默认只做安全自检。插件运行时行为未变。
 - `0.3.2` 包名迁移至 `@xia-sc/dsh-cc-studio`（原 `@dsh-plugins` 不是本项目持有的 npm scope），并首次发布到 npm；新增 `publishConfig.access` / `prepublishOnly` 等发布元数据。
 - `0.3.1` 适配 dsh `0.1.6-alpha.1`：CC 预设里的 `workflow-worker-thread` 行换成 `workflow-ptc`，否则整份预设被判「加载失败」、CC 模式直接不可选。
 - `0.3.0` 移除「点子」页：工坊导航改为 4 页（5维世界观 / 角色细化 / 世界书 / 校验导出），`⛶ 大框` 能力改用统一 `fieldHead()` 落到全部长文本 string 字段，侧栏搜索保留。同步修掉该改动引入的数组往返回退（`[]` 会被写成 `[""]`，即凭空多一条空白问候语）；并把问候语字段改为**逐条独立编辑**（一条 = 一个编辑框），根除「多段问候语一编辑就被拆成多条」的静默损坏，顺带补上问候语增删与 10 条上限对齐。另修大框「取消」真正回滚、清掉自 67172fd 起就调不通的 `expandIdea` / `expandWorld` 死代码、**完成全量 i18n 接线**（此前词表已建好但大量调用点硬编码中文，切到 English 仍显示中文；现全部 122 条中文字面量接入词表，中文界面逐字未变）、**CC 预设改为自动安装**（此前需手工拷贝），并修掉**首次切到 CC 模式时胶囊不出现**（探测读错了 `projectionValues.agentPreset` 字段，导致必须刷新页面或切换会话才出现）。

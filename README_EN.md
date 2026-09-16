@@ -15,7 +15,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 | Item | Value |
 | --- | --- |
 | Package | `@xia-sc/dsh-cc-studio` |
-| Version | `0.3.2` |
+| Version | `0.3.3` |
 | Host RPC | `/dsh-cc-studio-rpc` (self-owned route, works on dsh ≥ `0.1.5-rc.1`; verified on `0.1.6-alpha.1`) |
 | Client mounts | `conversation.input.dock` (capsule) + `shell.overlay` (workshop) + `settings.section` |
 | Persistence | `~/.dsh/cc-library/` (cards), `~/.dsh/cc-drafts/` (per-session drafts) |
@@ -28,7 +28,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
 
 # pin a version
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.3.2
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.3.3
 ```
 
 **Or from GitHub**:
@@ -281,6 +281,7 @@ Light/dark via `var(--dsw-alias-*)` (`body[data-ds-dark-theme]`), primary stays 
 
 Full history lives in [CHANGELOG.md](./CHANGELOG.md) (Chinese). Latest:
 
+- `0.3.3` Release automation: pushing a `v*` tag makes GitHub Actions publish to npm (OIDC trusted publishing, no secrets) and create the GitHub Release; a manual run only does a safe self-check. No runtime behaviour change.
 - `0.3.2` Renamed to `@xia-sc/dsh-cc-studio` (the former `@dsh-plugins` is not an npm scope this project owns, so it could not be published) and published to npm for the first time; adds `publishConfig.access` / `prepublishOnly` and other publishing metadata.
 - `0.3.1` dsh `0.1.6-alpha.1` compatibility: the CC preset's `workflow-worker-thread` row becomes `workflow-ptc`; otherwise the whole preset is marked broken and CC Mode becomes unselectable.
 - `0.3.0` Removed the "Idea" page: the workshop now has 4 nav pages (5D World / Character / Lorebook / Validate & Export), the `⛶` large-editor capability moved to a shared `fieldHead()` covering every long-text string field, sidebar search kept. Also fixes the array round-trip regression that change introduced (`[]` was rewritten as `[""]`, i.e. a phantom blank greeting), and turns the greeting fields into **per-entry editors** (one box = one entry), removing the silent corruption where editing a multi-paragraph greeting split it into several; adds greeting add/remove and aligns the 10-entry cap. Makes the large editor's "Cancel" actually roll back, removes the `expandIdea` / `expandWorld` dead code unreachable since 67172fd, and **completes the i18n wiring** (the locale table existed but many call sites hard-coded Chinese, so English still showed Chinese; all 122 Chinese literals are now wired, with the Chinese UI byte-for-byte unchanged), **installs the CC preset automatically** (previously a manual copy), and fixes **the capsule not appearing on the first switch to CC Mode** (detection read the wrong field, `projectionValues.agentPreset`, so it only appeared after a refresh or session switch).

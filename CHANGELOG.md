@@ -2,6 +2,28 @@
 
 `dsh-cc-studio` 的版本变更记录，倒序排列（最新在上）。README 只保留最近几条，完整历史在本文件。
 
+## 0.3.3
+
+**发布流程自动化**：打 `v*` tag 即由 GitHub Actions 发布到 npm，并自动建 GitHub Release。**插件运行时行为未变**（只有仓库级的 CI 与文档改动）。
+
+### 变更
+
+- **新增 `.github/workflows/publish.yml`**：打 `v*` tag → 版本守卫（tag 必须等于 `package.json` 的 version）→ `npm test`（151 项）→ `npm publish --provenance` → 发布成功后建 GitHub Release。手动 `Run workflow` 默认只做安全自检（checkout / setup node / 升级 npm / test / `npm pack`），不发布；要补发就把 `dry_run` 取消勾选。
+- **认证改用 npm OIDC trusted publishing，不再依赖长期 token**。npm 侧的登记（仓库 `xia-sc/dsh-cc-studio`、workflow 文件名 `publish.yml`、Environment 留空、勾选 Allow npm publish）与 workflow 里的 `permissions: id-token: write`、「运行器 npm ≥ 11.5.1（Node 22 自带 10.x，故有升级步骤）」共同构成硬要求，缺一个就是 `ENEEDAUTH` / `401`。npm 包页因此带上 **Built and signed on GitHub Actions** 的 provenance 标记。
+- **新增 `.github/scripts/release-notes.mjs`**：从 `CHANGELOG.md` 抽该版本小节，生成 Release 的正文与标题（标题沿用 `vX.Y.Z — 短描述` 的既有习惯）。特意单列成文件而非内联进 workflow，是为了能本地验证这段解析；抽不到小节时给显式占位，而不是发一个看起来正常的空 Release。
+- **README 顶部加 npm 版本徽标**（中英各一处）；`AGENTS.md` §5 的发布规则改为「CI 为主、手动为备用」，并记下下面两条实测结论。
+
+### 说明（都是本机实测的）
+
+- **`npm publish --dry-run` 与 `npm pack` 都不做认证**：把 `_authToken` 换成假值，`--dry-run` 报的错一字不差（它的版本查重不需要凭据）。所以任何手动跑法都无法提前验证 OIDC —— 本次发布才是第一次真实验证。
+- **手动发布那条路会一直要求浏览器授权**：账号 2FA 是 `auth-and-writes`，`npm publish` 表现为 `PUT 401` → 浏览器授权 → `PUT 200`，属正常现象，不是出错。
+- 本仓库零依赖（`lib` 与 `tests` 只 import `node:*` 内置模块）且没有 `package-lock.json`，所以 CI 里刻意不跑 `npm ci`。
+
+### 生效方式
+
+- 插件运行时未变：`npm test` 151 项断言全绿，打包仍是 12 个文件（`tests/`、`dist/*.zip`、`.github/` 都不进包）。
+- 发版方式变了：见 `AGENTS.md` §5 的「发版三步」——① 同步版本四处 ② `git commit` ③ `git tag -a vX.Y.Z -m "…" && git push origin master --follow-tags`。
+
 ## 0.3.2
 
 **包名迁移 + 首次发布到 npm**：`@dsh-plugins/dsh-cc-studio` → `@xia-sc/dsh-cc-studio`。
