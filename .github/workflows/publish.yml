@@ -117,7 +117,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # 标题沿用本仓库既有习惯：`0.3.3 — 短描述`（不带 v 前缀，tag 本身仍是 v0.3.3）
           gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME — $(cat release-title.txt)" \
+            --title "${GITHUB_REF_NAME#v} — $(cat release-title.txt)" \
             --notes-file release-notes.md \
             --verify-tag
