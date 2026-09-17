@@ -244,10 +244,6 @@ dsh-cc-studio/
 ├── presets/cc/           # CC Mode preset template (co-creation persona + cc-studio-agent)
 │   ├── preset.yml
 │   └── agent.cordis.yml
-├── prototypes/           # pre-fusion A/B prototypes (open directly in a browser)
-│   ├── index.html
-│   ├── prototype-a.html  # light overlay
-│   └── prototype-b.html  # persistent sidebar
 ├── tests/
 │   └── rpc-channel.test.mjs  # host-half RPC channel regression (fake ctx + real http, 23 assertions)
 ├── CHANGELOG.md          # full version history (Chinese)
@@ -264,7 +260,6 @@ pnpm test                                  # = node tests/rpc-channel.test.mjs
 node tests/rpc-channel.test.mjs            # host-half RPC channel regression (23 assertions)
 ```
 
-- **Prototype preview** (open locally, no install needed): `prototypes/index.html` overview → `prototype-a.html` (light overlay) / `prototype-b.html` (persistent sidebar).
 - **Client changes**: `lib/client.js` only needs a page refresh; with `pnpm run dev:web` running from the dsh checkout it hot-updates.
 - **Host changes**: `lib/index.js` needs a dsh web restart (host rows are composed at startup).
 

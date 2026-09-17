@@ -245,10 +245,6 @@ dsh-cc-studio/
 ├── presets/cc/           # CC 模式预设模板（共创 persona + cc-studio-agent）
 │   ├── preset.yml
 │   └── agent.cordis.yml
-├── prototypes/           # A/B 融合前的对比原型（H5，浏览器直接打开）
-│   ├── index.html
-│   ├── prototype-a.html  # 轻量浮层
-│   └── prototype-b.html  # 侧边常驻
 ├── tests/
 │   └── rpc-channel.test.mjs  # host 半 RPC 通道回归（假 ctx + 真实 http，23 项断言）
 ├── CHANGELOG.md          # 完整版本历史
@@ -265,7 +261,6 @@ pnpm test                                  # = node tests/rpc-channel.test.mjs
 node tests/rpc-channel.test.mjs            # host 半 RPC 通道回归（23 项断言）
 ```
 
-- **原型预览**（本地直接打开，无需安装）：`prototypes/index.html` 总览 → `prototype-a.html`（轻量浮层）/ `prototype-b.html`（侧边常驻）对比。
 - **改客户端**：`lib/client.js` 改动刷新页面即可；跑着 dsh 仓库的 `pnpm run dev:web` 时可热更新。
 - **改宿主**：`lib/index.js` 改动需重启 dsh web（宿主行在启动时组合）。
 

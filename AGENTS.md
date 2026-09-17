@@ -16,7 +16,6 @@ lib/client.js   1536 行  ── 浏览器半：手写 bundle，胶囊(Capsule) 
 presets/cc/              ── CC 预设模板（挂载时自动安装到 <DSH_HOME>/.agent-presets/cc）
 cordis.patch.yml         ── 宿主组合补丁（insert 一个插件行）
 tests/*.test.mjs         ── 4 个测试文件、151 项断言；**不随包发布**
-prototypes/*.html        ── 交互原型草稿
 dist/*.zip               ── 历史发布包（按版本命名），不是构建产物，不要改
 .github/workflows/       ── CI：打 v* tag 自动发 npm（OIDC）+ 建 Release（正文抽自 CHANGELOG.md）
 .github/scripts/         ── release-notes.mjs：上面那个 Release 正文/标题的抽取脚本，可本地直接跑
@@ -132,7 +131,7 @@ dsh 的预设发现（`dsh-agent-presets` → `unresolvableRows`）会对**每�
 - **CC 模式探测**只有一份实现：`useCcPreset()`（`lib/client.js:913` 起）。判定优先级：**① 会话投影 `session.projectionValues.agentPreset` → ② 预设芯片 DOM（`button[aria-haspopup="menu"]`）→ ③ 主机 RPC**，新会话页另有 1s 本地轮询兜底。
   - 历史事故：读错过字段（`sess.preset / presetId / agentPreset / mode` 全都不存在），且 effect 依赖不变导致永不重跑 —— **切到 CC 模式要刷新才出胶囊**。别再写第二份探测，`tests/cc-detection.test.mjs` 里有源码级守卫。
 - 状态在 `store`（`createStore` + `subscribe/getSnapshot`）；设置存 `localStorage:dsh-cc-studio-settings`。
-- i18n：文件内 `zh` / `en` 两张表（**204 键**），`ctx.locale.register(NS, { zh, en })`，`t = ctx.locale.bind(NS)`。**UI 层不得出现中文字面量**（有守卫测试），新增文案必须同时进 `zh` 和 `en`，并保持 `{n}` 之类的占位符一致。
+- i18n：文件内 `zh` / `en` 两张表（**203 键**），`ctx.locale.register(NS, { zh, en })`，`t = ctx.locale.bind(NS)`。**UI 层不得出现中文字面量**（有守卫测试），新增文案必须同时进 `zh` 和 `en`，并保持 `{n}` 之类的占位符一致。
 
 ---
 
@@ -158,7 +157,7 @@ dsh 的预设发现（`dsh-agent-presets` → `unresolvableRows`）会对**每�
 
 - **改任何 bug 都要补回归测试**，并在 `CHANGELOG.md` 顶部写一条：**现象 → 根因 → 修法 → 生效方式**（重启 `dsh web` / 刷新页面 / 两者），这是本仓库既有的写法，照抄。
 - `package.json` 的 `version`、`README`/`README_EN` 里的「当前版本」、`CHANGELOG.md` 顶部小节三者同步。
-- `files` 决定发布内容（`lib` / `cordis.patch.yml` / `prototypes` / `presets`）；`tests/` **不进包**，所以测试可以随便依赖仓库内路径。`README.md` 与 `LICENSE` 由 npm 强制带上；`README_EN.md` **不在** `files` 里，因此不进包（npm 页面也只渲染 `README.md`）。
+- `files` 决定发布内容（`lib` / `cordis.patch.yml` / `presets`）；`tests/` **不进包**，所以测试可以随便依赖仓库内路径。`README.md` 与 `LICENSE` 由 npm 强制带上；`README_EN.md` **不在** `files` 里，因此不进包（npm 页面也只渲染 `README.md`）。
 - **发布走 CI（默认）**：`.github/workflows/publish.yml` —— 打 `v*` tag 即 `npm test` → `npm publish --provenance` → 发布成功后自动建 GitHub Release（正文与标题由 `.github/scripts/release-notes.mjs` 从 `CHANGELOG.md` 的该版本小节抽取，**所以 CHANGELOG 顶部小节必须先写好，否则 Release 正文会退化成显式占位**）。发版三步：① 同步版本四处（`package.json` / `README.md` / `README_EN.md` / `CHANGELOG.md`）② `git commit` ③ `git tag -a vX.Y.Z -m "…" && git push origin master --follow-tags`。
   - 版本守卫会在 `tag ≠ package.json 的 version` 时直接 fail（专拦「tag 是 v0.3.3、包里还是 0.3.2」这类手滑）。
   - 认证是 npm 的 OIDC trusted publishing，**没有任何密钥**。三个硬要求：job 级 `id-token: write`、运行器 npm ≥ 11.5.1（Node 22 自带 10.x，故 workflow 里有升级步骤）、npm 侧登记的 workflow 文件名必须与 `.github/workflows/publish.yml` 逐字符一致（Environment 留空、勾选 Allow npm publish）。报 `ENEEDAUTH`/`401` 基本都是这三条对不上。
@@ -167,7 +166,6 @@ dsh 的预设发现（`dsh-agent-presets` → `unresolvableRows`）会对**每�
   - **别指望手动跑法能验证 OIDC**：`npm publish --dry-run` 的版本查重与 `npm pack` 都**不做认证**（实测：把 token 换成假值，报错一字不差），所以第一次真实验证必然是下一个真版本打 tag。
 - 中文注释是本仓库的叙事传统（解释「为什么」，尤其是踩过的坑），保留和沿用，别把它们删掉换成英文。
 - 不要动 `dist/*.zip`；发布包是手工归档的历史版本。
-- 大改客户端 UI 前先看 `prototypes/` —— 交互原型是设计意图的所在地。
 
 ---
 
