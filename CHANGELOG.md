@@ -2,6 +2,32 @@
 
 `dsh-cc-studio` 的版本变更记录，倒序排列（最新在上）。README 只保留最近几条，完整历史在本文件。
 
+## 0.3.4
+
+**适配 dsh `0.1.6-alpha.2`**：实测宿主半 / 客户端半 / 预设半在该版本上均正常；同时修掉 CC 预设里两处「不报错、只是静默少能力」的漏抄，并补齐 alpha.2 新增行。
+
+### 变更
+
+- **修 CC 预设整行漏抄 `present`**：`@deepseek-ai/dsh-tool-present` 是内置 `standard` 一直有的行，本预设此前没抄进来 —— 后果不是报错，而是 CC 模式下模型没有「把成品登记为交付物」的工具，**能力静默缺失**。
+- **修 `tool-subagent`（spawn）行漏抄 `modelSelectionSettings: true`**：该键在 `dsh-tool-subagent` 里是 `z.boolean().default(false)`，漏掉既不报错也不改 schema，只是子代理的「指定模型」入口被静默关掉。fork 行**故意不加**（provider/model 必须等于父代理，继承的历史才能继续命中 KV cache）。
+- **补齐 alpha.2 新增的 `tool-plugin-manager` 行**（`disabled: true`，内置 `standard` 里本来就是关的）。抄过来只是为了「本预设 vs 内置 `standard`」的行差以后只剩有意为之的那处（`command-goal` 留在 host 面），下次升级 diff 时不必再逐个判断「这行是新加的、还是我们漏了」。`disabled` 行不参与健康检查（`dsh-agent-presets` 的 `unresolvableRows` 里 `if (Boolean(row.disabled)) continue`），所以抄它零风险。
+- **新增 7 项「预设行契约」守卫**（`tests/preset-install.test.mjs` 第 10 节，34 → 41 项）：钉住 `workflow-ptc` 行名、不得再出现 `workflow-worker-thread` 行、spawn 行的 `modelSelectionSettings`、fork 行不得有它、`present` 行、`tool-plugin-manager` 行，以及**「每个 `- id` 行都必须有 `name`」**。最后一条对应本仓库最贵的后果：预设里任何一行取不到包名或没有名字，整份预设被判 `broken`、CC 模式直接从 roster 消失，而不是「那一行不可用」。
+
+### 说明（都是本机实测的）
+
+- **alpha.1 → alpha.2，内置 `standard` 只多了一行**：从 npm 缓存里取出 `@deepseek-ai/dsh-agent-presets` 的 alpha.1 / alpha.2 两个 tarball 逐行 diff —— 只新增 `tool-plugin-manager`（disabled），没有任何改名或删除。`dsh` 自身则是把全部 `@deepseek-ai/*` 依赖整体抬到 alpha.2，并把 `cordis-plugin-hmr` 换成 `dsh-hmr`，新增 `dsh-plugin-manager` / `dsh-atomic-write` / 两个 agent-team profile 包。
+- **改完的模板用 alpha.2 自带的健康检查实跑过**：`discoverPresets`（`compositionProblem` 的形状检查 + `unresolvableRows` 的逐行解析）判定未 broken；行名集合与内置 `standard` 的差异只剩「+ 我们的 `cc-agent`」「− `command-goal`」。
+- **宿主半在 alpha.2 仍正常**：`GET/POST /dsh-cc-studio-rpc/ping` 得到 401，而 `/definitely-not-a-route-xyz` 得到 404（POST 405）。这个校准很关键 —— 说明没有全局鉴权围栏，那个 401 只能来自插件自己注册的 prefix 路由、且是它自己调 `connection.requestRejection` 的结果，即 0.2.22 的绕法在 alpha.2 上依然成立。
+- **客户端半在 alpha.2 仍正常**：直接在活页面上读 Slot 台账，`conversation.input.dock`（`dsh-cc-studio-pill`）/ `shell.overlay`（`dsh-cc-studio-overlay`）/ `settings.section`（`cc-studio`）三个挂载点都是 `active: true` 且 registrant 等于包名 —— 说明 `__ModuleLoader__.load({ id })` 的 id 匹配没有退化。
+- **预设半在 alpha.2 仍正常**：按 alpha.2 的 `tools.register`（要求 `output: { schema, render }`）与 `agents.currentInitiator()` 契约，在隔离 harness 里挂载 `lib/agent.js`：14 个 Tool 全部注册、形状合法，强制工作流跑到底 `cc_validate` = `valid: true`，15/15。
+- **旧装会被自动安全更新**（复刻本机现状实测）：已装目录里是旧模板、且记录哈希与之一致时，`installCcPreset` 判为「我们写的、用户没改」→ `status: updated`、无 `skipped` 告警、二次调用幂等 `current`。用户手改过的文件依旧跳过，「绝不覆盖用户改动」的不变量未动。
+
+### 生效方式
+
+- **改预设只在插件挂载时安装，所以改完必须重启 `dsh web`**。重启后插件会把 `<DSH_HOME>/.agent-presets/cc` 从旧模板安全升到新模板（本机现状正是「0.3.3 模板 + 相符记录」，走的就是这条路径）。
+- 预设行是**按会话挂载**的：重启后新开的 CC 会话才带得上 `present` 工具与子代理模型选择；已在跑的 CC 会话沿用挂载时的组合。
+- 宿主半与客户端半本次未改，无需硬刷新。`npm test` 由 151 项升到 158 项（`23 + 41 + 32 + 62`），全绿。
+
 ## 0.3.3
 
 **发布流程自动化**：打 `v*` tag 即由 GitHub Actions 发布到 npm，并自动建 GitHub Release。**插件运行时行为未变**（只有仓库级的 CI 与文档改动）。

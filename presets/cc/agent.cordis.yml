@@ -197,11 +197,16 @@
     - id: tool-subagent-list-agents
       name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
 
+    # 0.3.4 对齐 dsh 0.1.6-alpha.2 内置 standard：spawn 行此前漏抄 modelSelectionSettings。
+    # 该键在 dsh-tool-subagent 里是 `z.boolean().default(false)`，漏掉既不报错也不改 schema，
+    # 只是子代理的「指定模型」入口被静默关掉 —— 最难发现的那类漂移。
+    # fork 行故意不加：provider/model 必须等于父代理，继承的历史才能继续命中 KV cache。
     - id: tool-subagent
       name: '@deepseek-ai/dsh-tool-subagent'
       config:
         provider: spawn
         toolName: subagent
+        modelSelectionSettings: true
         backgroundMode: continuable
 
     - id: tool-subagent-fork
@@ -270,6 +275,21 @@
   config:
     fetch: false
     searchTimeoutMs: 60000
+
+# 0.3.4 补回：`present` 是 standard 一直有的行，本预设此前整行漏抄。
+# 症状很隐蔽 —— CC 模式下模型没有「把成品登记为交付物」的工具，不报任何错，只是少了能力。
+# 它和下面那行都必须与 dsh 内置 standard 逐行对得上（升级清单见 AGENTS.md §4）。
+- id: present
+  name: '@deepseek-ai/dsh-tool-present'
+
+# dsh 0.1.6-alpha.2 新增行：standard 里就是 disabled（默认关，需要的人自己放开）。
+# 抄过来是为了让「本预设 vs 内置 standard」的行差以后只剩有意为之的那几处，
+# 下次升级 diff 时不必再逐个判断「这行是新加的、还是我们漏抄了」。
+# 保留 disabled 也安全：健康检查 unresolvableRows 会跳过 disabled 行
+# （dsh-agent-presets lib/index.js:292 `if (Boolean(row.disabled)) continue;`）。
+- id: tool-plugin-manager
+  name: '@deepseek-ai/dsh-plugin-manager/tools'
+  disabled: true
 
 # ── CC 角色卡工坊（CC 模式专用） ───────────────────────────────────
 - id: cc-agent

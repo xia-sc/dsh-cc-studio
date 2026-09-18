@@ -184,6 +184,50 @@ const sha256Of = (s) => createHash('sha256').update(String(s), 'utf8').digest('h
   process.env.DSH_HOME = prev;
 }
 
+// —— 10) 预设模板行契约：与 dsh 内置 standard 的同步不许悄悄回退 ——
+//
+// 这一类漂移是本项目历史上最贵的 bug（0.3.1：`workflow-worker-thread` 下线后仍写在
+// 预设里，整份 CC 预设被判 broken、在 roster 里直接消失；0.3.4：`present` 整行漏抄与
+// `modelSelectionSettings` 漏抄，两者都不报错，只是静默少能力）。这里钉死的是「行必须
+// 存在且名字正确」这类不变量，纯读模板、不依赖本机装了哪个 dsh，所以 CI 上也能跑。
+// 至于「逐行 diff 内置 standard」，那是升级时要做的动作，见 AGENTS.md §4。
+{
+  const tpl = readFileSync(new URL('../presets/cc/agent.cordis.yml', import.meta.url), 'utf8');
+  const lines = tpl.split('\n');
+
+  // 取 `- id: X` 那一个整块（含其后缩进更深的行，遇到同级或更浅的缩进行即结束）
+  const blockOf = (id) => {
+    const start = lines.findIndex((l) => new RegExp(`^\\s*- id: ${id}$`).test(l));
+    if (start < 0) return '';
+    const indent = lines[start].search(/\S/);
+    let end = start + 1;
+    while (end < lines.length) {
+      const line = lines[end];
+      if (line.trim() !== '' && line.search(/\S/) <= indent) break;
+      end += 1;
+    }
+    return lines.slice(start, end).join('\n');
+  };
+
+  const idRows = lines.filter((l) => /^\s*- id: \S/.test(l));
+  const nameRows = lines.filter((l) => /^\s*name: \S/.test(l));
+  check('每个 - id 行都有 name（漏一个 name = 整份预设 broken）', idRows.length === nameRows.length && idRows.length > 0, `ids=${idRows.length} names=${nameRows.length}`);
+
+  const wf = blockOf('workflow-ptc');
+  check('workflow 行仍指向 dsh-workflow-ptc', /name:\s*'@deepseek-ai\/dsh-workflow-ptc'/.test(wf), (wf.split('\n')[1] || 'missing').trim());
+  check('没有已下线的 workflow-worker-thread 行（0.3.1 事故回归）', !/name:\s*'@deepseek-ai\/dsh-workflow-worker-thread'/.test(tpl), '');
+
+  const spawn = blockOf('tool-subagent');
+  check('tool-subagent（spawn）开了 modelSelectionSettings', /modelSelectionSettings:\s*true/.test(spawn), (spawn.split('\n')[0] || 'missing').trim());
+  const fork = blockOf('tool-subagent-fork');
+  check('tool-subagent-fork 不加 modelSelectionSettings（须与父代理同 provider/model）', fork !== '' && !/modelSelectionSettings/.test(fork), (fork.split('\n')[0] || 'missing').trim());
+
+  const present = blockOf('present');
+  check('present 行存在且指向 dsh-tool-present（0.3.4 补回）', /name:\s*'@deepseek-ai\/dsh-tool-present'/.test(present), (present.split('\n')[1] || 'missing').trim());
+  const pm = blockOf('tool-plugin-manager');
+  check('tool-plugin-manager 行存在且 disabled（alpha.2 新增，抄来只为行差干净）', /disabled:\s*true/.test(pm), (pm.split('\n')[1] || 'missing').trim());
+}
+
 // —— 清理 ——
 if (originalHome === undefined) delete process.env.HOME; else process.env.HOME = originalHome;
 if (originalUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = originalUserProfile;

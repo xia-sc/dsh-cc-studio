@@ -15,8 +15,8 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 | 项目 | 值 |
 | --- | --- |
 | 插件包名 | `@xia-sc/dsh-cc-studio` |
-| 当前版本 | `0.3.3` |
-| 宿主 RPC | `/dsh-cc-studio-rpc`（自带路由，适配 dsh ≥ `0.1.5-rc.1`；已在 `0.1.6-alpha.1` 实测） |
+| 当前版本 | `0.3.4` |
+| 宿主 RPC | `/dsh-cc-studio-rpc`（自带路由，适配 dsh ≥ `0.1.5-rc.1`；已在 `0.1.6-alpha.2` 实测） |
 | 客户端挂载点 | `conversation.input.dock`（胶囊）+ `shell.overlay`（工坊）+ `settings.section` |
 | 落盘位置 | `~/.dsh/cc-library/`（角色卡）、`~/.dsh/cc-drafts/`（会话草稿） |
 
@@ -28,7 +28,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
 
 # 锁定版本
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.3.3
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.3.4
 ```
 
 **或从 GitHub 源安装**：
@@ -245,8 +245,11 @@ dsh-cc-studio/
 ├── presets/cc/           # CC 模式预设模板（共创 persona + cc-studio-agent）
 │   ├── preset.yml
 │   └── agent.cordis.yml
-├── tests/
-│   └── rpc-channel.test.mjs  # host 半 RPC 通道回归（假 ctx + 真实 http，23 项断言）
+├── tests/                # 4 个测试文件、158 项断言（不随包发布）
+│   ├── rpc-channel.test.mjs       # host 半 RPC 通道回归（假 ctx + 真实 http，23 项断言）
+│   ├── preset-install.test.mjs    # 预设自动安装决策 + 预设行契约，41 项断言
+│   ├── cc-detection.test.mjs      # CC 模式探测的源码级守卫，32 项断言
+│   └── client-greetings.test.mjs  # 客户端问候语与 i18n 守卫，62 项断言
 ├── CHANGELOG.md          # 完整版本历史
 ├── README.md             # 中文（默认）
 └── README_EN.md          # English
@@ -257,8 +260,8 @@ dsh-cc-studio/
 ## 开发与测试
 
 ```bash
-pnpm test                                  # = node tests/rpc-channel.test.mjs
-node tests/rpc-channel.test.mjs            # host 半 RPC 通道回归（23 项断言）
+npm test                                   # 4 个文件、158 项断言（四个 node 脚本串联）
+node tests/rpc-channel.test.mjs            # 只跑 host 半 RPC 通道回归（23 项断言）
 ```
 
 - **改客户端**：`lib/client.js` 改动刷新页面即可；跑着 dsh 仓库的 `pnpm run dev:web` 时可热更新。
@@ -277,6 +280,7 @@ node tests/rpc-channel.test.mjs            # host 半 RPC 通道回归（23 项�
 
 完整历史见 [CHANGELOG.md](./CHANGELOG.md)。最近几版：
 
+- `0.3.4` 适配 dsh `0.1.6-alpha.2` 并补回两处预设漏抄：CC 预设缺 `present` 行（CC 模式下模型没有「登记交付物」的工具，且不报错）、`tool-subagent` 行缺 `modelSelectionSettings: true`（子代理的指定模型入口被静默关掉）；顺带补上 alpha.2 新增的 `tool-plugin-manager` 行（`disabled`，与内置 `standard` 对齐到只剩有意的行差）。新增 7 项预设行契约守卫。
 - `0.3.3` 发布流程自动化：打 `v*` tag 即由 GitHub Actions 发布到 npm（OIDC trusted publishing，零密钥）并自动建 GitHub Release；手动触发默认只做安全自检。插件运行时行为未变。
 - `0.3.2` 包名迁移至 `@xia-sc/dsh-cc-studio`（原 `@dsh-plugins` 不是本项目持有的 npm scope），并首次发布到 npm；新增 `publishConfig.access` / `prepublishOnly` 等发布元数据。
 - `0.3.1` 适配 dsh `0.1.6-alpha.1`：CC 预设里的 `workflow-worker-thread` 行换成 `workflow-ptc`，否则整份预设被判「加载失败」、CC 模式直接不可选。

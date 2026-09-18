@@ -15,8 +15,8 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 | Item | Value |
 | --- | --- |
 | Package | `@xia-sc/dsh-cc-studio` |
-| Version | `0.3.3` |
-| Host RPC | `/dsh-cc-studio-rpc` (self-owned route, works on dsh ≥ `0.1.5-rc.1`; verified on `0.1.6-alpha.1`) |
+| Version | `0.3.4` |
+| Host RPC | `/dsh-cc-studio-rpc` (self-owned route, works on dsh ≥ `0.1.5-rc.1`; verified on `0.1.6-alpha.2`) |
 | Client mounts | `conversation.input.dock` (capsule) + `shell.overlay` (workshop) + `settings.section` |
 | Persistence | `~/.dsh/cc-library/` (cards), `~/.dsh/cc-drafts/` (per-session drafts) |
 
@@ -28,7 +28,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
 
 # pin a version
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.3.3
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.3.4
 ```
 
 **Or from GitHub**:
@@ -244,8 +244,11 @@ dsh-cc-studio/
 ├── presets/cc/           # CC Mode preset template (co-creation persona + cc-studio-agent)
 │   ├── preset.yml
 │   └── agent.cordis.yml
-├── tests/
-│   └── rpc-channel.test.mjs  # host-half RPC channel regression (fake ctx + real http, 23 assertions)
+├── tests/                # 4 files, 158 assertions (not published with the package)
+│   ├── rpc-channel.test.mjs       # host-half RPC channel regression (fake ctx + real http, 23 assertions)
+│   ├── preset-install.test.mjs    # preset auto-install decisions + preset row contract, 41 assertions
+│   ├── cc-detection.test.mjs      # source-level guards for CC Mode detection, 32 assertions
+│   └── client-greetings.test.mjs  # client greeting / i18n guards, 62 assertions
 ├── CHANGELOG.md          # full version history (Chinese)
 ├── README.md             # Chinese (default)
 └── README_EN.md          # English
@@ -256,8 +259,8 @@ dsh-cc-studio/
 ## Development and tests
 
 ```bash
-pnpm test                                  # = node tests/rpc-channel.test.mjs
-node tests/rpc-channel.test.mjs            # host-half RPC channel regression (23 assertions)
+npm test                                   # 4 files, 158 assertions (four node scripts chained)
+node tests/rpc-channel.test.mjs            # only the host-half RPC channel regression (23 assertions)
 ```
 
 - **Client changes**: `lib/client.js` only needs a page refresh; with `pnpm run dev:web` running from the dsh checkout it hot-updates.
@@ -276,6 +279,7 @@ Light/dark via `var(--dsw-alias-*)` (`body[data-ds-dark-theme]`), primary stays 
 
 Full history lives in [CHANGELOG.md](./CHANGELOG.md) (Chinese). Latest:
 
+- `0.3.4` dsh `0.1.6-alpha.2` compatibility plus two preset omissions restored: the CC preset was missing the `present` row (so CC Mode's model had no "register a deliverable" tool, silently) and the `tool-subagent` row was missing `modelSelectionSettings: true` (silently disabling per-subagent model selection); also adds the `tool-plugin-manager` row dsh added in alpha.2 (`disabled`, so the preset now differs from the shipped `standard` only where intended). Adds 7 preset row-contract guards.
 - `0.3.3` Release automation: pushing a `v*` tag makes GitHub Actions publish to npm (OIDC trusted publishing, no secrets) and create the GitHub Release; a manual run only does a safe self-check. No runtime behaviour change.
 - `0.3.2` Renamed to `@xia-sc/dsh-cc-studio` (the former `@dsh-plugins` is not an npm scope this project owns, so it could not be published) and published to npm for the first time; adds `publishConfig.access` / `prepublishOnly` and other publishing metadata.
 - `0.3.1` dsh `0.1.6-alpha.1` compatibility: the CC preset's `workflow-worker-thread` row becomes `workflow-ptc`; otherwise the whole preset is marked broken and CC Mode becomes unselectable.

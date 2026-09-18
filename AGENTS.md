@@ -15,7 +15,7 @@ lib/agent.js     614 行  ── 预设半：CC 模式的 14 个 Tool（只随 C
 lib/client.js   1536 行  ── 浏览器半：手写 bundle，胶囊(Capsule) + 工坊(Workshop) + 设置页(SettingsView)
 presets/cc/              ── CC 预设模板（挂载时自动安装到 <DSH_HOME>/.agent-presets/cc）
 cordis.patch.yml         ── 宿主组合补丁（insert 一个插件行）
-tests/*.test.mjs         ── 4 个测试文件、151 项断言；**不随包发布**
+tests/*.test.mjs         ── 4 个测试文件、158 项断言；**不随包发布**
 dist/*.zip               ── 历史发布包（按版本命名），不是构建产物，不要改
 .github/workflows/       ── CI：打 v* tag 自动发 npm（OIDC）+ 建 Release（正文抽自 CHANGELOG.md）
 .github/scripts/         ── release-notes.mjs：上面那个 Release 正文/标题的抽取脚本，可本地直接跑
@@ -82,7 +82,7 @@ dsh 的预设发现（`dsh-agent-presets` → `unresolvableRows`）会对**每�
 `presets/cc/agent.cordis.yml` 是**照抄 dsh 内置 `standard` 预设再改**的，因此：
 
 - dsh 升级若改动了内置预设（改包名、加行、改配置 schema），这里**必须同步** —— 这是历史上最容易坏的地方，见下面第 4 条。
-- 新增行前确认目标 dsh 版本真的装了那个包；`disabled: !!js …` 的行会被健康检查跳过（`!!js` 是对象、truthy），但**不要**靠它遮掩一个已经不存在的包。
+- 新增行前确认目标 dsh 版本真的装了那个包。**任何 truthy 的 `disabled` 都会被健康检查跳过**（`unresolvableRows` 里 `if (Boolean(row.disabled)) continue`），所以 `disabled: true` 与 `disabled: !!js …` 一样不参与行解析 —— 0.3.4 敢把 alpha.2 新增的 `tool-plugin-manager`（`disabled: true`）抄进来就是靠这条；但**不要**靠 `disabled` 遮掩一个已经不存在的包。
 - 预设里 `cordis:group` / `isolate` 的用法有解释性注释，别删。
 
 ### 2.5 预设自动安装：绝不静默覆盖用户改动
@@ -141,8 +141,11 @@ dsh 的预设发现（`dsh-agent-presets` → `unresolvableRows`）会对**每�
 | --- | --- | --- |
 | `0.1.5-rc.1` / `0.1.5-rc.2` | 正常 | 见 CHANGELOG 0.2.22 |
 | `0.1.6-alpha.1` | 正常（0.3.1 起） | 预设行 `workflow-worker-thread` → `workflow-ptc`，否则预设整体被判 broken |
+| `0.1.6-alpha.2` | 正常（0.3.4 起） | 内置 `standard` 相比 alpha.1 只多一行 `tool-plugin-manager`（`disabled`）。0.3.4 补回 `present` 行与 spawn 行的 `modelSelectionSettings: true` |
 
-已实测对齐的接口（0.1.6-alpha.1）：`webServer.register`、connection RPC 线协议、`conversation.input.dock` / `shell.overlay` / `settings.section` 三个 slot、`ctx.locale.bind/translate`、`agents.currentInitiator/get`、`tools.register`。
+已实测对齐的接口（0.1.6-alpha.2）：`webServer.register`、connection RPC 线协议 + `connection.requestRejection`、`conversation.input.dock` / `shell.overlay` / `settings.section` 三个 slot、`ctx.locale.bind/translate`、`agents.currentInitiator/get`、`tools.register`（要求 `output: { schema, render }`，且只对 `output.schema` 做 JSON-Schema 子集断言 —— `parameters` 不查子集，`minItems`/`maxItems` 不会抛）。
+
+**实测手法（可复用）**：宿主半靠「未知路径 404/405 vs 插件路由 401」校准（证明路由确实注册、且围栏是插件自己调的）；客户端半用 Client Inspect 读活页面的 Slot 台账，看三个挂载点是否 `active: true` 且 registrant 等于包名；预设半按 `tools.register` 契约在隔离 harness 里挂 `lib/agent.js`；预设健康度直接调 alpha.2 自带的 `discoverPresets`（`compositionProblem` + `unresolvableRows`）。
 
 **新增/升级 dsh 版本时的清单**：
 
@@ -172,7 +175,7 @@ dsh 的预设发现（`dsh-agent-presets` → `unresolvableRows`）会对**每�
 ## 6. 本地验证
 
 ```bash
-npm test          # 4 个文件：23 + 34 + 32 + 62 = 151 项断言，全绿才算过
+npm test          # 4 个文件：23 + 41 + 32 + 62 = 158 项断言，全绿才算过
 ```
 
 测试只跑纯函数与源码级守卫（不启动 dsh、不写真实用户目录），所以**还需要手工验证**：
@@ -214,5 +217,5 @@ npm test          # 4 个文件：23 + 34 + 32 + 62 = 151 项断言，全绿才�
 - **One bad row breaks the whole preset.** dsh's preset health check rejects a preset if any started row names a package that cannot be resolved, making CC mode unselectable. Keep `presets/cc/agent.cordis.yml` in sync with the target dsh's shipped `standard` preset.
 - **Never overwrite user files** when auto-installing the preset; the `planPresetInstall` invariants are pinned by tests.
 - **Isolate `DSH_HOME`, `HOME`, and `USERPROFILE`** in any test that triggers `apply()`.
-- **Tests:** `npm test` — 4 files, 151 assertions, all green. Every bug fix needs a regression test plus a `CHANGELOG.md` entry (symptom → root cause → fix → how it takes effect).
-- **dsh compatibility:** verified on `0.1.5-rc.1/rc.2` and `0.1.6-alpha.1`. When bumping, diff the dsh packages this plugin lives on, then re-check the preset against the shipped `standard` preset.
+- **Tests:** `npm test` — 4 files, 158 assertions, all green. Every bug fix needs a regression test plus a `CHANGELOG.md` entry (symptom → root cause → fix → how it takes effect).
+- **dsh compatibility:** verified on `0.1.5-rc.1/rc.2`, `0.1.6-alpha.1`, and `0.1.6-alpha.2`. When bumping, diff the dsh packages this plugin lives on, then re-check the preset against the shipped `standard` preset.
