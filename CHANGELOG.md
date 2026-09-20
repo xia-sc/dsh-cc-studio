@@ -2,6 +2,43 @@
 
 `dsh-cc-studio` 的版本变更记录，倒序排列（最新在上）。README 只保留最近几条，完整历史在本文件。
 
+## 0.3.5
+
+**修 #5 草稿槽错位（前端读到 default、Tools 写会话槽）**：已落盘的会话草稿在工坊里显示成空壳、胶囊跟着一闪一闪。数据其实一直在盘上，只是**两边算出了两把 key**。
+
+### 现象（issue #5）
+
+- 同一条对话里，模型经 `cc_get_card` 读到的草稿是满的（`name` 有值、四件套齐全、`draftStatus.key = session-<会话id>`），`~/.dsh/cc-drafts/` 里对应的文件也在；**但工坊画出来的是另一份**：`name: ""`、`entries: []`、`creation_date` 更早，还挂着「当前会话是全新空白草稿」的提示。
+- 胶囊点不出来/点了是空的：选中 CC 模式后胶囊**短暂出现又消失**（不是点了 ×，也不是一直不出现），刷新页面可复现。
+- 用户的第一反应只能是「草稿丢了」。
+
+### 根因（三个，都在客户端半；宿主半只是被动接受了一把错的 key）
+
+1. **会话 id 读的是不存在的字段**。`useCcPreset` 用 `useSessions(s => s.current)` 当「当前会话」，而 dsh `0.1.6-alpha.2` 的 `SessionListState` 只有 `ids` / `byId` / `phase`（`dsh-api-session-controller` 的 `sessions/service.d.ts`）——**没有 `current`**，所以它恒为 `null`：「会话投影 = 权威」这条路径从来没生效过，`currentId` 一路退化成 `props.session`（整个 `SessionSnapshot` 对象）。
+2. **那把错的 key 就是这么来的**。`apply()` 里先 `pullDraftThrottled(null)` 占了 500ms 的全局节流坑，会话就绪后 `_pullDraft(currentId)` 的第一次正式拉取被直接吞掉 → `store.currentSessionId` 永远是 `null` → 4s 轮询每次都拿 `null` 去拉。主机侧 `draftKeyFrom` 在 HTTP 处理函数里 `agents.currentInitiator()` 恒为空（没有 agent 上下文），于是回退成 `default`；就算 `currentId` 是那个 `SessionSnapshot` 对象，`typeof args.sessionId !== "string"` 也会把它当「没传」丢掉。**结果：模型写 `session-<id>`、工坊读 `default`，两槽并存互相看不见。**
+3. **胶囊闪退是两个 `useCcPreset` 实例抢同一个 store**。`Capsule`（`conversation.input.dock`，session 域，能拿到会话 id）与 `Workshop`（`shell.overlay`，**根域，拿不到会话 id 也看不到预设芯片** —— 运行中会话的预设标签渲染成 `<span>`）共用一份 `store`。根域实例的 1s DOM 轮询每次 `evaluate()`，旧 `decideCcMode` 在 `!hasSession` 时返回 `false`，把会话域实例刚判定为 `true` 的 `isCcMode` 清掉 → 胶囊卸载，下一次会话域实例再装回来 = 一闪一闪。
+
+### 修法
+
+- **会话 id 只有一个取法**：新增 `ccSessionIdOfProps(props)`，按 `props.sessionId`（session 域标准属性）→ `props.session.sessionId`（`conversation.input.dock` 的 ownerProps `SessionSnapshot`）→ `props.sessionId` 是对象时读它的 `.sessionId` 依次取；**不再读 `useSessions().current`**。取到就 `store.setSessionId()` 发布出去 —— 这是全局唯一一份「当前会话 → 草稿槽」的映射，根域实例与草稿轮询都读它。会话投影也改用这个 id 去 `byId` 里查（旧代码用不存在的 `s.current` 当下标）。
+- **拉草稿必须带 key**：没有会话 id 就一次都不发（`pullDraft` 里 `if(!key) return`），并删掉启动时那次 `pullDraftThrottled(null)`；节流从「全局时间戳」改成**按 key**，会话就绪后的第一次正式拉取不会再被吞掉；轮询在 `currentSessionId` 未知时直接 return，不拿 `default` 顶替。**宁可什么都不画，也不画错槽。**
+- **错位可见、可救回**：`cc_getDraft` 回传 `keySource`（`arg` / `arg-snapshot` / `initiator` / `fallback`）；前端把主机回的 `key` 与点名的 key 比对，不一致时**不渲染**该草稿，只在胶囊/工坊上打一条告警（另外切会话期间回来的过期响应也一并丢弃）。新增 `cc_migrateDraft` 端点与 `draftContentSummary` / `migrateDraftDecision` 纯决策函数：当前槽是空壳时，主机顺带回传 `alternateSlots`（**只在「错位真正会牵涉到的另一把槽」里找**：当前是会话槽就看 `default`，当前是 `default` 就看各会话槽；其它会话的槽不参与，免得每开一个新会话都弹横幅），工坊上给一个「迁入本会话槽」的按钮，**不静默覆盖**非空目标（要 `overwrite: true`），迁过一次就不再重复提示。
+- **胶囊不再被暂态判定卸载**：`decideCcMode` 的 `!hasSession` 分支改为「只保持、不下否的结论」（`prevIsCc ? true : false`），并且根域实例（`!ownId && !currentId`）**只允许把结论改成「是」**，写 `false` 的权限留给真正有会话上下文的实例或 RPC。
+
+### 测试
+
+`npm test` 158 → **216** 项（`45 + 41 + 50 + 62 + 18`，多了第 5 个测试文件），全绿。新增/加强：
+
+- **新增 `tests/draft-slot-sync.test.mjs`（18 项，行为级而非源码级）**：把 `lib/client.js` 真的装进「假 React + 假 slot + 假 RPC」的 harness 里跑起来，直接断言「发了哪些请求、渲染了什么状态」。对着 0.3.4 的 `lib/client.js` 跑，18 项里前 10 项全红，失败详情正是 issue #5 的原样复现：`cc_getDraft` 带 `{"args":{}}`（回退 `default` 槽）、根域实例把 `isCcMode` 写成 `false`（胶囊闪退）、`store.currentSessionId` 恒为 `null`、主机明明回了满草稿而 store 里 `name` 仍是空。断言覆盖：启动后一次 keyless 拉取都不许发、根域实例（无会话上下文）不得把 CC 状态清成 false、会话域实例从 `props.sessionId` 取 key 并发布到 store、主机回的 `key` 不一致时**不渲染只告警**、空壳会话槽的候选只含 `default`、一键迁入的请求体、迁过一次就不再提示（`localStorage` 标记）、切会话后回来的过期响应被丢弃。
+- `tests/rpc-channel.test.mjs`（23 → 45）：`draftKeyPartsFrom` 四条路径（字符串 / 会话快照对象 / 无 id 回退 `default` 且 `source` 可见 / initiator）、端到端「同 `sessionId` 写读同槽、不带 `sessionId` 是另一把槽」、空壳槽的候选只含 `default`、别的会话的槽不出现在候选里、`cc_migrateDraft` 四种结果（成功 / `target-not-empty` / `empty-source` / `same-slot`），以及 `migrateDraftDecision` + `draftContentSummary` 的纯函数边界（空壳源、只有 lore 没 name、深拷贝）。
+- `tests/cc-detection.test.mjs`（32 → 50）：判定表新增「无会话 + 芯片非 CC + 上次是 CC → 保持 true」（这条旧断言编码的正是闪退行为，已改写并注明原因）、`ccSessionIdOfProps` 六种入参，以及 7 条源码级守卫：不再用 `useSessions(s=>s.current)`、`pullDraft` 没 key 就不发、启动不再初始拉 `default`、轮询在会话 id 未知时不拿 `default` 顶替、节流按 key、主机 key 不一致不渲染、根域实例无权下否的结论。
+
+### 生效方式
+
+- **宿主半与客户端半都改了：重启 `dsh web` + 硬刷新页面**（`lib/client.js` 内容变了，`/plugins/??…&rev=` 的 rev 随之改变）。
+- **已经踩过这个 bug 的安装不用手动搬文件**：升级后打开任意一个空壳的 CC 会话，工坊顶部会出现「发现另一份已落盘草稿：…（槽 `default`）」+ 一键迁入按钮 —— 旧版前端在拿不到会话 id 时正是把用户的编辑写进 `default` 的，点一下就能捞回来。
+- 诊断口径也变了：DevTools 里看一次 `cc_getDraft` 的 `res.value.key`，正常应等于 `~/.dsh/cc-drafts/` 里那个文件名去掉 `-<hash>.json` 的部分；`keySource: "fallback"` 表示主机没拿到会话 id（这时前端不会渲染该槽）。
+
 ## 0.3.4
 
 **适配 dsh `0.1.6-alpha.2`**：实测宿主半 / 客户端半 / 预设半在该版本上均正常；同时修掉 CC 预设里两处「不报错、只是静默少能力」的漏抄，并补齐 alpha.2 新增行。

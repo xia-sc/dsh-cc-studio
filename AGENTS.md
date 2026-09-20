@@ -10,12 +10,12 @@
 ## 1. 仓库结构
 
 ```
-lib/index.js     944 行  ── 宿主半：RPC 端点 + 草稿落盘 + 角色库 + PNG/CHARX + 预设自动安装
-lib/agent.js     614 行  ── 预设半：CC 模式的 14 个 Tool（只随 CC 预设挂载）
-lib/client.js   1536 行  ── 浏览器半：手写 bundle，胶囊(Capsule) + 工坊(Workshop) + 设置页(SettingsView)
+lib/index.js    1041 行 ── 宿主半：RPC 端点 + 草稿落盘 + 角色库 + PNG/CHARX + 预设自动安装
+lib/agent.js     614 行 ── 预设半：CC 模式的 14 个 Tool（只随 CC 预设挂载）
+lib/client.js   1662 行 ── 浏览器半：手写 bundle，胶囊(Capsule) + 工坊(Workshop) + 设置页(SettingsView)
 presets/cc/              ── CC 预设模板（挂载时自动安装到 <DSH_HOME>/.agent-presets/cc）
 cordis.patch.yml         ── 宿主组合补丁（insert 一个插件行）
-tests/*.test.mjs         ── 4 个测试文件、158 项断言；**不随包发布**
+tests/*.test.mjs         ── 5 个测试文件、216 项断言；**不随包发布**
 dist/*.zip               ── 历史发布包（按版本命名），不是构建产物，不要改
 .github/workflows/       ── CI：打 v* tag 自动发 npm（OIDC）+ 建 Release（正文抽自 CHANGELOG.md）
 .github/scripts/         ── release-notes.mjs：上面那个 Release 正文/标题的抽取脚本，可本地直接跑
@@ -110,8 +110,10 @@ dsh 的预设发现（`dsh-agent-presets` → `unresolvableRows`）会对**每�
 
 ### 3.1 `lib/index.js`（宿主）
 
-- **RPC 端点**：`validate` / `ping` / `cc_isCcMode` / `cc_getDraft` / `cc_setDraft` / `cc_patchDraft` / `cc_validateDraft` / `cc_listLibrary` / `cc_saveToLibrary` / `cc_loadFromLibrary` / `cc_deleteFromLibrary` / `cc_renameInLibrary` / `cc_getLibraryEntry` / `cc_importFromPng` / `cc_exportPng` / `cc_importFromCharx` / `cc_exportCharx`。未知端点返回 **200 + 失败帧**（`details.code = "unknown-endpoint"`），不是 404。
-- **草稿持久化**：`<DSH_HOME>/cc-drafts/<session>.json`，变更即落盘（内存 miss 时**不静默建空**，会告警并提示恢复）。
+- **RPC 端点**：`validate` / `ping` / `cc_isCcMode` / `cc_getDraft` / `cc_setDraft` / `cc_patchDraft` / `cc_validateDraft` / `cc_migrateDraft` / `cc_listLibrary` / `cc_saveToLibrary` / `cc_loadFromLibrary` / `cc_deleteFromLibrary` / `cc_renameInLibrary` / `cc_getLibraryEntry` / `cc_importFromPng` / `cc_exportPng` / `cc_importFromCharx` / `cc_exportCharx`。未知端点返回 **200 + 失败帧**（`details.code = "unknown-endpoint"`），不是 404。
+- **草稿槽 key 的不变量**（issue #5 的教训）：同一会话里 **Tools 与浏览器必须算出同一把 key**。Tools 侧是 `exec.agent.session.id`；浏览器侧**必须显式把会话 id 传进来** —— RPC 是 HTTP 处理函数，`agents.currentInitiator()` 在那里恒为空，`draftKeyPartsFrom` 会回退成 `"default"`，于是「模型写 `session-<id>`、工坊读 `default`」两槽并存。回退时 `source` 会如实报成 `fallback`（`keySource` 字段），前端据此**不渲染**该槽并告警。新增读写草稿的端点时，一律走 `draftKeyFrom(ctx, args)`，别自己拼 key。
+- **草稿持久化**：`<DSH_HOME>/cc-drafts/<session>.json`，变更即落盘（内存 miss 时**不静默建空**，会告警并提示恢复）。文件名是 `safe(key)-<hash>.json`，`listDraftSlotsOnDisk()` 能把盘上的槽列回来（按写入时间倒序），用于「当前槽是空壳」时的救回提示。
+- **草稿槽迁移**：`cc_migrateDraft({ from, to?, overwrite? })` + 纯决策函数 `migrateDraftDecision`。目标槽非空时必须显式 `overwrite: true`（**绝不静默覆盖**，与 2.5 同一条家规）；候选槽只报「错位真正会牵涉到的另一把」（当前是会话槽看 `default`，当前是 `default` 看会话槽），别把所有会话的槽都端给用户当噪音。
 - **角色库**：`<DSH_HOME>/cc-library/<id>.json`。
 - **容器互通**：PNG 的 `tEXt` `ccv3` 块（自带 CRC32/deflate）、CHARX（ZIP + `card.json`）。
 - **预设安装**：见 2.5。
@@ -128,10 +130,13 @@ dsh 的预设发现（`dsh-agent-presets` → `unresolvableRows`）会对**每�
   - `conversation.input.dock` → `Capsule`（会话域；CC 模式下常驻）
   - `shell.overlay` → `Workshop`（根域；全屏/侧边工坊）
   - `settings.section` → `SettingsView`（设置页「角色卡工坊」）
-- **CC 模式探测**只有一份实现：`useCcPreset()`（`lib/client.js:913` 起）。判定优先级：**① 会话投影 `session.projectionValues.agentPreset` → ② 预设芯片 DOM（`button[aria-haspopup="menu"]`）→ ③ 主机 RPC**，新会话页另有 1s 本地轮询兜底。
+- **CC 模式探测**只有一份实现：`useCcPreset()`。判定优先级：**① 会话投影（用 `ccSessionIdOfProps(props)` 取到的会话 id 去 `useSessions().byId[id]` 里查 `projectionValues.agentPreset`）→ ② 预设芯片 DOM（`button[aria-haspopup="menu"]`）→ ③ 主机 RPC**，新会话页另有 1s 本地轮询兜底。
   - 历史事故：读错过字段（`sess.preset / presetId / agentPreset / mode` 全都不存在），且 effect 依赖不变导致永不重跑 —— **切到 CC 模式要刷新才出胶囊**。别再写第二份探测，`tests/cc-detection.test.mjs` 里有源码级守卫。
+  - **`SessionListState` 没有 `current` 字段**（alpha.2 只有 `ids` / `byId` / `phase`）。曾经用它当「当前会话」，恒为 `null` → 投影权威失效、`currentId` 退化成整个 `SessionSnapshot` 对象（issue #5）。会话 id 只能从 slot props 取：`props.sessionId`（session 域标准属性）→ `props.session.sessionId`（`conversation.input.dock` 的 ownerProps）→ 对象兜底。
+  - **两个挂载点共用一份 `store`**：`Capsule` 在会话域（有会话 id），`Workshop` 在根域（`shell.overlay`，**拿不到会话 id**）。根域实例只准把结论改成「是」，不准写 `false` —— 否则它每秒的 `evaluate()` 会把会话域实例刚判定的 CC 状态清掉，胶囊就一闪一闪。会话 id 由会话域实例 `store.setSessionId()` 发布给全体。
+  - **草稿槽 key 只能来自这个会话 id**：`pullDraft` 没有 key 就一次都不发（不许拿 `default` 顶替），节流按 key、切会话后回来的响应丢弃、主机回的 `key` 与点名的 key 不一致时不渲染只告警。`default` 槽只是「没有会话上下文」时的回退，**不是**当前会话的草稿。
 - 状态在 `store`（`createStore` + `subscribe/getSnapshot`）；设置存 `localStorage:dsh-cc-studio-settings`。
-- i18n：文件内 `zh` / `en` 两张表（**203 键**），`ctx.locale.register(NS, { zh, en })`，`t = ctx.locale.bind(NS)`。**UI 层不得出现中文字面量**（有守卫测试），新增文案必须同时进 `zh` 和 `en`，并保持 `{n}` 之类的占位符一致。
+- i18n：文件内 `zh` / `en` 两张表（**209 键**），`ctx.locale.register(NS, { zh, en })`，`t = ctx.locale.bind(NS)`。**UI 层不得出现中文字面量**（有守卫测试），新增文案必须同时进 `zh` 和 `en`，并保持 `{n}` 之类的占位符一致。
 
 ---
 
@@ -175,7 +180,7 @@ dsh 的预设发现（`dsh-agent-presets` → `unresolvableRows`）会对**每�
 ## 6. 本地验证
 
 ```bash
-npm test          # 4 个文件：23 + 41 + 32 + 62 = 158 项断言，全绿才算过
+npm test          # 5 个文件：45 + 41 + 50 + 62 + 18 = 216 项断言，全绿才算过
 ```
 
 测试只跑纯函数与源码级守卫（不启动 dsh、不写真实用户目录），所以**还需要手工验证**：
@@ -205,6 +210,7 @@ npm test          # 4 个文件：23 + 41 + 32 + 62 = 158 项断言，全绿才�
 7. **UI 层写死中文** → 切到 English 仍显示中文；必须进 `zh`/`en` 词表。
 8. **大框「取消」与「完成」是同一个动作** → 输入即同步，取消必须携带打开时的快照真回滚。
 9. **改名后没重装 → 客户端报 `Failed to load plugins: web boot: 1 entry did not activate`**（0.3.2 换 scope 时真踩过）：profile 里的安装身份（`dsh.profile.bundles` 那一行 + `dependencies` 里的 `link:`）还是旧名，而包内 `package.json` / `lib/client.js` 已改名，客户端资源就解析不上——宿主照样起，只有浏览器那一半挂。判断只需一眼：`~/.dsh/profiles/web/node_modules/<scope>/` 的目录名是否等于 `package.json` 的 `name`。修法：按新名重装（`dsh plugin --profile web add <路径或包名>`）→ 重启 `dsh web` → **硬刷新**（旧页面的引导图是缓存的，普通刷新会复现同一句错）。宿主侧那条 RPC 路由也会一起消失，探测 `/dsh-cc-studio-rpc/ping` 返回 401（而非 404/405）可反推它确实被挂载了。
+10. **草稿「看着丢了」先怀疑 key 不一致，而不是数据丢了**（issue #5，`useSessions().current` 不存在 + 无 key 拉 `default` + 全局节流吞掉正式拉取，三件事叠加）：症状是模型说写好了、工坊是空壳，`~/.dsh/cc-drafts/` 里却有内容。取证只要一眼 `cc_getDraft` 的 `res.value.key` 与文件名（去掉 `-<hash>.json`）是否一致；`keySource: "fallback"` 就是主机没拿到会话 id 的信号。**别加第二条「顺手兜底成 default」的路径**，那正是这个 bug 的成因。
 
 ---
 
@@ -217,5 +223,6 @@ npm test          # 4 个文件：23 + 41 + 32 + 62 = 158 项断言，全绿才�
 - **One bad row breaks the whole preset.** dsh's preset health check rejects a preset if any started row names a package that cannot be resolved, making CC mode unselectable. Keep `presets/cc/agent.cordis.yml` in sync with the target dsh's shipped `standard` preset.
 - **Never overwrite user files** when auto-installing the preset; the `planPresetInstall` invariants are pinned by tests.
 - **Isolate `DSH_HOME`, `HOME`, and `USERPROFILE`** in any test that triggers `apply()`.
-- **Tests:** `npm test` — 4 files, 158 assertions, all green. Every bug fix needs a regression test plus a `CHANGELOG.md` entry (symptom → root cause → fix → how it takes effect).
+- **Tests:** `npm test` — 5 files, 216 assertions, all green. Every bug fix needs a regression test plus a `CHANGELOG.md` entry (symptom → root cause → fix → how it takes effect). `tests/draft-slot-sync.test.mjs` boots `lib/client.js` inside a fake React/slot/RPC harness, so client-half plumbing can be asserted behaviourally instead of only by source regex.
+- **Draft-slot key invariant:** the browser must pass the session id explicitly; a host-side fallback to the `default` slot means "the caller had no session context", and the client refuses to render that slot instead of painting it. `SessionListState` has no `current` field — read the session id from slot props (`props.sessionId`, `props.session.sessionId`). Two slot instances (Capsule in session scope, Workshop in root scope) share one store, so a root-scope instance may never write a `false` CC verdict.
 - **dsh compatibility:** verified on `0.1.5-rc.1/rc.2`, `0.1.6-alpha.1`, and `0.1.6-alpha.2`. When bumping, diff the dsh packages this plugin lives on, then re-check the preset against the shipped `standard` preset.

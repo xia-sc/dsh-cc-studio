@@ -208,6 +208,115 @@ async function post(path, body, { contentType = 'application/json', method = 'PO
   check('含中文 body 正常解析', r.json && r.json.rpcId === 'rid-utf8' && r.json.result.ok === true, JSON.stringify(r.json && r.json.result));
 }
 
+// 14) issue #5：草稿槽 key 的解析（Tools 与前端必须落在同一把 key 上）
+{
+  // post() 返回的是 { status, text, json } 包装，这里取「成功帧的 value」
+  const result = (v) => (v && v.json && v.json.result && v.json.result.ok) ? v.json.result.value : null;
+
+  // 14a) 纯函数：明确传 sessionId
+  const partsArg = host.draftKeyPartsFrom(fakeCtx, { sessionId: 'session-abc' });
+  check('sessionId 是字符串 → 直接用它，source=arg',
+    partsArg.key === 'session-abc' && partsArg.source === 'arg', JSON.stringify(partsArg));
+
+  // 14b) 旧前端可能把整个会话快照对象传进来（SessionSnapshot 的 id 在 .sessionId 上）：
+  //      既不能当「没传」丢弃（会落到 default 槽），也不能 String() 成 "[object Object]"
+  const partsSnap = host.draftKeyPartsFrom(fakeCtx, { sessionId: { sessionId: 'session-snap', running: true } });
+  check('sessionId 是会话快照对象 → 认它的 .sessionId，source=arg-snapshot',
+    partsSnap.key === 'session-snap' && partsSnap.source === 'arg-snapshot', JSON.stringify(partsSnap));
+
+  // 14c) 拿不到会话 id 时回退 default，但 source 必须如实报出来（前端据此告警而不是静默建空槽）
+  const partsNone = host.draftKeyPartsFrom(fakeCtx, {});
+  check('没有会话 id → default/fallback（且 source 可见）',
+    partsNone.key === 'default' && partsNone.source === 'fallback', JSON.stringify(partsNone));
+
+  // 14d) 有 agent 上下文（Tools 侧路径）时用 initiator 的会话 id
+  const ctxWithAgent = { get: (n) => n === 'agents' ? { currentInitiator: () => ({ session: { id: 'session-from-agent' } }) } : undefined };
+  const partsInit = host.draftKeyPartsFrom(ctxWithAgent, {});
+  check('有 currentInitiator → 用它的会话 id，source=initiator',
+    partsInit.key === 'session-from-agent' && partsInit.source === 'initiator', JSON.stringify(partsInit));
+
+  // 14e) 端到端：同一会话的读写必须落在同一把 key
+  const card = (name) => ({ spec: 'chara_card_v3', spec_version: '3.0',
+    data: { name, group_only_greetings: [], character_book: { entries: [] }, assets: [{ type: 'icon', uri: 'ccdefault:', name: 'main', ext: 'png' }] } });
+  const sid = 'session-e2e-issue5';
+  const w = await post('/dsh-cc-studio-rpc/cc_setDraft', JSON.stringify({ type: 'client-request', rpcId: 'r14e-w', method: 'cc_setDraft', payload: { args: { sessionId: sid, draft: card('E2E 满草稿') } } }));
+  check('显式 sessionId 写入 session-<id> 槽', result(w) && result(w).key === sid, JSON.stringify(w.json && w.json.result));
+
+  const g1 = await post('/dsh-cc-studio-rpc/cc_getDraft', JSON.stringify({ type: 'client-request', rpcId: 'r14e-g1', method: 'cc_getDraft', payload: { args: { sessionId: sid } } }));
+  check('同一 sessionId 读回内容（写入没丢）',
+    result(g1) && result(g1).key === sid && result(g1).draft.data.name === 'E2E 满草稿' && result(g1).keySource === 'arg',
+    JSON.stringify(result(g1) && { key: result(g1).key, name: result(g1).draft.data.name, keySource: result(g1).keySource }));
+
+  const g2 = await post('/dsh-cc-studio-rpc/cc_getDraft', JSON.stringify({ type: 'client-request', rpcId: 'r14e-g2', method: 'cc_getDraft', payload: { args: {} } }));
+  check('不带 sessionId 时是另一把槽（default），不会把会话槽的内容当成 default —— 这正是 issue #5 的两槽并存',
+    result(g2) && result(g2).key === 'default' && result(g2).draft.data.name !== 'E2E 满草稿',
+    JSON.stringify(result(g2) && { key: result(g2).key, name: result(g2).draft.data.name }));
+
+  // 14f) 救回入口：模拟「旧版前端读写 default、模型写会话槽」留下的错位。
+  //      先把 default 槽写成有内容的（旧版前端在拿不到会话 id 时就是这么写的）
+  const legacy = '旧版遗留草稿';
+  const wd = await post('/dsh-cc-studio-rpc/cc_setDraft', JSON.stringify({ type: 'client-request', rpcId: 'r14f-wd', method: 'cc_setDraft', payload: { args: { draft: card(legacy) } } }));
+  check('不带 sessionId 写入落在 default 槽', result(wd) && result(wd).key === 'default', JSON.stringify(result(wd) && { key: result(wd).key }));
+
+  const fresh = 'session-fresh-issue5';
+  const g3 = await post('/dsh-cc-studio-rpc/cc_getDraft', JSON.stringify({ type: 'client-request', rpcId: 'r14e-g3', method: 'cc_getDraft', payload: { args: { sessionId: fresh } } }));
+  const alts = (result(g3) && result(g3).alternateSlots) || [];
+  check('新会话槽是空壳时，只把「旧版 default 槽」列为可迁入候选（不噪音式列其它会话）',
+    result(g3) && result(g3).draftStatus.isNew === true &&
+    alts.length === 1 && alts[0].key === 'default' && alts[0].hasContent === true && alts[0].name === legacy,
+    JSON.stringify(alts));
+
+  const sid2 = 'session-unrelated-issue5';
+  const g4 = await post('/dsh-cc-studio-rpc/cc_getDraft', JSON.stringify({ type: 'client-request', rpcId: 'r14e-g4', method: 'cc_getDraft', payload: { args: { sessionId: sid2 } } }));
+  const alts2 = (result(g4) && result(g4).alternateSlots) || [];
+  check('别的会话的槽（session-e2e-issue5）不会被当成候选端出来',
+    result(g4) && alts2.every((a) => a.key !== sid), JSON.stringify(alts2));
+
+  const m1 = await post('/dsh-cc-studio-rpc/cc_migrateDraft', JSON.stringify({ type: 'client-request', rpcId: 'r14e-m1', method: 'cc_migrateDraft', payload: { args: { from: 'default', to: fresh } } }));
+  check('cc_migrateDraft 把 default 槽内容搬进本会话槽',
+    result(m1) && result(m1).key === fresh && result(m1).draft.data.name === legacy && result(m1).from === 'default',
+    JSON.stringify(result(m1) && { key: result(m1).key, from: result(m1).from }));
+
+  const m2 = await post('/dsh-cc-studio-rpc/cc_migrateDraft', JSON.stringify({ type: 'client-request', rpcId: 'r14e-m2', method: 'cc_migrateDraft', payload: { args: { from: 'default', to: fresh } } }));
+  check('目标槽已有内容 → 拒绝静默覆盖（target-not-empty）',
+    m2.json && m2.json.result.ok === false && m2.json.result.error.details.code === 'target-not-empty',
+    JSON.stringify(m2.json && m2.json.result));
+
+  const m3 = await post('/dsh-cc-studio-rpc/cc_migrateDraft', JSON.stringify({ type: 'client-request', rpcId: 'r14e-m3', method: 'cc_migrateDraft', payload: { args: { from: 'session-nobody-here', to: fresh } } }));
+  check('源槽没有草稿 → empty-source',
+    m3.json && m3.json.result.ok === false && m3.json.result.error.details.code === 'empty-source',
+    JSON.stringify(m3.json && m3.json.result));
+
+  const m4 = await post('/dsh-cc-studio-rpc/cc_migrateDraft', JSON.stringify({ type: 'client-request', rpcId: 'r14e-m4', method: 'cc_migrateDraft', payload: { args: { from: fresh, to: fresh } } }));
+  check('源槽与目标槽相同 → same-slot',
+    m4.json && m4.json.result.ok === false && m4.json.result.error.details.code === 'same-slot',
+    JSON.stringify(m4.json && m4.json.result));
+}
+
+// 15) 迁移决策的纯函数（不碰磁盘的那部分）
+{
+  const full = (name) => ({ spec: 'chara_card_v3', data: { name, character_book: { entries: [{ content: 'x' }] } } });
+  const empty = { spec: 'chara_card_v3', data: { name: '', character_book: { entries: [] } } };
+  check('空壳源 → 拒绝', host.migrateDraftDecision(empty, null, false).code === 'empty-source', '');
+  check('非卡对象源 → 拒绝', host.migrateDraftDecision({ spec: 'nope' }, null, false).code === 'empty-source', '');
+  // name 为空但 lore 写满的草稿也算有内容（迁移是自家两个槽之间搬东西，不该被 validateCard 的 name 必填拦住）
+  const loreOnly = { spec: 'chara_card_v3', data: { name: '', character_book: { entries: [{ content: 'a' }, { content: 'b' }] } } };
+  check('只有 lore 没有 name 也算有内容', host.migrateDraftDecision(loreOnly, null, false).ok === true, '');
+  check('目标有内容且未 overwrite → 拒绝', host.migrateDraftDecision(full('A'), full('B'), false).code === 'target-not-empty', '');
+  check('目标有内容 + overwrite → 放行', host.migrateDraftDecision(full('A'), full('B'), true).ok === true, '');
+  check('空目标 → 放行', host.migrateDraftDecision(full('A'), empty, false).ok === true, '');
+  const d = host.migrateDraftDecision(full('A'), null, false);
+  check('迁移结果是深拷贝（改副本不动源）', d.ok === true && (function () {
+    const copy = d.draft;
+    copy.data.name = 'MUT';
+    return d.draft.data.name === 'MUT';
+  })(), '');
+  check('draftContentSummary 统计 name/entries', (function () {
+    const s = host.draftContentSummary(full('A'));
+    return s.name === 'A' && s.entries === 1 && s.filled >= 1;
+  })(), '');
+}
+
 await new Promise((resolve) => server.close(resolve));
 
 // 还原 homedir/DSH_HOME 并清掉沙箱目录（host 半在测试期间只会写 cc-drafts 与沙箱内的预设目录）

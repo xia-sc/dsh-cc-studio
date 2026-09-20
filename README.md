@@ -15,7 +15,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 | 项目 | 值 |
 | --- | --- |
 | 插件包名 | `@xia-sc/dsh-cc-studio` |
-| 当前版本 | `0.3.4` |
+| 当前版本 | `0.3.5` |
 | 宿主 RPC | `/dsh-cc-studio-rpc`（自带路由，适配 dsh ≥ `0.1.5-rc.1`；已在 `0.1.6-alpha.2` 实测） |
 | 客户端挂载点 | `conversation.input.dock`（胶囊）+ `shell.overlay`（工坊）+ `settings.section` |
 | 落盘位置 | `~/.dsh/cc-library/`（角色卡）、`~/.dsh/cc-drafts/`（会话草稿） |
@@ -28,7 +28,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
 
 # 锁定版本
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.3.4
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.3.5
 ```
 
 **或从 GitHub 源安装**：
@@ -237,7 +237,7 @@ dsh-cc-studio/
 ├── cordis.patch.yml      # 宿主行插入：id dsh-cc-studio
 ├── lib/
 │   ├── index.js          # host: /dsh-cc-studio-rpc（validate, cc_getDraft/cc_setDraft/cc_patchDraft, cc_isCcMode,
-│   │                     #   cc_validateDraft, 已存库 cc_*Library, 容器 cc_importFromPng/cc_exportPng(+imageB64)/
+│   │                     #   cc_validateDraft, 草稿槽 cc_migrateDraft, 已存库 cc_*Library, 容器 cc_importFromPng/cc_exportPng(+imageB64)/
 │   │                     #   cc_importFromCharx/cc_exportCharx, CRC32/ZIP/STORE&DEFLATE）
 │   ├── agent.js          # CC 模式 Tools：6 步共创 + 2 Lorebook 管理 + 6 已存库 CRUD = 14 个，含「先与用户讨论」提示
 │   └── client.js         # client: dock 胶囊 + overlay 工坊 + settings.section（DSW Token 深浅色、品牌紫、
@@ -245,7 +245,7 @@ dsh-cc-studio/
 ├── presets/cc/           # CC 模式预设模板（共创 persona + cc-studio-agent）
 │   ├── preset.yml
 │   └── agent.cordis.yml
-├── tests/                # 4 个测试文件、158 项断言（不随包发布）
+├── tests/                # 5 个测试文件、216 项断言（不随包发布）
 │   ├── rpc-channel.test.mjs       # host 半 RPC 通道回归（假 ctx + 真实 http，23 项断言）
 │   ├── preset-install.test.mjs    # 预设自动安装决策 + 预设行契约，41 项断言
 │   ├── cc-detection.test.mjs      # CC 模式探测的源码级守卫，32 项断言
@@ -260,7 +260,7 @@ dsh-cc-studio/
 ## 开发与测试
 
 ```bash
-npm test                                   # 4 个文件、158 项断言（四个 node 脚本串联）
+npm test                                   # 5 个文件、216 项断言（五个 node 脚本串联）
 node tests/rpc-channel.test.mjs            # 只跑 host 半 RPC 通道回归（23 项断言）
 ```
 
@@ -280,6 +280,7 @@ node tests/rpc-channel.test.mjs            # 只跑 host 半 RPC 通道回归（
 
 完整历史见 [CHANGELOG.md](./CHANGELOG.md)。最近几版：
 
+- `0.3.5` 修 #5「前端与 Tools 读到不同草稿槽」：`useCcPreset` 读的 `useSessions().current` 字段在 dsh `0.1.6-alpha.2` 的 `SessionListState` 里并不存在（恒为 `null`），加上启动时那次无 key 的拉取占掉了全局节流，前端一直用 `default` 槽 —— 而模型经 Tools 写的是 `session-<会话id>` 槽，于是「模型说写好了 / 工坊说没数据」。现在会话 id 只从 slot props 取并发布到 store、拉草稿没有会话 id 就一次都不发、节流按 key、主机回传 key 不一致时不渲染而是告警；另修胶囊闪退（根域实例每秒钟把会话域实例判定的 CC 状态清掉）并新增 `cc_migrateDraft` 与「迁入本会话槽」一键救回。测试 158 → 216 项（新增行为级 `tests/draft-slot-sync.test.mjs`）。
 - `0.3.4` 适配 dsh `0.1.6-alpha.2` 并补回两处预设漏抄：CC 预设缺 `present` 行（CC 模式下模型没有「登记交付物」的工具，且不报错）、`tool-subagent` 行缺 `modelSelectionSettings: true`（子代理的指定模型入口被静默关掉）；顺带补上 alpha.2 新增的 `tool-plugin-manager` 行（`disabled`，与内置 `standard` 对齐到只剩有意的行差）。新增 7 项预设行契约守卫。
 - `0.3.3` 发布流程自动化：打 `v*` tag 即由 GitHub Actions 发布到 npm（OIDC trusted publishing，零密钥）并自动建 GitHub Release；手动触发默认只做安全自检。插件运行时行为未变。
 - `0.3.2` 包名迁移至 `@xia-sc/dsh-cc-studio`（原 `@dsh-plugins` 不是本项目持有的 npm scope），并首次发布到 npm；新增 `publishConfig.access` / `prepublishOnly` 等发布元数据。

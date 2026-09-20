@@ -96,11 +96,33 @@ const ccModeFromDom = new Function(`${grabFunction('ccModeFromDom')}; return ccM
   check('投影=standard → false（即使 DOM 说 CC）', decideCcMode('standard', true, true, true) === false, '');
   // 无会话（新会话页）：芯片是权威
   check('无会话 + 芯片 CC → true', decideCcMode(null, true, false, false) === true, '');
-  check('无会话 + 芯片非 CC → false', decideCcMode(null, false, false, true) === false, '');
+  check('无会话 + 芯片非 CC + 上次也不是 CC → false', decideCcMode(null, false, false, false) === false, '');
+  // issue #5：shell.overlay 是根域挂载点，拿不到会话 id、也看不到预设芯片（运行中会话的标签是 <span>），
+  // 它对同一个 store 每秒 evaluate() 一次。旧实现在这里返回 false，把会话域实例刚判定为 true 的
+  // isCcMode 清掉 → 胶囊被卸载、下次再装回来 = 用户看到的「闪一下又消失」。判定不出「是」时只能保持。
+  check('无会话 + 芯片非 CC + 上次是 CC → true（保持，不得清掉会话域的结论）',
+    decideCcMode(null, false, false, true) === true, '');
   // 有会话但投影未到：未知，不能翻转
   check('有会话 + 投影未知 + 非 CC → null（交给 RPC，不误关）', decideCcMode(null, false, true, false) === null, '');
   check('有会话 + 投影未知 + 已是 CC → true（保持，不闪烁）', decideCcMode(null, false, true, true) === true, '');
   check('有会话 + 投影未知 + 芯片 CC → true', decideCcMode(null, true, true, false) === true, '');
+}
+
+// —— 3b) ccSessionIdOfProps：会话 id 只能从 slot props 里取 ——
+// 背景（issue #5）：旧代码用 useSessions(s => s.current) 当「当前会话」，而 alpha.2 的
+// SessionListState 只有 ids / byId / phase（dsh-api-session-controller sessions/service.d.ts），
+// 没有 current —— 于是恒为 null，「会话投影权威」这条路从未生效，且 currentId 会退化成
+// props.session（整个 SessionSnapshot 对象），传给主机后被 typeof 判掉 → 落到 default 槽。
+const ccSessionIdOfProps = new Function(`${grabFunction('ccSessionIdOfProps')}; return ccSessionIdOfProps;`)();
+{
+  check('session 域标准属性 props.sessionId', ccSessionIdOfProps({ sessionId: 'session-abc' }) === 'session-abc', '');
+  check('ownerProps.session 的快照 id', ccSessionIdOfProps({ session: { sessionId: 'session-abc' } }) === 'session-abc', '');
+  check('props.sessionId 是对象时读它的 .sessionId（异形兜底）',
+    ccSessionIdOfProps({ sessionId: { sessionId: 'session-abc' } }) === 'session-abc', '');
+  check('根域（shell.overlay）没有任何会话绑定 → null',
+    ccSessionIdOfProps({ useSessions: function(){} }) === null, '');
+  check('空串/非字符串不算会话 id', ccSessionIdOfProps({ sessionId: '' }) === null && ccSessionIdOfProps({ sessionId: 42 }) === null, '');
+  check('props 缺失安全', ccSessionIdOfProps(null) === null && ccSessionIdOfProps(undefined) === null, '');
 }
 
 // —— 4) 源码级守卫：这些回归必须被钉住 ——
@@ -125,6 +147,26 @@ const ccModeFromDom = new Function(`${grabFunction('ccModeFromDom')}; return ccM
 
   // 新会话页切换芯片不会改变 current/preset，必须有轮询兜底
   check('存在本地轮询兜底（捕获芯片切换）', /setInterval\(function\(\)\{ try\{ evaluate\(\); \}/.test(src), '');
+
+  // —— issue #5：草稿槽 key 的源码级守卫 ——
+  // ① 不许再读不存在的 SessionListState.current（它是「投影权威」失效的根因）
+  check('不再用 useSessions(s=>s.current) 当当前会话', !/s && s\.current\) \|\| null/.test(src), '');
+  check('pass 里有 ccSessionIdOfProps（会话 id 的唯一取法）', /function ccSessionIdOfProps\(/.test(src), '');
+  check('投影按解析出来的会话 id 去 byId 查', /ccPresetIdOf\(s && s\.byId && s\.byId\[currentId\]\)/.test(src), '');
+  // ② 拉草稿必须带 key：没有会话 id 时一次都不许发（旧代码会退化成 default 槽）
+  check('pullDraft 没有 key 就不发请求', /if\(!key\) return Promise\.resolve\(\);/.test(src), '');
+  check('启动时不再初始拉 default', !/pullDraftThrottled\(null\)/.test(src), '');
+  check('轮询在 currentSessionId 未知时不拿 default 顶替', /if\(!sid\) return;\s*\/\/ 会话 id 未知：不拿 default 顶替/.test(src), '');
+  // ③ 节流必须按 key，否则会话就绪后的第一次正式拉取会被启动时的请求吞掉
+  check('节流按 key 而非全局时间戳', /if\(key === lastPullKey && now - lastPullAt < 500\) return;/.test(src), '');
+  // ④ 主机回的 key 与点名的 key 不一致时不得渲染（把错位变成可见的告警）
+  check('主机回传 key 不一致时不渲染该草稿', /if\(gotKey && gotKey !== key\)/.test(src) && /setSlotWarn\(\{ requested:key, got:gotKey/.test(src), '');
+  // ⑤ 切会话期间回来的过期响应必须丢掉
+  check('丢弃切会话后的过期响应', /if\(cur && cur !== key\) return;/.test(src), '');
+  // ⑥ 没有会话上下文的实例不得把 isCcMode 写成 false
+  check('根域实例无权下否的结论', /var canConclude = !!ownId \|\| !!currentId;/.test(src) && /if\(verdict \|\| canConclude\) store\.setIsCcMode\(verdict\);/.test(src), '');
+  // ⑦ 会话 id 要发布到 store，供根域实例与草稿轮询共用
+  check('会话 id 发布到 store', /if\(ownId\) store\.setSessionId\(ownId\);/.test(src), '');
 
   // 预设名进词表（否则触发「UI 层无硬编码中文」守卫）
   check('preset.ccLabel 在 zh 词表', /"preset\.ccLabel":"CC 模式"/.test(src.slice(src.indexOf('var zh='), src.indexOf('var en='))), '');
