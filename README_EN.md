@@ -15,10 +15,11 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 | Item | Value |
 | --- | --- |
 | Package | `@xia-sc/dsh-cc-studio` |
-| Version | `0.3.5` |
-| Host RPC | `/dsh-cc-studio-rpc` (self-owned route, works on dsh ≥ `0.1.5-rc.1`; verified on `0.1.6-alpha.2`) |
+| Version | `0.3.6` |
+| Host RPC | `/dsh-cc-studio-rpc` (self-owned route, works on dsh ≥ `0.1.5-rc.1`; verified on `0.1.6-alpha.2` / `0.1.7-alpha.1`) |
+| CC preset | `presets/cc.patch.yml` (dsh ≥ `0.1.7-alpha.1`, a composition declaration row) / `<DSH_HOME>/.agent-presets/cc` (≤ `0.1.6-alpha.2`, the legacy directory) |
 | Client mounts | `conversation.input.dock` (capsule) + `shell.overlay` (workshop) + `settings.section` |
-| Persistence | `~/.dsh/cc-library/` (cards), `~/.dsh/cc-drafts/` (per-session drafts) |
+| Persistence | `<DSH_HOME>/cc-library/` (cards), `<DSH_HOME>/cc-drafts/` (per-session drafts); `DSH_HOME` defaults to `~/.dsh`. Since 0.3.6 `DSH_HOME` is honoured, and the old `~/.dsh` location is **still read** (read-time fallback) |
 
 ## Install
 
@@ -28,7 +29,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
 
 # pin a version
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.3.5
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.3.6
 ```
 
 **Or from GitHub**:
@@ -55,11 +56,29 @@ dsh plugin --profile web add .
 
 Relative paths resolve against **the directory you run the command from** (dsh rewrites `.` / `./xxx` to an absolute path before handing it to pnpm, so it cannot silently link inside the profile). The result is a `link:` to the source tree: editing `lib/*.js` takes effect after a dsh web restart; editing only `lib/client.js` needs just a page refresh (with `pnpm run dev:web` running from the dsh checkout the client bundle is rebuilt, so not even that).
 
-### 3. CC preset (installed automatically — no manual copy)
+### 3. CC preset (available with the plugin — no manual copy)
 
-**When the plugin is mounted it installs `presets/cc` into `<DSH_HOME>/.agent-presets/cc`** (`DSH_HOME` defaults to `~/.dsh`); the directory name is always `cc`, because both the host and the client detect CC Mode by preset id `cc`. After installing the plugin and starting `dsh web`, `CC Mode` is selectable as a session mode.
+After installing the plugin and restarting `dsh web`, `CC Mode` is selectable as a session mode (the preset id is always `cc` — the host's `isCcPreset()` and the browser's `CC_PRESET_ID` both compare against it exactly). **The delivery mechanism depends on the dsh generation, and neither one asks you to copy files:**
 
-Why this step exists: dsh discovers presets from exactly three roots — the **shipped root** (bundled inside `dsh-agent-presets`), the deployment's **`config.roots`**, and the **user root `<DSH_HOME>/.agent-presets`**. A plugin package's own `presets/` is not among them: **shipping a preset is not registering it**. So the plugin installs it into the user root at startup.
+| dsh version | Where the preset comes from | What you do |
+| --- | --- | --- |
+| ≥ `0.1.7-alpha.1` | The patch layer shipped in the package, `presets/cc.patch.yml`: it inserts a `@deepseek-ai/dsh-agent-preset` **declaration** into the composition (exactly how the built-in `standard` / `ptc` / `minimal` / `cordis` presets ship) | nothing |
+| ≤ `0.1.6-alpha.2` | On mount the plugin installs `presets/cc` into `<DSH_HOME>/.agent-presets/cc` (the legacy directory, unchanged from 0.3.5) | nothing |
+
+**Why 0.1.7 had to change mechanism**: from that version on, dsh takes presets **only from declaration rows in a composition**; `<DSH_HOME>/.agent-presets/` is no longer read by any code — which is exactly why `CC Mode` disappeared from the roster after upgrading: the directory is still there, nobody looks at it. The plugin therefore ships the declaration as the second entry of `dsh.bundle.patch` in `package.json` (the first is the host plugin row), so `CC Mode` appears in the roster of whichever profile the plugin is installed into; on the new version it **writes nothing to disk at all**.
+
+**Turning `CC Mode` off (≥ `0.1.7-alpha.1`)**: no need to remove the plugin — disable that row by id in your own patch layer (`<profile>/cordis.patch.yml`, or `$DSH_HOME/cordis.patch.yml` for every profile):
+
+```yaml
+- id: preset-cc
+  name: '@deepseek-ai/dsh-agent-preset'
+  disabled: true
+```
+
+<details>
+<summary>≤ 0.1.6-alpha.2: update policy, switches and manual fallback for the directory install</summary>
+
+**On older dsh the plugin still installs `presets/cc` into `<DSH_HOME>/.agent-presets/cc`** (`DSH_HOME` defaults to `~/.dsh`); the directory name is always `cc`. Why that step existed: on that generation dsh discovers presets from exactly three roots — the **shipped root** (bundled inside `dsh-agent-presets`), the deployment's **`config.roots`**, and the **user root `<DSH_HOME>/.agent-presets`**. A plugin package's own `presets/` is not among them: **shipping a preset is not registering it**, so the plugin installed it into the user root at startup.
 
 Updates are idempotent and **never silently overwrite your edits**:
 
@@ -111,6 +130,8 @@ cp -R ~/.dsh/profiles/web/node_modules/@xia-sc/dsh-cc-studio/presets/cc/. ~/.dsh
 `agent.cordis.yml` extends a copy of `standard` with `id: cc-studio-agent, name: '@xia-sc/dsh-cc-studio/agent'` and replaces `persona` with a co-creation partner — ask first, 1–2 questions per step. The capsule appears once you switch the session mode.
 
 > A hand-copied directory has **no** install record, so auto-install treats it as yours and skips it; delete it and restart to hand management back to the plugin.
+
+> After upgrading to `0.1.7-alpha.1` that directory is neither read nor written again: the plugin **never deletes anything for you** — remove it yourself (`Remove-Item "$env:USERPROFILE\.dsh\.agent-presets\cc" -Recurse -Force`) if you want it gone.
 
 </details>
 
@@ -188,7 +209,8 @@ Cards in `~/.dsh/cc-library/` and drafts in `~/.dsh/cc-drafts/` survive uninstal
 
 | Symptom | Fix |
 | --- | --- |
-| No capsule above the composer | Make sure the session mode is `CC Mode`; make sure `~/.dsh/.agent-presets/cc/` contains both `preset.yml` and `agent.cordis.yml` and that the directory is named `cc` (normally the plugin auto-installs it; if missing, check the startup log for a `[dsh-cc-studio]` warning); restart dsh web and refresh |
+| No capsule above the composer | Make sure the session mode is `CC Mode`; **dsh ≥ `0.1.7-alpha.1`**: `dsh --profile web --dump-config` should list `- id: preset-cc` (under the `# == @xia-sc/dsh-cc-studio` layer), then check whether `CC Mode` carries a "failed to load" diagnostic under Settings → Agent presets; **≤ `0.1.6-alpha.2`**: make sure `~/.dsh/.agent-presets/cc/` contains both `preset.yml` and `agent.cordis.yml` and that the directory is named `cc` (normally the plugin auto-installs it); in both cases restart dsh web and refresh |
+| Reading the preset ledger directly (diagnostics) | dsh exposes every Remote as `POST /api/<namespace>/<method>` with the same envelope as the connection RPC (exchange `/?token=…` for the cookie). `/api/agentPresets/list` strips `name` and `broken`; use `/api/pluginInventory/list` for the **full ledger** (check that `cc` under `agentPresets` has an empty `broken` and that `cc-agent`'s `fiberPhase` is `active`). Note also that the plugin's `info` logs only go to the Cordis logger and **never** reach `dsh web`'s stdout/stderr — do not grep for `[dsh-cc-studio]` to decide whether it is installed |
 | Orange "draft recreated" banner | That session has no stored draft (first creation, or the draft directory was cleared); a successful restore shows a blue banner with `creation_date` instead, and either banner clears after the next write |
 | Switching to CC Mode fails with `invalid config: S.prefix missing required value` | `presets/cc/agent.cordis.yml` predates 0.2.22 (persona used `text:`); copy the new template again |
 | dsh boot fails with `cannot get property "webServer" without inject` | The plugin is older than 0.2.22; update it |
@@ -241,14 +263,18 @@ dsh-cc-studio/
 │   ├── agent.js          # CC Mode Tools: 6-step co-creation + 2 lorebook ops + 6 saved-library CRUD = 14, "ask first" hints
 │   └── client.js         # client: dock capsule + overlay workshop + settings.section (DSW Tokens, brand purple,
 │                         #   5D echo, large editors, JSON/PNG/CHARX import/export/embed)
-├── presets/cc/           # CC Mode preset template (co-creation persona + cc-studio-agent)
-│   ├── preset.yml
-│   └── agent.cordis.yml
-├── tests/                # 5 files, 216 assertions (not published with the package)
-│   ├── rpc-channel.test.mjs       # host-half RPC channel regression (fake ctx + real http, 23 assertions)
-│   ├── preset-install.test.mjs    # preset auto-install decisions + preset row contract, 41 assertions
-│   ├── cc-detection.test.mjs      # source-level guards for CC Mode detection, 32 assertions
-│   └── client-greetings.test.mjs  # client greeting / i18n guards, 62 assertions
+├── presets/
+│   ├── cc.patch.yml      # patch layer 2: the CC preset declaration row (dsh ≥ 0.1.7-alpha.1)
+│   └── cc/               # legacy preset directory template (dsh ≤ 0.1.6-alpha.2, installed on mount)
+│       ├── preset.yml
+│       └── agent.cordis.yml
+├── tests/                # 6 files, 278 assertions (not published with the package)
+│   ├── rpc-channel.test.mjs       # host-half RPC channel regression (fake ctx + real http, 45 assertions)
+│   ├── preset-install.test.mjs    # install decisions + native hand-off + anti-drift + row contract, 66 assertions
+│   ├── cc-detection.test.mjs      # source-level guards for CC Mode detection, 50 assertions
+│   ├── client-greetings.test.mjs  # client greetings and i18n guards, 62 assertions
+│   ├── draft-slot-sync.test.mjs   # behavioural draft-slot regression (fake React/slot/RPC harness), 18 assertions
+│   └── data-root.test.mjs         # data roots: DSH_HOME first + read-time fallback to ~/.dsh, 37 assertions
 ├── CHANGELOG.md          # full version history (Chinese)
 ├── README.md             # Chinese (default)
 └── README_EN.md          # English
@@ -259,8 +285,8 @@ dsh-cc-studio/
 ## Development and tests
 
 ```bash
-npm test                                   # 5 files, 216 assertions (five node scripts chained)
-node tests/rpc-channel.test.mjs            # only the host-half RPC channel regression (23 assertions)
+npm test                                   # 6 files, 278 assertions (six node scripts chained)
+node tests/rpc-channel.test.mjs            # only the host-half RPC channel regression (45 assertions)
 ```
 
 - **Client changes**: `lib/client.js` only needs a page refresh; with `pnpm run dev:web` running from the dsh checkout it hot-updates.
@@ -279,6 +305,7 @@ Light/dark via `var(--dsw-alias-*)` (`body[data-ds-dark-theme]`), primary stays 
 
 Full history lives in [CHANGELOG.md](./CHANGELOG.md) (Chinese). Latest:
 
+- `0.3.6` Two fixes. ① The `CC Mode` preset disappearing on dsh `0.1.7-alpha.1`: from that version on dsh takes presets only from **declaration rows** in a composition, and `<DSH_HOME>/.agent-presets/` is no longer read by any code (the directory is still there, nobody looks at it). The plugin now ships a patch layer `presets/cc.patch.yml` (a `@deepseek-ai/dsh-agent-preset` declaration, structurally identical to the built-in `standard`) and writes nothing on the new version; the directory install is kept for ≤ `0.1.6-alpha.2` only and stands down automatically on newer dsh. ② Data roots unified: drafts and the card library used to be hard-wired to `~/.dsh` and ignored `DSH_HOME` (custom-`DSH_HOME` users ended up with two sets of roots, and an isolated run wrote into the real `~/.dsh`), now **`DSH_HOME` first with a read-time fallback to `~/.dsh`** — unchanged paths when `DSH_HOME` is unset. Tests 216 → 278.
 - `0.3.5` Fixes #5, "frontend and Tools read different draft slots": `useCcPreset` read `useSessions().current`, a field that does not exist in dsh `0.1.6-alpha.2`'s `SessionListState` (it was always `null`), and the keyless pull at startup consumed the global throttle, so the UI stayed on the `default` slot while the model's Tools wrote to `session-<sessionId>` — hence "the model says it wrote it / the workshop says there is no data". Now the session id is taken from slot props only and published to the store, a draft pull without a session id is never sent, throttling is per key, and a host response whose `key` differs is not rendered but surfaced as a warning. Also fixes the capsule flicker (the root-scope instance was clearing the CC verdict the session-scope instance had just made) and adds `cc_migrateDraft` with a one-click "migrate into this session" recovery. Tests 158 → 216 (+ a behavioural `tests/draft-slot-sync.test.mjs`).
 - `0.3.4` dsh `0.1.6-alpha.2` compatibility plus two preset omissions restored: the CC preset was missing the `present` row (so CC Mode's model had no "register a deliverable" tool, silently) and the `tool-subagent` row was missing `modelSelectionSettings: true` (silently disabling per-subagent model selection); also adds the `tool-plugin-manager` row dsh added in alpha.2 (`disabled`, so the preset now differs from the shipped `standard` only where intended). Adds 7 preset row-contract guards.
 - `0.3.3` Release automation: pushing a `v*` tag makes GitHub Actions publish to npm (OIDC trusted publishing, no secrets) and create the GitHub Release; a manual run only does a safe self-check. No runtime behaviour change.

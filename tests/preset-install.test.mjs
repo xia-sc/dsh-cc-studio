@@ -20,7 +20,7 @@ const sandboxHome = mkdtempSync(join(tmpdir(), 'dsh-cc-preset-test-'));
 process.env.DSH_HOME = sandboxHome;
 
 const host = await import('../lib/index.js');
-const { planPresetInstall, installCcPreset, presetTargetRoot } = host;
+const { planPresetInstall, installCcPreset, supportsDeclaredPresets, presetTargetRoot } = host;
 
 const results = [];
 function check(name, pass, detail) {
@@ -226,6 +226,96 @@ const sha256Of = (s) => createHash('sha256').update(String(s), 'utf8').digest('h
   check('present 行存在且指向 dsh-tool-present（0.3.4 补回）', /name:\s*'@deepseek-ai\/dsh-tool-present'/.test(present), (present.split('\n')[1] || 'missing').trim());
   const pm = blockOf('tool-plugin-manager');
   check('tool-plugin-manager 行存在且 disabled（alpha.2 新增，抄来只为行差干净）', /disabled:\s*true/.test(pm), (pm.split('\n')[1] || 'missing').trim());
+}
+
+// —— 11) dsh >= 0.1.7-alpha.1：目录安装让位（预设改由随包补丁层 presets/cc.patch.yml 声明） ——
+//
+// 0.1.7-alpha.1 起 dsh 的预设只来自组合里的声明行，<DSH_HOME>/.agent-presets 已经没有任何代码
+// 读取 —— 这正是「升级后 CC 模式从 roster 消失」的根因。新版上就不要再往那个死目录写字；
+// 但**不能**因此让老版 dsh 少一个预设，所以检测要窄：要求 0.1.7 才引入的两个方法同时存在。
+{
+  const newRegistry = { register() {}, compositionInventory() {}, composedPreset() {}, list() {} };
+  const oldService = { discoverPresets() {}, composedPreset() {}, inactiveRows() {} };
+
+  check('supportsDeclaredPresets：无 ctx → false', supportsDeclaredPresets(undefined) === false, '');
+  check('supportsDeclaredPresets：ctx 无 get → false', supportsDeclaredPresets({}) === false, '');
+  check('supportsDeclaredPresets：get 抛错 → false（探测自己不炸）', supportsDeclaredPresets({ get() { throw new Error('boom'); } }) === false, '');
+  check('supportsDeclaredPresets：老服务（只有 discoverPresets）→ false', supportsDeclaredPresets({ get: () => oldService }) === false, '');
+  check('supportsDeclaredPresets：新注册表（register + compositionInventory）→ true', supportsDeclaredPresets({ get: () => newRegistry }) === true, '');
+
+  const prevHome = process.env.DSH_HOME;
+  const dirNative = mkdtempSync(join(tmpdir(), 'dsh-cc-preset-native-'));
+  process.env.DSH_HOME = dirNative;
+  const logged = [];
+  const newCtx = { get: () => newRegistry, logger: { info: (m) => logged.push(m), warn: (m) => logged.push(m) } };
+  const outNative = installCcPreset(newCtx, undefined);
+  check('新版 dsh → status=native', outNative.status === 'native', JSON.stringify(outNative));
+  check('新版 dsh → 不再创建 .agent-presets 目录（那里已经没人读）', !existsSync(join(dirNative, '.agent-presets')), '');
+  check('新版 dsh → 日志说明了原因（含补丁层文件名）', logged.some((m) => m.includes('presets/cc.patch.yml')), logged.join(' | ').slice(0, 120));
+
+  const dirOld = mkdtempSync(join(tmpdir(), 'dsh-cc-preset-old-'));
+  process.env.DSH_HOME = dirOld;
+  const outOld = installCcPreset({ get: () => oldService }, undefined);
+  check('老版 dsh → 仍走目录安装（status=installed）', outOld.status === 'installed', JSON.stringify(outOld));
+  check('老版 dsh → preset.yml 已落盘', existsSync(join(dirOld, '.agent-presets', 'cc', 'preset.yml')), '');
+
+  const dirNativeOff = mkdtempSync(join(tmpdir(), 'dsh-cc-preset-native-off-'));
+  process.env.DSH_HOME = dirNativeOff;
+  const outNativeOff = installCcPreset(newCtx, { presetInstall: 'off' });
+  check('presetInstall: off 依旧最优先（新版上也不写盘）', outNativeOff.status === 'off' && !existsSync(join(dirNativeOff, '.agent-presets')), JSON.stringify(outNativeOff));
+  process.env.DSH_HOME = prevHome;
+}
+
+// —— 12) 声明层 presets/cc.patch.yml：0.1.7 的投递通道，不许与目录模板漂移 ——
+//
+// 两份清单服务两代 dsh：本文件（声明行，>=0.1.7）与 presets/cc/agent.cordis.yml（目录形态，
+// <=0.1.6）。它们必须除注释外逐字一致 —— 0.3.1 的教训是「预设里一个包名不对 = 整个 CC 模式
+// 消失」，漂移就是下一个同类 bug。纯读文件、不依赖本机装了哪个 dsh，CI 上也能跑。
+{
+  const patchText = readFileSync(new URL('../presets/cc.patch.yml', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const tplText = readFileSync(new URL('../presets/cc/agent.cordis.yml', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const metaText = readFileSync(new URL('../presets/cc/preset.yml', import.meta.url), 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
+  const metaField = (k) => (metaText.split('\n').find((l) => l.startsWith(k + ':')) || '').slice(k.length + 1).trim();
+  const patchLines = patchText.split('\n');
+  const pluginsAt = patchLines.findIndex((l) => /^\s*plugins:\s*$/.test(l));
+
+  check('补丁层存在且只有一个 plugins 列表', pluginsAt > 0 && patchLines.filter((l) => /^\s*plugins:\s*$/.test(l)).length === 1, `pluginsAt=${pluginsAt}`);
+
+  const bodyText = patchLines.slice(pluginsAt + 1).join('\n');
+  const idRows = bodyText.split('\n').filter((l) => /^\s*- id: \S/.test(l));
+  const nameRows = bodyText.split('\n').filter((l) => /^\s*name: \S/.test(l));
+  check('补丁层里每个 - id 行都有 name（漏一个 = 整个预设挂不起来）', idRows.length > 0 && idRows.length === nameRows.length, `ids=${idRows.length} names=${nameRows.length}`);
+
+  // 除注释外逐字一致：只允许行首那 10 空格缩进差异（声明层的 plugins 比目录模板深一层）
+  const significant = (text, strip) => text
+    .split('\n')
+    .filter((l) => l.trim() !== '' && !l.trimStart().startsWith('#'))
+    .map((l) => (strip ? l.slice(strip) : l));
+  const fromPatch = significant(bodyText, 10);
+  const fromTemplate = significant(tplText, 0);
+  const firstDiff = fromPatch.findIndex((l, i) => l !== fromTemplate[i]);
+  check('两份清单除注释外逐字一致（防漂移）',
+    fromPatch.length === fromTemplate.length && fromPatch.length > 0 && firstDiff === -1,
+    firstDiff === -1 ? `${fromPatch.length} 行` : `第 ${firstDiff + 1} 行不同：${JSON.stringify(fromPatch[firstDiff])} vs ${JSON.stringify(fromTemplate[firstDiff])}`);
+
+  check("声明行是 preset-cc + '@deepseek-ai/dsh-agent-preset'",
+    /- id: preset-cc/.test(patchText) && /name: '@deepseek-ai\/dsh-agent-preset'/.test(patchText), '');
+  check('预设 id 恒为 cc（宿主 isCcPreset 与前端 CC_PRESET_ID 都按它精确比较）', /^\s*id: cc$/m.test(patchText), '');
+  check('显示名与目录模板 preset.yml 一致', patchText.includes('name: ' + metaField('name')), metaField('name'));
+  check('描述与目录模板 preset.yml 一致', patchText.includes('description: ' + metaField('description')), metaField('description').slice(0, 30));
+  check('roster 排序号存在（内置四个是 1..4，CC 排在后面）', /^\s*order: \d+$/m.test(patchText), '');
+  check('CC 工具行仍挂在本预设下', /- id: cc-agent\s*\n\s*name: '@xia-sc\/dsh-cc-studio\/agent'/.test(patchText), '');
+  check('平台条件行仍是未求值的 !!js（disabled 表达式必须留到子行自己求值）', (patchText.match(/disabled: !!js /g) || []).length >= 2, '');
+  check('三个 isolate 组都在（planning / compaction / delegation）',
+    ['planMode: true', 'compaction: true', 'workflowEngine: true'].every((k) => patchText.includes(k)), '');
+
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  const patches = pkg.dsh && pkg.dsh.bundle && pkg.dsh.bundle.patch;
+  check('package.json 的 dsh.bundle.patch 列两层补丁', Array.isArray(patches) && patches.length === 2, JSON.stringify(patches));
+  check('两层补丁都指向真实存在的文件',
+    Array.isArray(patches) && patches.every((p) => existsSync(new URL('../' + p.replace(/^\.\//, ''), import.meta.url))), JSON.stringify(patches));
+  check('声明层在补丁列表里（插件行 + 预设声明各一层）',
+    Array.isArray(patches) && patches.includes('./presets/cc.patch.yml') && patches.includes('./cordis.patch.yml'), JSON.stringify(patches));
 }
 
 // —— 清理 ——

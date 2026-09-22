@@ -1,6 +1,6 @@
 {
   "name": "@xia-sc/dsh-cc-studio",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "CCv3 角色卡工坊：融合工坊 + CC 模式 + JSON/PNG/CHARX + 中英双语（跟随全局）",
   "keywords": [
     "dsh",
@@ -35,12 +35,15 @@
     "presets"
   ],
   "scripts": {
-    "test": "node tests/rpc-channel.test.mjs && node tests/preset-install.test.mjs && node tests/cc-detection.test.mjs && node tests/client-greetings.test.mjs && node tests/draft-slot-sync.test.mjs",
+    "test": "node tests/rpc-channel.test.mjs && node tests/preset-install.test.mjs && node tests/cc-detection.test.mjs && node tests/client-greetings.test.mjs && node tests/draft-slot-sync.test.mjs && node tests/data-root.test.mjs",
     "prepublishOnly": "npm test"
   },
   "dsh": {
     "bundle": {
-      "patch": "./cordis.patch.yml"
+      "patch": [
+        "./cordis.patch.yml",
+        "./presets/cc.patch.yml"
+      ]
     },
     "client": {
       "platform": "web",

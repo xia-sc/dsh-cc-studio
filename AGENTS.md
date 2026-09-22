@@ -10,12 +10,13 @@
 ## 1. 仓库结构
 
 ```
-lib/index.js    1041 行 ── 宿主半：RPC 端点 + 草稿落盘 + 角色库 + PNG/CHARX + 预设自动安装
-lib/agent.js     614 行 ── 预设半：CC 模式的 14 个 Tool（只随 CC 预设挂载）
-lib/client.js   1662 行 ── 浏览器半：手写 bundle，胶囊(Capsule) + 工坊(Workshop) + 设置页(SettingsView)
-presets/cc/              ── CC 预设模板（挂载时自动安装到 <DSH_HOME>/.agent-presets/cc）
-cordis.patch.yml         ── 宿主组合补丁（insert 一个插件行）
-tests/*.test.mjs         ── 5 个测试文件、216 项断言；**不随包发布**
+lib/index.js    1138 行 ── 宿主半：RPC 端点 + 草稿落盘 + 角色库 + PNG/CHARX + 预设安装（旧版目录形态）
+lib/agent.js     657 行 ── 预设半：CC 模式的 14 个 Tool（只随 CC 预设挂载）
+lib/client.js   1664 行 ── 浏览器半：手写 bundle，胶囊(Capsule) + 工坊(Workshop) + 设置页(SettingsView)
+presets/cc.patch.yml     ── 补丁层 2：CC 预设的**声明行**（dsh ≥ 0.1.7-alpha.1 唯一认的形态）
+presets/cc/              ── CC 预设的目录模板（dsh ≤ 0.1.6-alpha.2，挂载时安装到 <DSH_HOME>/.agent-presets/cc）
+cordis.patch.yml         ── 补丁层 1：宿主组合补丁（insert 一个插件行）
+tests/*.test.mjs         ── 6 个测试文件、278 项断言；**不随包发布**
 dist/*.zip               ── 历史发布包（按版本命名），不是构建产物，不要改
 .github/workflows/       ── CI：打 v* tag 自动发 npm（OIDC）+ 建 Release（正文抽自 CHANGELOG.md）
 .github/scripts/         ── release-notes.mjs：上面那个 Release 正文/标题的抽取脚本，可本地直接跑
@@ -29,7 +30,7 @@ dist/*.zip               ── 历史发布包（按版本命名），不是构
 | `./client` | `lib/client.js` | 浏览器（`dsh.client` 声明 → `/plugins/??<包名>/client.js&rev=…`） |
 | `./agent` | `lib/agent.js` | 预设行 `@xia-sc/dsh-cc-studio/agent` |
 
-> 包名是 `@xia-sc/dsh-cc-studio`（0.3.2 起；此前叫 `@dsh-plugins/dsh-cc-studio`）。npm 的 scoped 包**只有该 scope 的成员能发布**，而 `@dsh-plugins` 不是本项目持有的（npm CLI 也没有 `npm org create`），所以旧名发不出去 —— 再改名时 scope 必须落在发布者自己的账号下。改名要同步 5 处：`package.json` 的 `name`、上表三行的加载方，以及 `lib/client.js` 里 `__ModuleLoader__.load({ id })` 的 `id`。最后这处是硬约束：`dsh-client-modules` 会拿宿主图里的包名精确匹配 `id`（该包 `lib/client.js:267,285`，`stripClientSuffix` 后相等），对不上直接抛 `bundle … loaded without registering "…"`，整个客户端半加载失败。
+> 包名是 `@xia-sc/dsh-cc-studio`（0.3.2 起；此前叫 `@dsh-plugins/dsh-cc-studio`）。npm 的 scoped 包**只有该 scope 的成员能发布**，而 `@dsh-plugins` 不是本项目持有的（npm CLI 也没有 `npm org create`），所以旧名发不出去 —— 再改名时 scope 必须落在发布者自己的账号下。改名要同步 5 处：`package.json` 的 `name`、上表三行的加载方，以及 `lib/client.js` 里 `__ModuleLoader__.load({ id })` 的 `id`。最后这处是硬约束：`dsh-client-modules` 会拿宿主图里的包名精确匹配 `id`（该包 `lib/client.js:586,678`，`stripClientSuffix` 后相等），对不上直接抛 `bundle … loaded without registering "…"`，整个客户端半加载失败。
 
 ---
 
@@ -73,19 +74,26 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
 
 改协议前先对一遍 `@deepseek-ai/dsh-client-connection` 的 `parseConnectionResponse` / `assertTarget`，它才是唯一权威。
 
-### 2.4 预设里的每一行 name 都必须能解析
+### 2.4 预设的投递方式（两代）与「一行坏掉」的后果
 
-dsh 的预设发现（`dsh-agent-presets` → `unresolvableRows`）会对**每个会真正启动的行**做包存在性检查；**任何一行取不到，整个预设就被标记 `broken`**，roster 里显示「加载失败」并且**不可选中、不可复制**。
+**投递方式按 dsh 版本分两代，两份清单必须逐字同步**：
 
-也就是说：预设里写错一个包名，后果不是「那个功能不可用」，而是**整个 CC 模式消失**。
+| dsh 版本 | 载体 | 谁写 |
+| --- | --- | --- |
+| ≥ `0.1.7-alpha.1` | `presets/cc.patch.yml`：组合里的 `@deepseek-ai/dsh-agent-preset` **声明行**（`config.plugins` 就是那份清单） | 随包补丁层，`package.json` 的 `dsh.bundle.patch` 第 2 层（第 1 层是 `cordis.patch.yml` 的宿主行）；**一个新版 dsh 上不写盘** |
+| ≤ `0.1.6-alpha.2` | `presets/cc/agent.cordis.yml`：目录形态，插件挂载时安装到 `<DSH_HOME>/.agent-presets/cc` | `installCcPreset`（见 2.5） |
 
-`presets/cc/agent.cordis.yml` 是**照抄 dsh 内置 `standard` 预设再改**的，因此：
+`presets/cc/agent.cordis.yml` 是**照抄 dsh 内置 `standard` 预设再改**的，`presets/cc.patch.yml` 的 `plugins` 是它的逐行副本（整体 +10 空格缩进），因此：
 
-- dsh 升级若改动了内置预设（改包名、加行、改配置 schema），这里**必须同步** —— 这是历史上最容易坏的地方，见下面第 4 条。
-- 新增行前确认目标 dsh 版本真的装了那个包。**任何 truthy 的 `disabled` 都会被健康检查跳过**（`unresolvableRows` 里 `if (Boolean(row.disabled)) continue`），所以 `disabled: true` 与 `disabled: !!js …` 一样不参与行解析 —— 0.3.4 敢把 alpha.2 新增的 `tool-plugin-manager`（`disabled: true`）抄进来就是靠这条；但**不要**靠 `disabled` 遮掩一个已经不存在的包。
+- dsh 升级若改动了内置预设（改包名、加行、改配置 schema），**两份都要同步** —— 这是历史上最容易坏的地方，见下面第 4 条。`tests/preset-install.test.mjs` 第 12 节按「除注释外逐字一致」钉死两份清单：只改一边会直接测试失败（这是有意的，别把它改宽）。
+- 新增行前确认目标 dsh 版本真的装了那个包。**`disabled` 行在两代里都不参与解析**（0.1.6 是 `unresolvableRows` 里 `if (Boolean(row.disabled)) continue`；0.1.7 是注册表对 `disabled` 行既不 import 也不参与 `auditRows`），所以 `disabled: true` 与 `disabled: !!js …` 都不会因为包没了而被判死 —— 0.3.4 敢把 alpha.2 新增的 `tool-plugin-manager`（`disabled: true`）抄进来就是靠这条；但**不要**靠 `disabled` 遮掩一个已经不存在的包。
+- 一行坏掉的后果也换代了：0.1.6 上「任何一行取不到 → 整个预设 `broken`、roster 里不可选」；0.1.7 上是 `mountPreset → auditRows` 判死、落在 `record.broken` 上 —— roster 里**仍看得到**「CC 模式」，但带诊断且组不出会话。结论没变：预设里写错一个包名 = CC 模式不能用。
+- **别再加第三种投递方式**：≥ 0.1.7 的注册表没有文件系统扫描（连 `fs` 都不 import），目录形态写了也没人读 —— 这正是 0.3.6 修的 bug（见第 7 条）。行级 `disabled: !!js` 更不能拿来当版本闸门：`Entry.disabled` 只在建树/更新时求值一次，`ctx.get('agentPresets')` 那时还没起来，判定成 true 就再也不会重算；而抛异常的 `disabled` 表达式会被启动审计当成**失败的 entry**。
 - 预设里 `cordis:group` / `isolate` 的用法有解释性注释，别删。
 
-### 2.5 预设自动安装：绝不静默覆盖用户改动
+### 2.5 旧版（≤ 0.1.6-alpha.2）的目录安装：绝不静默覆盖用户改动
+
+> dsh ≥ `0.1.7-alpha.1` 上这套安装**自动让位**：`supportsDeclaredPresets(ctx)` 命中（`agentPresets` 上同时有 `register` 与 `compositionInventory`）就返回 `status: "native"`，一个字都不写。想在新版上关掉 CC 模式，是在自己的 profile 补丁层里按 id 关掉 `preset-cc` 那一行，而不是用这里的开关。检测**判窄不判宽**：误判 false 只是白写一次死目录，误判 true 才会真的少一个预设。⚠️ 那两个方法必须是 **AND，且不许简化成任何一个**：0.1.6 的 `dsh-agent-presets` 也有 `compositionInventory`（`async compositionInventory()`），单看它会把老版误判成新版、CC 模式在 0.1.6 上直接消失；`register(definition)` 才是 0.1.7 新注册表独有（老服务里的 `register` 只出现在 `settings.register` / `sessionProjections.register` 上）。
 
 `lib/index.js` 的 `planPresetInstall` 是纯决策函数，规则与测试一一对应：
 
@@ -100,9 +108,11 @@ dsh 的预设发现（`dsh-agent-presets` → `unresolvableRows`）会对**每�
 
 改这块时：**不变量比功能更重要** —— 「用户没改过的才更新」和「记录里不声明被跳过的用户文件」两条都有测试钉住，破坏它们就会在某台机器上吃掉用户的预设。
 
-### 2.6 测试必须隔离 `DSH_HOME`
+### 2.6 落盘根与测试隔离
 
-插件用 `DSH_HOME`（优先）或 `homedir()` 解析落盘位置。任何会触发 `apply()` 的测试都必须同时隔离 `DSH_HOME`、`HOME`、`USERPROFILE` —— 只隔离 `HOME` 不够，`DSH_HOME` 优先，会写进**真实的** `~/.dsh/.agent-presets/cc`。`tests/rpc-channel.test.mjs` 已经踩过这个坑，并在跑完后校验真实目录未被改动，新测试照抄这个模式。
+**落盘根只有一套**（0.3.6 起）：`dataRoots(sub)` 返回 `[主根, 旧根]` —— 主根 = `DSH_HOME`（优先，`trim` 后非空）或 `homedir()/.dsh`，旧根 = `homedir()/.dsh`；两者路径相同时**去重成一条**。草稿（`cc-drafts/`）、角色库（`cc-library/`）、预设（`.agent-presets/`）全走它：**写盘只写 `candidates[0]`，读盘依次回退**（老用户升级后不会「数据没了」）。宿主半与预设半各有一份同构实现，`tests/data-root.test.mjs` 钉死「两半路径一致」+「源码里不许再出现写死的 `homedir()/.dsh/cc-*`」。
+
+任何会触发 `apply()`、或读写草稿/角色库的测试，**仍然必须同时隔离 `DSH_HOME`、`HOME`、`USERPROFILE`**：只隔离 `DSH_HOME` 时写盘确实落在沙箱（0.3.6 起），但**读盘会回退到 `homedir()/.dsh`**，隔离环境会读到真实用户的草稿/角色卡；0.3.6 之前更糟 —— 直接往真实 `~/.dsh` 写（0.3.6 的兼容性审计实测踩到过一次，事后按内容确认并手工清除）。`tests/rpc-channel.test.mjs` 与 `tests/data-root.test.mjs` 都照这个模式，并在跑完后校验真实目录未被改动。
 
 ---
 
@@ -112,9 +122,9 @@ dsh 的预设发现（`dsh-agent-presets` → `unresolvableRows`）会对**每�
 
 - **RPC 端点**：`validate` / `ping` / `cc_isCcMode` / `cc_getDraft` / `cc_setDraft` / `cc_patchDraft` / `cc_validateDraft` / `cc_migrateDraft` / `cc_listLibrary` / `cc_saveToLibrary` / `cc_loadFromLibrary` / `cc_deleteFromLibrary` / `cc_renameInLibrary` / `cc_getLibraryEntry` / `cc_importFromPng` / `cc_exportPng` / `cc_importFromCharx` / `cc_exportCharx`。未知端点返回 **200 + 失败帧**（`details.code = "unknown-endpoint"`），不是 404。
 - **草稿槽 key 的不变量**（issue #5 的教训）：同一会话里 **Tools 与浏览器必须算出同一把 key**。Tools 侧是 `exec.agent.session.id`；浏览器侧**必须显式把会话 id 传进来** —— RPC 是 HTTP 处理函数，`agents.currentInitiator()` 在那里恒为空，`draftKeyPartsFrom` 会回退成 `"default"`，于是「模型写 `session-<id>`、工坊读 `default`」两槽并存。回退时 `source` 会如实报成 `fallback`（`keySource` 字段），前端据此**不渲染**该槽并告警。新增读写草稿的端点时，一律走 `draftKeyFrom(ctx, args)`，别自己拼 key。
-- **草稿持久化**：`<DSH_HOME>/cc-drafts/<session>.json`，变更即落盘（内存 miss 时**不静默建空**，会告警并提示恢复）。文件名是 `safe(key)-<hash>.json`，`listDraftSlotsOnDisk()` 能把盘上的槽列回来（按写入时间倒序），用于「当前槽是空壳」时的救回提示。
+- **草稿持久化**：`<主根>/cc-drafts/<session>.json`（`draftDir()` = `dataRoots("cc-drafts")[0]`，0.3.6 起认 `DSH_HOME`；读盘经 `findDraftPath()` 回退旧根 `~/.dsh`）。变更即落盘（内存 miss 时**不静默建空**，会告警并提示恢复）。文件名是 `safe(key)-<hash>.json`，`listDraftSlotsOnDisk()` 扫两个根、按文件名去重（主根那份解析失败时才让旧根补位），用于「当前槽是空壳」时的救回提示。
 - **草稿槽迁移**：`cc_migrateDraft({ from, to?, overwrite? })` + 纯决策函数 `migrateDraftDecision`。目标槽非空时必须显式 `overwrite: true`（**绝不静默覆盖**，与 2.5 同一条家规）；候选槽只报「错位真正会牵涉到的另一把」（当前是会话槽看 `default`，当前是 `default` 看会话槽），别把所有会话的槽都端给用户当噪音。
-- **角色库**：`<DSH_HOME>/cc-library/<id>.json`。
+- **角色库**：`<主根>/cc-library/<id>.json`（`libDir()` 同上，见 2.6）。读经 `readLibraryRaw(id)` 回退旧根；`listLibraryEntries` 并集去重（主根优先）；**`deleteLibraryEntry` 会把两个根里的同名副本都删**（否则回退读会把刚删的卡「复活」），一个都没删到时仍按原语义报错；`renameLibraryEntry` 就地写在解析到的那一份上，不搬家。
 - **容器互通**：PNG 的 `tEXt` `ccv3` 块（自带 CRC32/deflate）、CHARX（ZIP + `card.json`）。
 - **预设安装**：见 2.5。
 
@@ -122,6 +132,7 @@ dsh 的预设发现（`dsh-agent-presets` → `unresolvableRows`）会对**每�
 
 - `inject` 是 `["tools", "agents"]`，用 `ctx.tools.register({ name, description, parameters, execute })` 注册 14 个 Tool。
 - 与宿主半**共享同一份草稿文件**（同一套解析/落盘逻辑），所以两边对「多段问候语」「空数组」的处理必须一致。
+- 与宿主半**共享同一套落盘根**：`dataRoots()` / `safeDraftFile()` 在两边各有一份同构实现，必须算出同一个路径 —— 否则又会退化成 issue #5 那种「模型写一处、工坊读另一处」。`tests/data-root.test.mjs` 直接比对两半的输出。
 - 强制工作流：`cc_get_card → cc_patch_character → cc_patch_world → cc_add_lorebook_entries → cc_patch_greetings → cc_validate`；`GREETING_MAX = 10` 与宿主截断点必须保持一致（有跨文件测试）。
 
 ### 3.3 `lib/client.js`（浏览器）
@@ -132,7 +143,7 @@ dsh 的预设发现（`dsh-agent-presets` → `unresolvableRows`）会对**每�
   - `settings.section` → `SettingsView`（设置页「角色卡工坊」）
 - **CC 模式探测**只有一份实现：`useCcPreset()`。判定优先级：**① 会话投影（用 `ccSessionIdOfProps(props)` 取到的会话 id 去 `useSessions().byId[id]` 里查 `projectionValues.agentPreset`）→ ② 预设芯片 DOM（`button[aria-haspopup="menu"]`）→ ③ 主机 RPC**，新会话页另有 1s 本地轮询兜底。
   - 历史事故：读错过字段（`sess.preset / presetId / agentPreset / mode` 全都不存在），且 effect 依赖不变导致永不重跑 —— **切到 CC 模式要刷新才出胶囊**。别再写第二份探测，`tests/cc-detection.test.mjs` 里有源码级守卫。
-  - **`SessionListState` 没有 `current` 字段**（alpha.2 只有 `ids` / `byId` / `phase`）。曾经用它当「当前会话」，恒为 `null` → 投影权威失效、`currentId` 退化成整个 `SessionSnapshot` 对象（issue #5）。会话 id 只能从 slot props 取：`props.sessionId`（session 域标准属性）→ `props.session.sessionId`（`conversation.input.dock` 的 ownerProps）→ 对象兜底。
+  - **`SessionListState` 没有 `current` 字段**（0.1.6-alpha.2 是 `ids` / `byId` / `phase`，0.1.7-alpha.1 又加了 `projectionsBySession`，仍然没有 `current`）。这个结构的字段集**已经改过两轮**，本插件只准读 `ids` / `byId` / `phase`。曾经用它当「当前会话」，恒为 `null` → 投影权威失效、`currentId` 退化成整个 `SessionSnapshot` 对象（issue #5）。会话 id 只能从 slot props 取：`props.sessionId`（session 域标准属性）→ `props.session.sessionId`（`conversation.input.dock` 的 ownerProps）→ 对象兜底。
   - **两个挂载点共用一份 `store`**：`Capsule` 在会话域（有会话 id），`Workshop` 在根域（`shell.overlay`，**拿不到会话 id**）。根域实例只准把结论改成「是」，不准写 `false` —— 否则它每秒的 `evaluate()` 会把会话域实例刚判定的 CC 状态清掉，胶囊就一闪一闪。会话 id 由会话域实例 `store.setSessionId()` 发布给全体。
   - **草稿槽 key 只能来自这个会话 id**：`pullDraft` 没有 key 就一次都不发（不许拿 `default` 顶替），节流按 key、切会话后回来的响应丢弃、主机回的 `key` 与点名的 key 不一致时不渲染只告警。`default` 槽只是「没有会话上下文」时的回退，**不是**当前会话的草稿。
 - 状态在 `store`（`createStore` + `subscribe/getSnapshot`）；设置存 `localStorage:dsh-cc-studio-settings`。
@@ -147,23 +158,31 @@ dsh 的预设发现（`dsh-agent-presets` → `unresolvableRows`）会对**每�
 | `0.1.5-rc.1` / `0.1.5-rc.2` | 正常 | 见 CHANGELOG 0.2.22 |
 | `0.1.6-alpha.1` | 正常（0.3.1 起） | 预设行 `workflow-worker-thread` → `workflow-ptc`，否则预设整体被判 broken |
 | `0.1.6-alpha.2` | 正常（0.3.4 起） | 内置 `standard` 相比 alpha.1 只多一行 `tool-plugin-manager`（`disabled`）。0.3.4 补回 `present` 行与 spawn 行的 `modelSelectionSettings: true` |
+| `0.1.7-alpha.1` | 正常（0.3.6 起） | **预设机制换代**：目录形态（`.agent-presets/`）整体下线，改由组合里的 `@deepseek-ai/dsh-agent-preset` 声明行投递；0.3.6 随包带 `presets/cc.patch.yml`。内置 `standard` 与 `0.1.6-alpha.2` 逐行 diff 只差 persona 的 `suffix`（去掉），**行名集合完全相同** |
 
 已实测对齐的接口（0.1.6-alpha.2）：`webServer.register`、connection RPC 线协议 + `connection.requestRejection`、`conversation.input.dock` / `shell.overlay` / `settings.section` 三个 slot、`ctx.locale.bind/translate`、`agents.currentInitiator/get`、`tools.register`（要求 `output: { schema, render }`，且只对 `output.schema` 做 JSON-Schema 子集断言 —— `parameters` 不查子集，`minItems`/`maxItems` 不会抛）。
 
-**实测手法（可复用）**：宿主半靠「未知路径 404/405 vs 插件路由 401」校准（证明路由确实注册、且围栏是插件自己调的）；客户端半用 Client Inspect 读活页面的 Slot 台账，看三个挂载点是否 `active: true` 且 registrant 等于包名；预设半按 `tools.register` 契约在隔离 harness 里挂 `lib/agent.js`；预设健康度直接调 alpha.2 自带的 `discoverPresets`（`compositionProblem` + `unresolvableRows`）。
+已实测对齐的接口（0.1.7-alpha.1）：上面整条仍然成立（`inject` 的四个服务、RPC 线协议、三个 slot、`tools.register` 都没变）—— 换代的只有预设这一块：`agentPresets` 的实现从 `dsh-agent-presets`（**复数**，导出 `discoverPresets` / `unresolvableRows`）换成 `dsh-agent-preset-registry`（**单数**，`register` / `compositionInventory` / `composedPreset`），载体换成组合声明行，`<DSH_HOME>/.agent-presets/` 再没有任何读者（新注册表连 `fs` 都不 import）。
+
+**实测手法（可复用）**：宿主半靠「未知路径 404/405 vs 插件路由 401」校准（证明路由确实注册、且围栏是插件自己调的）；客户端半用 Client Inspect 读活页面的 Slot 台账，看三个挂载点是否 `active: true` 且 registrant 等于包名；预设半按 `tools.register` 契约在隔离 harness 里挂 `lib/agent.js`。**预设 roster** 直接用活宿主的官方 Remote：dsh 把每个 Remote 挂成 `POST /api/<namespace>/<method>`（envelope 同 connection RPC；cookie 由 `/?token=…` 换），`POST /api/agentPresets/list` 看条目、`POST /api/pluginInventory/list` 看**含 `broken` 与每行 `fiberPhase` 的完整台账**（前者会剥掉 `name`/`broken`）。0.1.6 上则用 `discoverPresets`（`compositionProblem` + `unresolvableRows`）。
+
+**升级时最便宜的第一刀**：`dsh --profile <名字> --dump-config` —— 只打印组合、不 mount、不起服务，层注释 `# == <包名>` 下面就能确认声明行到底有没有被组合进来。（启动 `dsh web` 的正确形式是 `dsh --profile <名字> --no-open --port <端口>`，**不写 `web` 位置参数**，写了会报 `too many arguments`。）另注：插件的 `info` 日志只进 Cordis logger，默认**不落 stdout**（`dsh web` 只打印一行 URL），所以「grep 启动日志」不是有效的安装判据 —— 0.3.6 实测。
 
 **新增/升级 dsh 版本时的清单**：
 
 1. 拉目标版本的 `@deepseek-ai/dsh` 与相关包（`npm pack` 即可，不必装）。
-2. 对比 `dsh-host-webserver`、`dsh-client-connection`、`dsh-client-ui-conversation/layout/settings-general`、`dsh-agent-presets`、`dsh-tools`、`dsh-agent` 这几个包的 API 面（本仓库就靠这几个活着）。
-3. **把 `presets/cc/agent.cordis.yml` 与目标版本内置的 `standard` 预设逐行对一遍**（`@deepseek-ai/dsh-agent-presets/presets/standard/agent.cordis.yml`）。
-4. 用隔离环境实测（见第 6 条），不要只看代码。
+2. 对比 `dsh-host-webserver`、`dsh-client-connection`、`dsh-client-ui-conversation/layout/settings-general`、`dsh-tools`、`dsh-agent`，以及**预设这一块**（0.1.6 及以前：`dsh-agent-presets`；0.1.7 起：`dsh-agent-preset` + `dsh-agent-preset-registry`）的 API 面。
+3. **确认预设的投递方式**：目标版本还读不读 `<DSH_HOME>/.agent-presets/`？读 → 目录模板 `presets/cc/agent.cordis.yml` 仍是主线；不读 → 必须有 `presets/cc.patch.yml` 那层声明（`dsh.bundle.patch` 里列着它）。判据很硬：新包源码里搜 `discoverPresets` / `\.agent-presets`。
+4. **把两份清单与目标版本内置的 `standard` 预设逐行对一遍**：≤0.1.6 在 `@deepseek-ai/dsh-agent-presets/presets/standard/agent.cordis.yml`，≥0.1.7 在 `@deepseek-ai/dsh-web-app/presets/standard.patch.yml`（`config.plugins`）。
+5. 用隔离环境实测（见第 6 条），不要只看代码。
 
 ---
 
 ## 5. 日常改动规则
 
 - **改任何 bug 都要补回归测试**，并在 `CHANGELOG.md` 顶部写一条：**现象 → 根因 → 修法 → 生效方式**（重启 `dsh web` / 刷新页面 / 两者），这是本仓库既有的写法，照抄。
+- **改预设行必须同时改两处**：`presets/cc/agent.cordis.yml`（≤0.1.6 目录形态）与 `presets/cc.patch.yml` 的 `plugins`（≥0.1.7 声明行）。`tests/preset-install.test.mjs` 第 12 节按「除注释外逐字一致」校验，只改一边会红（见 2.4）。
+- **改落盘路径必须两半同步**：`dataRoots()` / `safeDraftFile()` 在 `lib/index.js` 与 `lib/agent.js` 各有一份同构实现；`tests/data-root.test.mjs` 校验两半输出一致 + 源码里不再有写死的 `homedir()/.dsh/cc-*`（见 2.6）。
 - `package.json` 的 `version`、`README`/`README_EN` 里的「当前版本」、`CHANGELOG.md` 顶部小节三者同步。
 - `files` 决定发布内容（`lib` / `cordis.patch.yml` / `presets`）；`tests/` **不进包**，所以测试可以随便依赖仓库内路径。`README.md` 与 `LICENSE` 由 npm 强制带上；`README_EN.md` **不在** `files` 里，因此不进包（npm 页面也只渲染 `README.md`）。
 - **发布走 CI（默认）**：`.github/workflows/publish.yml` —— 打 `v*` tag 即 `npm test` → `npm publish --provenance` → 发布成功后自动建 GitHub Release（正文与标题由 `.github/scripts/release-notes.mjs` 从 `CHANGELOG.md` 的该版本小节抽取，**所以 CHANGELOG 顶部小节必须先写好，否则 Release 正文会退化成显式占位**）。发版三步：① 同步版本四处（`package.json` / `README.md` / `README_EN.md` / `CHANGELOG.md`）② `git commit` ③ `git tag -a vX.Y.Z -m "…" && git push origin master --follow-tags`。
@@ -180,17 +199,18 @@ dsh 的预设发现（`dsh-agent-presets` → `unresolvableRows`）会对**每�
 ## 6. 本地验证
 
 ```bash
-npm test          # 5 个文件：45 + 41 + 50 + 62 + 18 = 216 项断言，全绿才算过
+npm test          # 6 个文件：45 + 66 + 50 + 62 + 18 + 37 = 278 项断言，全绿才算过
 ```
 
 测试只跑纯函数与源码级守卫（不启动 dsh、不写真实用户目录），所以**还需要手工验证**：
 
 - **改宿主/客户端**：重启 `dsh web`（宿主改动）+ 刷新页面（客户端改动）。
   - 客户端资源真实地址形如 `/plugins/??@xia-sc/dsh-cc-studio/client.js&rev=<内容哈希>`，**缺 `??` 或 `rev` 都会 404**，`rev` 随 `lib/client.js` 内容变化。
-- **改预设**：预设只在插件挂载时安装。想强制重装：删掉 `<DSH_HOME>/.agent-presets/cc` 后重启，或把插件行配成 `presetInstall: force`。
-- **验证预设是否被判 broken**：在 GUI 设置 →「Agent 预设」里看 CC 模式是否显示「加载失败」；或用 `dsh-agent-presets` 的 `discoverPresets(roots, harnessBase)` 直接跑一遍发现逻辑。
+- **改预设**：分两代 —— ≥ `0.1.7-alpha.1` 改 `presets/cc.patch.yml`，重启 `dsh web` 即生效（**没有任何安装步骤**）；≤ `0.1.6-alpha.2` 改 `presets/cc/agent.cordis.yml`，预设只在插件挂载时安装，想强制重装就删掉 `<DSH_HOME>/.agent-presets/cc` 后重启，或把插件行配成 `presetInstall: force`。两处一起改（第 5 条）。
+- **验证预设是否被判 broken**：≥ `0.1.7-alpha.1` 先 `dsh --profile <名字> --dump-config` 确认 `preset-cc` 被组合进来了（层注释 `# == <包名>` 下），再查 roster —— GUI 设置 →「Agent 预设」，或直接 `POST /api/pluginInventory/list`（含 `broken` 与每行 `fiberPhase`；`/api/agentPresets/list` 会剥掉 `broken`）；≤ `0.1.6-alpha.2` 用 `dsh-agent-presets` 的 `discoverPresets(roots, harnessBase)` 直接跑发现逻辑，或看 GUI 里是否显示「加载失败」。
 - **验证 RPC 通道**：`/`（首页）与 RPC 都受会话 cookie 保护，不带 cookie 只会得到 `401 unauthorized`；用 `dsh web` 启动时打印的 token 访问一次 `/?token=…` 换取 cookie（名字形如 `dsh-auth-<base64url>`），再 POST 带信封的 JSON。
 - **想整套隔离实测**（推荐，别拿真实 `~/.dsh` 试）：
+  0. **`DSH_HOME`、`HOME`、`USERPROFILE` 都要指到临时目录**：0.3.6 起写盘认 `DSH_HOME`，但**读盘会回退 `homedir()/.dsh`**，只隔离 `DSH_HOME` 会读到（0.3.6 之前还会写进）真实用户数据 —— 见 2.6 与第 7 条第 12 项。
   1. 建一个临时 `DSH_HOME`，在其中 `profiles/web/package.json` 声明 `dsh.profile.bundles`（`@deepseek-ai/dsh-base` + `@deepseek-ai/dsh-web-app` + 本插件）并装目标版本 dsh；
   2. 把本仓库 symlink 进 `node_modules/@xia-sc/dsh-cc-studio`；
   3. `DSH_HOME=<临时目录> node <profile>/node_modules/@deepseek-ai/dsh/lib/bin.js web --no-open --port <空闲端口>`；
@@ -211,6 +231,8 @@ npm test          # 5 个文件：45 + 41 + 50 + 62 + 18 = 216 项断言，全�
 8. **大框「取消」与「完成」是同一个动作** → 输入即同步，取消必须携带打开时的快照真回滚。
 9. **改名后没重装 → 客户端报 `Failed to load plugins: web boot: 1 entry did not activate`**（0.3.2 换 scope 时真踩过）：profile 里的安装身份（`dsh.profile.bundles` 那一行 + `dependencies` 里的 `link:`）还是旧名，而包内 `package.json` / `lib/client.js` 已改名，客户端资源就解析不上——宿主照样起，只有浏览器那一半挂。判断只需一眼：`~/.dsh/profiles/web/node_modules/<scope>/` 的目录名是否等于 `package.json` 的 `name`。修法：按新名重装（`dsh plugin --profile web add <路径或包名>`）→ 重启 `dsh web` → **硬刷新**（旧页面的引导图是缓存的，普通刷新会复现同一句错）。宿主侧那条 RPC 路由也会一起消失，探测 `/dsh-cc-studio-rpc/ping` 返回 401（而非 404/405）可反推它确实被挂载了。
 10. **草稿「看着丢了」先怀疑 key 不一致，而不是数据丢了**（issue #5，`useSessions().current` 不存在 + 无 key 拉 `default` + 全局节流吞掉正式拉取，三件事叠加）：症状是模型说写好了、工坊是空壳，`~/.dsh/cc-drafts/` 里却有内容。取证只要一眼 `cc_getDraft` 的 `res.value.key` 与文件名（去掉 `-<hash>.json`）是否一致；`keySource: "fallback"` 就是主机没拿到会话 id 的信号。**别加第二条「顺手兜底成 default」的路径**，那正是这个 bug 的成因。
+11. **升级 dsh 后预设「干净地消失」，先怀疑投递机制而不是预设内容**（0.3.6，`0.1.7-alpha.1` 实测）：那一版把预设从「扫用户目录」换成「组合声明行」，于是 `<DSH_HOME>/.agent-presets/cc/` 里文件齐全、内容是最新模板、插件两半都正常，预设照样不在 roster 里 —— 没有报错、没有 broken，就是没了。一眼取证：`dsh --profile web --dump-config | grep preset-cc`。修法是把清单同时放进 `presets/cc.patch.yml` 并让 `package.json` 的 `dsh.bundle.patch` 列出它。**别再往那个目录里写**：新注册表里没有读者。
+12. **隔离实测只设 `DSH_HOME` 不够（0.3.6 修完仍然是）**：0.3.6 起写盘认 `DSH_HOME`（见 2.6），但**读盘会回退 `homedir()/.dsh`**，所以只隔离 `DSH_HOME` 时隔离环境依旧会读到真实用户的草稿与角色卡；0.3.6 之前更糟 —— 草稿直接写进**真实** `~/.dsh/cc-drafts/`（审计当天实测踩到，按内容确认是探针产物后手工清除）。要真隔离：`DSH_HOME` / `HOME` / `USERPROFILE` 一起指到临时目录，判据是「跑完后真实 `~/.dsh` 没有新文件」。
 
 ---
 
@@ -220,9 +242,9 @@ npm test          # 5 个文件：45 + 41 + 50 + 62 + 18 = 216 项断言，全�
 
 - **No build step.** `lib/*.js` is the shipped artifact: plain ESM, and `lib/client.js` is a hand-written browser bundle wrapping `window.__ModuleLoader__.load(...)`. `React.createElement` only — no JSX, no TypeScript, no bundler.
 - **The host half owns its HTTP route.** `connection.rpc.handle()` is unusable by external plugins on dsh ≥ 0.1.5-rc.1, so the plugin registers `POST /dsh-cc-studio-rpc/<endpoint>` on `webServer` and speaks the connection RPC wire protocol itself. Read request bodies with `data`/`end`/`error` events — async iteration throws on this runtime.
-- **One bad row breaks the whole preset.** dsh's preset health check rejects a preset if any started row names a package that cannot be resolved, making CC mode unselectable. Keep `presets/cc/agent.cordis.yml` in sync with the target dsh's shipped `standard` preset.
-- **Never overwrite user files** when auto-installing the preset; the `planPresetInstall` invariants are pinned by tests.
-- **Isolate `DSH_HOME`, `HOME`, and `USERPROFILE`** in any test that triggers `apply()`.
-- **Tests:** `npm test` — 5 files, 216 assertions, all green. Every bug fix needs a regression test plus a `CHANGELOG.md` entry (symptom → root cause → fix → how it takes effect). `tests/draft-slot-sync.test.mjs` boots `lib/client.js` inside a fake React/slot/RPC harness, so client-half plumbing can be asserted behaviourally instead of only by source regex.
+- **One bad row breaks the preset — and the preset now ships as a composition row.** Keep **both** plugin lists in sync: `presets/cc/agent.cordis.yml` (the legacy `<DSH_HOME>/.agent-presets/<id>/` form, dsh ≤ 0.1.6-alpha.2) and `presets/cc.patch.yml` (a `@deepseek-ai/dsh-agent-preset` declaration row inserted by the second entry of `dsh.bundle.patch`, dsh ≥ 0.1.7-alpha.1 — the only form 0.1.7 reads; it scans no directories at all). A bad package name makes the preset unusable in both generations (0.1.6: whole preset `broken`; 0.1.7: `record.broken` diagnostic on a still-listed preset). A test pins the two lists as verbatim-identical apart from comments.
+- **Never overwrite user files** when auto-installing the preset; the `planPresetInstall` invariants are pinned by tests. That install path is legacy-only now: on dsh ≥ 0.1.7 `installCcPreset` detects the new registry (`register` + `compositionInventory`) and stands down with `status: "native"`, writing nothing. To disable CC Mode on the new dsh, disable the `preset-cc` row from a profile patch layer instead.
+- **Data roots & test isolation.** One set of roots since 0.3.6: `dataRoots(sub)` returns `[primary, legacy]`, where primary = `DSH_HOME` (trimmed, if set) or `homedir()/.dsh`, and legacy = `homedir()/.dsh` (deduped when equal). Drafts, the card library and the preset directory all go through it: **writes hit the primary only, reads fall back** — implemented identically in `lib/index.js` and `lib/agent.js`, pinned by `tests/data-root.test.mjs` (which also forbids hard-wired `homedir()/.dsh/cc-*` again). Still isolate `DSH_HOME`, `HOME` **and** `USERPROFILE` in any test: with only `DSH_HOME` set, reads still reach the real `~/.dsh`.
+- **Tests:** `npm test` — 6 files, 278 assertions, all green. Every bug fix needs a regression test plus a `CHANGELOG.md` entry (symptom → root cause → fix → how it takes effect). `tests/draft-slot-sync.test.mjs` boots `lib/client.js` inside a fake React/slot/RPC harness, so client-half plumbing can be asserted behaviourally instead of only by source regex.
 - **Draft-slot key invariant:** the browser must pass the session id explicitly; a host-side fallback to the `default` slot means "the caller had no session context", and the client refuses to render that slot instead of painting it. `SessionListState` has no `current` field — read the session id from slot props (`props.sessionId`, `props.session.sessionId`). Two slot instances (Capsule in session scope, Workshop in root scope) share one store, so a root-scope instance may never write a `false` CC verdict.
-- **dsh compatibility:** verified on `0.1.5-rc.1/rc.2`, `0.1.6-alpha.1`, and `0.1.6-alpha.2`. When bumping, diff the dsh packages this plugin lives on, then re-check the preset against the shipped `standard` preset.
+- **dsh compatibility:** verified on `0.1.5-rc.1/rc.2`, `0.1.6-alpha.1`, `0.1.6-alpha.2` and `0.1.7-alpha.1`. When bumping, diff the dsh packages this plugin lives on, check *how that version delivers presets*, then re-check both preset lists against the shipped `standard` preset. Cheapest first probe on any new version: `dsh --profile <name> --dump-config` (composes and prints, mounts nothing).

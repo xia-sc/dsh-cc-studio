@@ -1,0 +1,328 @@
+# @xia-sc/dsh-cc-studio — 「CC 模式」预设声明层（dsh >= 0.1.7-alpha.1）
+#
+# 为什么单独一层：dsh 0.1.7-alpha.1 起，预设不再是「<DSH_HOME>/.agent-presets/<id>/ 目录」，
+# 而是**组合里的一个声明行** —— 内置的 standard/ptc/minimal/cordis 就是这么发的（见
+# @deepseek-ai/dsh-web-app 的 presets/*.patch.yml）。目录形态在 0.1.7 已经没有任何代码读取，
+# 所以必须随包带一层补丁：插件装进哪个 profile，「CC 模式」就出现在哪个 profile 的 roster 里。
+#
+# package.json 的 dsh.bundle.patch 列两层：cordis.patch.yml（宿主插件行）+ 本文件（预设声明）。
+#
+# ⚠️ 本文件的 plugins 必须与 presets/cc/agent.cordis.yml **同名同序**：
+#   · 本文件（声明行）        → dsh >= 0.1.7-alpha.1
+#   · agent.cordis.yml（目录形态，插件挂载时安装到 <DSH_HOME>/.agent-presets/cc）→ 更老的 dsh
+# tests/preset-install.test.mjs 第 11/12 节把「两份清单不许漂移」钉死了：改一边必须改另一边。
+# 两份清单的行逐字一致，只有上面那两处解释「健康检查」的历史注释按 0.1.7 的事实改写过。
+#
+# 想关掉 CC 模式（>=0.1.7）：不必卸载插件，在自己 profile 的补丁层里按 id 关掉这一行即可 ——
+#   - id: preset-cc
+#     name: '@deepseek-ai/dsh-agent-preset'
+#     disabled: true
+# profile 补丁 = <profile>/cordis.patch.yml；$DSH_HOME/cordis.patch.yml 对全部 profile 生效。
+- insert:
+    - id: preset-cc
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        # 预设 id 是硬契约：lib/agent.js 只在 CC 预设下挂载，浏览器 lib/client.js 的
+        # CC_PRESET_ID 与宿主 isCcPreset() 都按 'cc' 精确比较，改名会让两边同时失联。
+        id: cc
+        name: CC 模式
+        description: CCv3 角色卡工坊 — LLM 通过 6 个 Tool 引导填表（cc_get_card / cc_patch_character / cc_patch_world / cc_add_lorebook_entries / cc_patch_greetings / cc_validate），胶囊实时同步，工坊全屏编辑，导出 chara_card_v3。
+        # 排序只在 roster 里可见：内置四个是 1..4，CC 模式排在它们后面。
+        order: 50
+        plugins:
+          # The `standard` agent preset: the full coding agent, mounted once per process.
+          #
+          # This file is an AGENT-PLANE composition. The roster mounts it ONCE under a
+          # standing scope; every session naming it joins by scope parentage, so the
+          # tools and prompt sections registered here cover each joined agent while a
+          # session's own state stays keyed per Session/Agent inside the plugins. The
+          # host composition (`base.cordis.yml` + `web.cordis.yml`) keeps everything a
+          # preset must not own: the registries themselves, the sandbox and approval
+          # stack, persistence, and the model route.
+          #
+          # A service row here MUST sit inside a group carrying an `isolate` realm.
+          # Without one it publishes into the root realm, where it is process-global —
+          # another preset publishing the same name collides, and a host reader would
+          # resolve one preset's instance for every session; `dsh-agent-presets` rejects
+          # that at mount. `true` means an entry-local realm: this standing mount's own
+          # private instance, apart from every other preset's. (A shared label does NOT
+          # pool instances — `provide()` throws on the second registration under the
+          # same realm symbol; labels join REALMS, and are not what this file needs.)
+
+          # ── identity ────────────────────────────────────────────────────────────────
+
+          # The preset's own persona, shadowing the deployment default for this agent.
+          # dsh >= 0.1.5-rc.1: the persona row takes `prefix` (required) + optional `suffix`
+          # — the old `text` key was replaced and now fails the config schema.
+          # `{{model}}` and `{{cwd}}` resolve from the agent's own route and workspace.
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |
+                你是 CC 角色卡工坊的专属引导员（CC 模式），模型 {{model}}，工作目录 {{cwd}}。
+                你的唯一任务是把用户的一句话点子变成可导入 SillyTavern / Risu 的完整 CCv3 卡（spec: chara_card_v3）。
+                必须走完强制工作流，不可偷懒跳过 5 维世界观和世界书：
+                1) cc_get_card — 先看草稿，告诉用户还缺什么
+                2) cc_patch_character — 补 name/nickname/description/personality/scenario/tags（至少 description/personality/scenario 非空，tags 同步胶囊风格标签）
+                3) cc_patch_world — 补五维 timeline/factions/geo/power/daily，至少填 3 项，autoLorebook=true 自动生成带 @@decorator 的基础条目
+                4) cc_add_lorebook_entries — 再补到至少 5 条，覆盖年表/势力/地理/力量/日常各 1，至少 1 条 constant，content 头部写 @@position/@@depth/@@activate 等，支持 CBS 占位符（双花括号的 char / random / roll 形式）
+                5) cc_patch_greetings — 补 first_mes、alternate_greetings(≥2)、group_only_greetings(≥1 必填)、mes_example
+                6) cc_validate — 必须调且 valid=true 才算完成，否则按返回的 errors/warnings 继续补；通过后提醒用户在工坊点“导出 JSON”或“★ 保存到侧边栏”（落盘 ~/.dsh/cc-library）
+
+                规则：每次对话只追问 1-2 个薄弱点，问完立刻调工具写入；用户说“随便/跳过”也要你合理推断补全，不能留空；严禁跳过 3/4 步直接做问候语；每调一次工具要简要总结“已写入 X，下一步 Y”，并让胶囊实时同步；结束前必须 cc_validate。
+
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 65536
+
+          # ── shell ───────────────────────────────────────────────────────────────────
+
+          # `shell-env` stays in the HOST composition: `apps/cli/src/web.ts` injects it to
+          # publish `DSH_WEB_URL`/`DSH_WEB_MODE`, and a host row that injects a service is
+          # the criterion for host-plane ownership — injection resolves before any session
+          # exists, so there is no agent to key by. Behind a preset realm those variables
+          # never reached the model's shell at all. Both shell tools consume the host
+          # registry from here; their executors (`bash-sandbox`/`pwsh-sandbox`) are
+          # host-plane too.
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            disabled: !!js process.platform === 'win32'
+
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+            disabled: !!js process.platform !== 'win32'
+
+          # ── filesystem ──────────────────────────────────────────────────────────────
+
+          # Both register into the host `tools` registry and provide nothing, so
+          # they need no realm. The `fs` service and its policy stay in the host.
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+
+          # ── background jobs ────────────────────────────────────────────────────────
+
+          # Only the model-facing controls. The task REGISTRY stays on the host plane:
+          # its producers sit outside any realm this file could put it in — `tool-bash`
+          # above resolves it with `ctx.get`, and an entry-local realm here is invisible
+          # to every sibling row, so `run_in_background` would answer "background jobs
+          # unavailable" while these controls sat in the catalog. The registry is keyed by
+          # owning agent anyway, so one host instance serves every session. What a preset
+          # chooses is whether its agent can collect and stop background work at all.
+          - id: tool-jobs
+            name: '@deepseek-ai/dsh-tool-jobs'
+
+          # ── skills ──────────────────────────────────────────────────────────────────
+
+          # The skill REGISTRY lives in the host composition and is layered per scope:
+          # these rows register into THIS preset's layer of it, so they need no realm.
+          # `skill-filesystem` contributes local-root discovery for agents on this preset, and
+          # `tool-skill` gives them the catalog and loader; the merged catalog also
+          # carries whatever the deployment registered globally (repository plugins).
+          - id: skill-filesystem
+            name: '@deepseek-ai/dsh-skill-filesystem'
+            disabled: true
+
+          - id: tool-skill
+            name: '@deepseek-ai/dsh-tool-skill'
+            disabled: true
+
+          # ── goals ───────────────────────────────────────────────────────────────────
+
+          # Only the model-facing tool. The goal SERVICE, its session driver, and the
+          # `/goal` command stay on the host plane: the Gateway serves the goal domain as
+          # Remote endpoints whose receiver comes from a generated descriptor, so it
+          # resolves `goals` on the host and an entry-local realm here would hide it. The
+          # registry is keyed by session anyway, so one host instance serves every
+          # session. What a preset chooses is whether its agent can call the goal tool.
+          - id: tool-goal
+            name: '@deepseek-ai/dsh-tool-goal'
+
+          # ── plan mode ───────────────────────────────────────────────────────────────
+
+          # Plan state is per-agent by nature, so an entry-local realm is not a
+          # workaround here — it is the correct lifetime.
+          - id: planning
+            name: cordis:group
+            group: true
+            isolate:
+              planMode: true
+            config:
+              - id: plan-mode
+                name: '@deepseek-ai/dsh-plan-mode'
+                config:
+                  section: |
+                        You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
+
+                        Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
+
+                        The tool catalog stays the same across modes for request-cache stability. These plan-mode rules override any later tool description or guidance that suggests using mutation tools; those tools remain listed to keep the tool catalog unchanged. Do not use todo_write to track this planning phase: it tracks implementation after an approved plan, while the plan itself belongs in exit_plan_mode.
+
+                        Resolve discoverable facts by inspection. Use ask_user_question only for user-owned choices or material ambiguity that inspection cannot answer. Do not ask the user where code lives or how current behavior works when you can find out.
+
+                        Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.
+
+                        When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
+
+          # ── compaction ──────────────────────────────────────────────────────────────
+
+          # `compaction-basic` reads `toolResultPrune` through `ctx.get`, so the pruner must
+          # share this realm rather than sit outside it.
+          #
+          # `tokenMeter` is deliberately NOT in this realm: the meter stays on the HOST
+          # plane, and the rows here resolve that one instance. It takes no configuration,
+          # keys every fold by Session, and owns the context-meter projection units the
+          # browser reads for every session — behind a realm those units would come and go
+          # with whichever presets happen to be mounted. What a preset chooses is whether
+          # its agent compacts at all, which is `compaction-basic` below.
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
+
+          # ── delegation and workflows ────────────────────────────────────────────────
+
+          # The `subagents` registry and its spawn/fork backends live in the HOST
+          # composition: the registry is a process singleton whose cross-session queries
+          # the api-proxy serves to the browser, and a provider name may only be
+          # registered once. This preset contributes the delegation TOOLS, which resolve
+          # that host registry.
+          #
+          # `workflows` is different — nothing outside an agent reads it — so every row
+          # that reaches it shares one entry-local realm here, and a consumer left
+          # outside would resolve a host registry this preset does not populate.
+          #
+          # `tool-subagent-report` is host-plane for the same reason as the registry,
+          # not because a preset may not want it: it registers a CONTINUABLE SETUP on
+          # that singleton rather than a tool this agent calls, and the setup list is
+          # not scope-aware — one copy per mounted preset means every child gets
+          # `report` registered once per live session, which throws on the second.
+          - id: delegation
+            name: cordis:group
+            group: true
+            isolate:
+              workflowEngine: true
+            config:
+              - id: tool-subagent-control
+                name: '@deepseek-ai/dsh-tool-subagent-control'
+
+              - id: tool-subagent-list-agents
+                name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
+
+              # 0.3.4 对齐 dsh 0.1.6-alpha.2 内置 standard：spawn 行此前漏抄 modelSelectionSettings。
+              # 该键在 dsh-tool-subagent 里是 `z.boolean().default(false)`，漏掉既不报错也不改 schema，
+              # 只是子代理的「指定模型」入口被静默关掉 —— 最难发现的那类漂移。
+              # fork 行故意不加：provider/model 必须等于父代理，继承的历史才能继续命中 KV cache。
+              - id: tool-subagent
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: spawn
+                  toolName: subagent
+                  modelSelectionSettings: true
+                  backgroundMode: continuable
+
+              - id: tool-subagent-fork
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: fork
+                  toolName: subagent_fork
+                  backgroundMode: continuable
+
+              # Production dsh does not install these optional providers. Install the
+              # matching Bundle in this Profile and restart the Host, then copy this
+              # preset and remove `disabled` from the matching tool row. Host availability
+              # alone grants no tool.
+              - id: tool-subagent-codex
+                name: '@deepseek-ai/dsh-tool-subagent'
+                disabled: true
+                config:
+                  provider: codex
+                  toolName: subagent_codex
+                  backgroundMode: one-shot
+                  maxDepth: provider-managed
+
+              - id: tool-subagent-claude-code
+                name: '@deepseek-ai/dsh-tool-subagent'
+                disabled: true
+                config:
+                  provider: claude-code
+                  toolName: subagent_claude_code
+                  backgroundMode: one-shot
+                  maxDepth: provider-managed
+
+              # dsh 0.1.6-alpha.1: `dsh-workflow-worker-thread` is gone from the release;
+              # the workflow engine is now `dsh-workflow-ptc` (sandboxed Node PTC runtime,
+              # host row `ptc-runtime` → `dsh-ptc-runtime-node`).
+              # dsh 0.1.7-alpha.1: 包名取不到的行由 `dsh-agent-preset-registry` 的 mountPreset →
+              # auditRows 判死，落在 record.broken 上 —— roster 里仍看得到「CC 模式」，但带着
+              # 诊断且组不出会话。失败形态变了，结论没变：包名必须与内置 standard 逐行对得上。
+              - id: workflow-ptc
+                name: '@deepseek-ai/dsh-workflow-ptc'
+                config:
+                  provider: spawn
+
+              - id: tool-workflow
+                name: '@deepseek-ai/dsh-tool-workflow'
+
+              - id: tool-ralph
+                name: '@deepseek-ai/dsh-tool-ralph'
+                config:
+                  subagentProvider: spawn
+                  maxRounds: 64
+
+          # ── remaining model-facing rows ─────────────────────────────────────────────
+
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+
+          - id: tool-todo
+            name: '@deepseek-ai/dsh-tool-todo'
+            config:
+              allowParallelInProgress: true
+
+          # The `web` service and its search provider stay in the host composition; only
+          # the model-facing tool is per-session.
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              fetch: false
+              searchTimeoutMs: 60000
+
+          # 0.3.4 补回：`present` 是 standard 一直有的行，本预设此前整行漏抄。
+          # 症状很隐蔽 —— CC 模式下模型没有「把成品登记为交付物」的工具，不报任何错，只是少了能力。
+          # 它和下面那行都必须与 dsh 内置 standard 逐行对得上（升级清单见 AGENTS.md §4）。
+          - id: present
+            name: '@deepseek-ai/dsh-tool-present'
+
+          # dsh 0.1.6-alpha.2 新增行：standard 里就是 disabled（默认关，需要的人自己放开）。
+          # 抄过来是为了让「本预设 vs 内置 standard」的行差以后只剩有意为之的那几处，
+          # 下次升级 diff 时不必再逐个判断「这行是新加的、还是我们漏抄了」。
+          # 保留 disabled 也安全：0.1.7 的注册表对 disabled 行既不 import 也不参与
+          # auditRows 行审计（dsh-agent-preset-registry lib/index.js:199）。
+          - id: tool-plugin-manager
+            name: '@deepseek-ai/dsh-plugin-manager/tools'
+            disabled: true
+
+          # ── CC 角色卡工坊（CC 模式专用） ───────────────────────────────────
+          - id: cc-agent
+            name: '@xia-sc/dsh-cc-studio/agent'

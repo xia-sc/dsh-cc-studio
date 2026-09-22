@@ -2,6 +2,86 @@
 
 `dsh-cc-studio` 的版本变更记录，倒序排列（最新在上）。README 只保留最近几条，完整历史在本文件。
 
+## 0.3.6
+
+**适配 dsh `0.1.7-alpha.1`：修「`CC 模式` 预设从 roster 里消失」**。那一版起 dsh 的预设机制换代了 —— 预设不再是「用户目录里的一份 YAML」，而是**组合里的一个声明行**；`<DSH_HOME>/.agent-presets/` 已经没有任何代码读取。顺带修掉**草稿与角色库不认 `DSH_HOME`** 的老问题（同一次兼容性审计里实测踩到，见本版第二节）。
+
+### 现象
+
+- 升级 dsh 到 `0.1.7-alpha.1` 后，会话模式里**只剩** `standard` / `ptc` / `minimal` / `cordis` 四个内置预设，`CC 模式` 不见了 —— 不是「加载失败」，是压根不在 roster 里。
+- 迷惑点：`<DSH_HOME>/.agent-presets/cc/` 里 `preset.yml` + `agent.cordis.yml` + 安装记录**三件都在、内容还是最新模板**；插件两半也都正常（RPC 路由在、胶囊挂载点在），偏偏预设没了。
+
+### 根因
+
+dsh `0.1.7-alpha.1` 把预设发现整套换掉，旧机制**整体下线**：
+
+| | ≤ `0.1.6-alpha.2` | `0.1.7-alpha.1` |
+| --- | --- | --- |
+| 预设载体 | 目录 `<DSH_HOME>/.agent-presets/<id>/`（`preset.yml` + `agent.cordis.yml`） | 组合里的 `@deepseek-ai/dsh-agent-preset` 声明行（`config: {id, name, description, order, plugins}`） |
+| 谁提供 | `@deepseek-ai/dsh-agent-presets`（**复数**，npm 上停更于 `0.1.6-alpha.2`） | `@deepseek-ai/dsh-agent-preset`（**单数**，npm 上只有 `0.1.7-alpha.1` 一个版本）+ `@deepseek-ai/dsh-agent-preset-registry` |
+| 怎么发现 | 扫三个根：shipped 根 + 部署 `config.roots` + 用户根 | 没有文件系统扫描这回事，只有 `register()`（新注册表连 `fs` 都不 import） |
+
+于是在 0.1.7 上，`installCcPreset` 那套「挂载时把模板写进用户根」写出来的文件**没有任何读者**：目录在、文件新、没人看。这也解释了为什么现象既不是报错也不是 broken，而是干净利落地消失。
+
+### 修法
+
+- **随包带一层预设声明补丁 `presets/cc.patch.yml`**，与内置 `standard` 的投递方式完全同构（见 `@deepseek-ai/dsh-web-app` 的 `presets/*.patch.yml`）：`package.json` 的 `dsh.bundle.patch` 由一层变两层 —— 第 1 层 `cordis.patch.yml`（宿主插件行），第 2 层本文件（`preset-cc` 声明：`id: cc`、`order: 50`、`plugins` 就是原来那 32 行清单，含全部解释性注释）。插件装进哪个 profile，`CC 模式` 就出现在哪个 profile 的 roster 里；**新版上插件不再往磁盘写一个字**。
+  - 关掉 CC 模式也不用卸载插件：在自己 profile 的补丁层（`<profile>/cordis.patch.yml` 或 `$DSH_HOME/cordis.patch.yml`）里按 id 关掉 `preset-cc` 即可，`presets/cc.patch.yml` 顶部有现成写法。
+- **目录安装只为 ≤ `0.1.6-alpha.2` 保留，并在新版上自动让位**：新增 `supportsDeclaredPresets(ctx)`（要求 `agentPresets` 上同时存在 `register` 与 `compositionInventory` 这两个 0.1.7 才引入的方法），命中就 `status: "native"` 直接返回、不再写那个死目录；旧版留下的目录**保留原样**（卸载本来也不删），只记一条日志说「可以安全删除」。检测**判窄不判宽**的理由是不对称：误判 false（老版上）只是白写一次目录，误判 true（新版上漏判）才会真的少一个预设。
+- **两份清单不许漂移**：`presets/cc/agent.cordis.yml`（旧版目录形态）与 `presets/cc.patch.yml`（新版声明行）是同一份清单的两个载体，测试按「除注释外逐字一致」钉死（去掉注释与空行后 141 行完全相同，只允许声明层整体多 10 空格缩进），改一边不改另一边 = 两代 dsh 行为分叉。
+- **预设有意保留的行差照旧**（本次一行未动）：`+ cc-agent`、`− command-goal`（0.1.7 里那条 host 行仍是 `disabled: true`）、skills 两行 `disabled`、`tool-ralph` 打开、`tool-web` 的 `fetch: false`，以及我们自己的 CC persona（`prefix`，0.1.7 的 `standard` 刚好也去掉了 `suffix`，两代的行名集合完全相同）。
+
+### 测试
+
+`npm test` 216 → **241** 项（`45 + 66 + 50 + 62 + 18`），全绿。`tests/preset-install.test.mjs` 41 → 66，新增两节：
+
+- 第 11 节：`supportsDeclaredPresets` 五种入参（无 ctx / 无 `get` / `get` 抛错 / 老服务只有 `discoverPresets` / 新注册表）；新版 → `status: "native"` 且**不创建** `.agent-presets`；老版 → 仍走目录安装且文件落盘；`presetInstall: "off"` 依旧最优先。
+- 第 12 节：声明层结构守卫（`preset-cc`、`id: cc`、显示名与描述与 `preset.yml` 逐字一致、每个 `- id` 都有 `name`、平台条件行仍是未求值的 `!!js`、三个 `isolate` 组都在、`cc-agent` 仍挂在本预设下），`package.json` 的两层补丁都指向真实存在的文件，以及上面那条**两份清单逐字一致**的防漂移守卫。
+
+### 生效方式
+
+- **改的是宿主组合（补丁层 + `package.json`），必须重启 `dsh web`**（组合树只在 boot 时读一次）；客户端半未改，无需硬刷新。重启后新开的会话即可选到 `CC 模式`。
+- **本机实测（dsh `0.1.7-alpha.1`，隔离 profile + 隔离 `DSH_HOME`，端口 3099 —— 真实 `~/.dsh` 与 3080 上的会话全程未碰）**：
+  - 静态：`dsh --profile <profile> --dump-config` 的 `# == @xia-sc/dsh-cc-studio` 层里带上 `- id: preset-cc`（`name: '@deepseek-ai/dsh-agent-preset'`、`id: cc`、`plugins` 32 行齐全）。
+  - 活宿主：`POST /api/agentPresets/list` 返回 5 条预设，其中 `{"id":"cc","name":"CC 模式","order":50,"isDefault":false}`；`POST /api/pluginInventory/list` 里 `id=cc name=CC 模式 broken=<空> rows=29`，`cc-agent`（`@xia-sc/dsh-cc-studio/agent`）`enabled=true fiberPhase="active"` —— 29 行里非 active 的 6 行全是预设里**有意 `disabled`** 的（`tool-bash` 的 win32 条件、skills 两行、`tool-plugin-manager`、codex / claude-code 两个可选 provider）。
+  - 修复前同一环境（旧工作树、同一 profile、同一端点）只返回 4 条（standard/ptc/minimal/cordis），`cc` 连条目都没有 —— 是「缺席」而不是 broken，与上面的根因完全吻合。
+  - 修复后的 boot **没有重写** `<DSH_HOME>/.agent-presets/cc`（三个文件的 mtime 与 marker 里的 `version: 0.3.5` 都停在修复前那次），说明 `status: "native"` 那条分支确实生效。
+- 旧目录（如本机 `~/.dsh/.agent-presets/cc/`）从此可以删了：0.1.7 起没有任何代码读它，插件也不会代删。
+- 诊断口径（0.3.6 实测）：`/api/agentPresets/list` 的远程返回会剥掉 `name` 与 `broken`，要看完整台账用 `/api/pluginInventory/list`；另外插件的 `info` 日志只进 Cordis logger（默认不落 `dsh web` 的 stdout），**别用 grep `[dsh-cc-studio]` 判断装没装上**。
+
+---
+
+### 0.3.6（第二节）草稿与角色库的落盘根：`DSH_HOME` 优先 + 读时回退 `~/.dsh`
+
+### 现象（0.3.6 兼容性审计时实测）
+
+- 插件其实有**两套落盘根**：预设目录走 `DSH_HOME`，而草稿与角色库写死 `homedir()/.dsh`（`draftDir()` / `libDir()`），文档里却一直写成 `<DSH_HOME>/cc-drafts/`。
+- 后果一：自定义了 `DSH_HOME` 的用户，预设装在新根、草稿与角色卡却留在旧根 —— 两边都「正常」，就是不在一个地方。
+- 后果二：按 AGENTS.md §6 的推荐做法做隔离实测（**只**设 `DSH_HOME`）时，只要在那个隔离宿主上建一个 CC 会话，草稿就落进**真实的** `~/.dsh/cc-drafts/`。审计当天确实写进去了一份，按内容确认是探针产物后手工删除；真实 `~/.dsh/cc-library/` 全程未被触碰。
+
+### 修法
+
+- 新增 `dataRoots(sub)`：返回 `[主根, 旧根]` —— 主根 = `DSH_HOME`（优先，`trim` 后非空）或 `homedir()/.dsh`，旧根 = `homedir()/.dsh`；两者路径相同时**去重成一条**。**写盘只写主根，读盘依次回退**。宿主半（`lib/index.js`）与预设半（`lib/agent.js`）各一份、逐字同构：两边必须算出同一个路径，否则又会退化成 issue #5 那种「模型写一处、工坊读另一处」。
+- **草稿**：`persistDraftSync` 写主根；`loadPersistedDraftSync` 改走新的 `findDraftPath()`（主根没有就回退旧根）；`listDraftSlotsOnDisk()` 扫两个根并按文件名去重（主根那份解析失败时才让旧根补位）。
+- **角色库**：`saveLibraryEntry` 写主根（读旧根那份只为继承 `createdAt` / 旧 name）；`loadLibraryEntry` 回退读；`listLibraryEntries` 并集去重（主根优先）；**`deleteLibraryEntry` 把两个根的同名副本都删**（否则回退读会把刚删的卡「复活」），一个都没删到时仍按原语义报错；`renameLibraryEntry` 就地写在解析到的那一份上，不搬家、不复制。
+- `DSH_HOME` **未设置时两个根是同一个目录**，候选去重成一条 —— 默认安装（绝大多数用户）行为与 0.3.5 **逐字节相同**，只是现在也认 `DSH_HOME` 了。
+
+### 测试
+
+`npm test` 241 → **278** 项（`45 + 66 + 50 + 62 + 18 + 37`），全绿。新增第 6 个测试文件 `tests/data-root.test.mjs`（37 项，隔离 `HOME` / `USERPROFILE` / `DSH_HOME`）：
+
+- 根解析：`DSH_HOME` 优先、候选顺序、`trim`、全空白视为未设置、恰好等于旧根时去重；**未设置时等于 `homedir()/.dsh/cc-*`**（老用户路径零变化）。
+- 两半一致：`safeDraftFile` 对同一个 key 输出同一个文件名、两个根逐字相同。
+- 草稿：写主根不碰旧根、主根缺时回退读、两处都有时主根优先、`listDraftSlotsOnDisk` 并集去重。
+- 角色库：写主根、回退读、并集去重、删除两个根都删、删不存在的 id 仍报错、改名就地写。
+- 源码守卫：`lib/index.js` 与 `lib/agent.js` 里不再有写死的 `homedir()/.dsh/cc-*`，两半都从 `dataRoots()` 派生。
+
+### 生效方式
+
+- 宿主半与预设半都改了 → **重启 `dsh web`**；客户端半未改，无需刷新。
+- 自定义 `DSH_HOME` 的用户：新写入落在 `<DSH_HOME>`，旧的 `~/.dsh` 数据**照样读得到**（回退）；第一次保存某张卡会把新副本写进新根，旧副本保留，删除该 id 时两个根一起删。
+- 默认用户（没设 `DSH_HOME`）：路径与以前完全一致，什么都不用做，也不需要搬文件。
+
 ## 0.3.5
 
 **修 #5 草稿槽错位（前端读到 default、Tools 写会话槽）**：已落盘的会话草稿在工坊里显示成空壳、胶囊跟着一闪一闪。数据其实一直在盘上，只是**两边算出了两把 key**。

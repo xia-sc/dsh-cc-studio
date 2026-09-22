@@ -15,10 +15,11 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 | 项目 | 值 |
 | --- | --- |
 | 插件包名 | `@xia-sc/dsh-cc-studio` |
-| 当前版本 | `0.3.5` |
-| 宿主 RPC | `/dsh-cc-studio-rpc`（自带路由，适配 dsh ≥ `0.1.5-rc.1`；已在 `0.1.6-alpha.2` 实测） |
+| 当前版本 | `0.3.6` |
+| 宿主 RPC | `/dsh-cc-studio-rpc`（自带路由，适配 dsh ≥ `0.1.5-rc.1`；已在 `0.1.6-alpha.2` / `0.1.7-alpha.1` 实测） |
+| CC 预设 | `presets/cc.patch.yml`（dsh ≥ `0.1.7-alpha.1`，组合声明行）／`<DSH_HOME>/.agent-presets/cc`（≤ `0.1.6-alpha.2`，目录形态） |
 | 客户端挂载点 | `conversation.input.dock`（胶囊）+ `shell.overlay`（工坊）+ `settings.section` |
-| 落盘位置 | `~/.dsh/cc-library/`（角色卡）、`~/.dsh/cc-drafts/`（会话草稿） |
+| 落盘位置 | `<DSH_HOME>/cc-library/`（角色卡）、`<DSH_HOME>/cc-drafts/`（会话草稿）；`DSH_HOME` 默认 `~/.dsh`。0.3.6 起认 `DSH_HOME`，旧的 `~/.dsh` 位置**仍然读得到**（读时回退） |
 
 ## 安装
 
@@ -28,7 +29,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
 
 # 锁定版本
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.3.5
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.3.6
 ```
 
 **或从 GitHub 源安装**：
@@ -55,11 +56,29 @@ dsh plugin --profile web add .
 
 相对路径按**你执行命令时所在的目录**解析（dsh 会先把 `.`、`./xxx` 重写成绝对路径再交给 pnpm，避免误链到 profile 目录）。装出来的是 `link:` 到源码目录：改 `lib/*.js` 后重启 dsh web 生效；只改 `lib/client.js` 时刷新页面即可（若同时跑着 dsh 仓库的 `pnpm run dev:web`，客户端 bundle 会重建，连刷新都省了）。
 
-### 3. CC 预设（已自动安装，无需手工拷贝）
+### 3. CC 预设（随插件自动可用，无需手工拷贝）
 
-**插件挂载时会自动把 `presets/cc` 装到 `<DSH_HOME>/.agent-presets/cc`**（`DSH_HOME` 默认 `~/.dsh`），目录名固定为 `cc`——宿主与客户端都按 preset id `cc` 判定 CC 模式。装完插件、启动 `dsh web` 后即可在会话模式里选到 `CC 模式`。
+装完插件、重启 `dsh web` 后即可在会话模式里选到 `CC 模式`（preset id 恒为 `cc` —— 宿主 `isCcPreset()` 与浏览器 `CC_PRESET_ID` 都按它精确比较）。**投递方式按 dsh 版本分两代，两代都不需要你手工拷文件**：
 
-之所以需要这一步：dsh 的预设发现只扫三个根——**shipped 根**（`dsh-agent-presets` 包内自带）+ **部署 `config.roots`** + **用户根 `<DSH_HOME>/.agent-presets`**；插件包内的 `presets/` 不在其中，**「随包分发」≠「已注册」**。所以由插件在启动时把它装进用户根。
+| dsh 版本 | 预设从哪来 | 你要做什么 |
+| --- | --- | --- |
+| ≥ `0.1.7-alpha.1` | 插件随包带的补丁层 `presets/cc.patch.yml`：往组合里 insert 一行 `@deepseek-ai/dsh-agent-preset` 的**声明**（与内置 `standard` / `ptc` / `minimal` / `cordis` 完全同构） | 什么都不用做 |
+| ≤ `0.1.6-alpha.2` | 插件挂载时把 `presets/cc` 装到 `<DSH_HOME>/.agent-presets/cc`（目录形态，行为与 0.3.5 之前一致） | 什么都不用做 |
+
+**为什么 0.1.7 必须换机制**：那一版起 dsh 的预设**只来自组合里的声明行**，`<DSH_HOME>/.agent-presets/` 已经没有任何代码读取 —— 升级后 `CC 模式` 从 roster 里消失就是这个原因：目录还在，只是**没人再看它**。插件因此把声明写进 `package.json` 的 `dsh.bundle.patch` 第二层（第一层是宿主插件行），插件装进哪个 profile，`CC 模式` 就出现在哪个 profile 的 roster 里；新版上**不会再往磁盘写一个字**。
+
+**关掉 `CC 模式`（≥ `0.1.7-alpha.1`）**：不必卸载插件，在自己的补丁层里按 id 关掉那一行即可（`<profile>/cordis.patch.yml`，或对所有 profile 生效的 `$DSH_HOME/cordis.patch.yml`）：
+
+```yaml
+- id: preset-cc
+  name: '@deepseek-ai/dsh-agent-preset'
+  disabled: true
+```
+
+<details>
+<summary>≤ 0.1.6-alpha.2：目录安装的更新策略、开关与手工兜底</summary>
+
+**旧版上插件挂载时仍会把 `presets/cc` 装到 `<DSH_HOME>/.agent-presets/cc`**（`DSH_HOME` 默认 `~/.dsh`），目录名固定为 `cc`。之所以需要这一步：那条路径上 dsh 的预设发现只扫三个根——**shipped 根**（`dsh-agent-presets` 包内自带）+ **部署 `config.roots`** + **用户根 `<DSH_HOME>/.agent-presets`**；插件包内的 `presets/` 不在其中，**「随包分发」≠「已注册」**，所以由插件在启动时把它装进用户根。
 
 更新策略是幂等的，且**绝不静默覆盖你的改动**：
 
@@ -111,6 +130,8 @@ cp -R ~/.dsh/profiles/web/node_modules/@xia-sc/dsh-cc-studio/presets/cc/. ~/.dsh
 `agent.cordis.yml` 在一份 `standard` 拷贝上追加 `id: cc-studio-agent, name: '@xia-sc/dsh-cc-studio/agent'`，并把 `persona` 改为「共创搭档」——先问再填、每步 1-2 问。切换会话模式后胶囊自动出现。
 
 > 手工拷贝的目录**没有**安装记录，因此会被自动安装流程视为「你的自有文件」而跳过；想交回插件管理，删掉该目录后重启即可。
+
+> 升级到 `0.1.7-alpha.1` 后这个目录既不会被读取也不会再被写入：插件**不会**替你删任何东西，想删就自己删（`Remove-Item "$env:USERPROFILE\.dsh\.agent-presets\cc" -Recurse -Force`）。
 
 </details>
 
@@ -189,7 +210,8 @@ dsh plugin --profile web add @xia-sc/dsh-cc-studio
 
 | 现象 | 处理 |
 | --- | --- |
-| 输入框上方没有胶囊 | 确认当前会话模式是 `CC 模式`；确认 `~/.dsh/.agent-presets/cc/` 下 `preset.yml` 与 `agent.cordis.yml` 都在且目录名是 `cc`（正常应由插件自动安装；缺失则看启动日志里 `[dsh-cc-studio]` 的告警）；重启 dsh web 后刷新页面 |
+| 输入框上方没有胶囊 | 确认当前会话模式是 `CC 模式`；**dsh ≥ `0.1.7-alpha.1`**：`dsh --profile web --dump-config` 里应看到 `- id: preset-cc`（在 `# == @xia-sc/dsh-cc-studio` 那一层下），再看设置 →「Agent 预设」里 `CC 模式` 是否带「加载失败」诊断；**≤ `0.1.6-alpha.2`**：确认 `~/.dsh/.agent-presets/cc/` 下 `preset.yml` 与 `agent.cordis.yml` 都在且目录名是 `cc`（正常应由插件自动安装）；两种情况都要重启 dsh web 后刷新页面 |
+| 想直接读预设台账（诊断用） | dsh 把每个 Remote 挂成 `POST /api/<namespace>/<method>`，envelope 与 connection RPC 相同（cookie 用 `/?token=…` 换）。`/api/agentPresets/list` 会剥掉 `name` 与 `broken`，**完整台账**要 `/api/pluginInventory/list`（看 `agentPresets` 里 `cc` 的 `broken` 是否为空、`cc-agent` 的 `fiberPhase` 是否 `active`）。另注：插件的 `info` 日志只进 Cordis logger，**不会**出现在 `dsh web` 的 stdout/stderr —— 别指望 grep `[dsh-cc-studio]` 判断装没装上 |
 | 工坊出现橙色条「草稿已新建」 | 该会话没有历史草稿（首次创建或草稿目录被清）；已存档会话恢复时会改为蓝色条并显示 `creation_date`，下次写入后提示消失 |
 | 切 CC 模式报 `invalid config: S.prefix missing required value` | `presets/cc/agent.cordis.yml` 是 0.2.22 之前的旧版（persona 用了 `text:`），重新拷贝新模板 |
 | dsh 启动报 `cannot get property "webServer" without inject` | 插件版本低于 0.2.22，更新插件 |
@@ -234,7 +256,7 @@ dsh plugin --profile web add @xia-sc/dsh-cc-studio
 ```
 dsh-cc-studio/
 ├── package.json          # @xia-sc/dsh-cc-studio, dsh.bundle.patch + dsh.client, exports ./client ./agent
-├── cordis.patch.yml      # 宿主行插入：id dsh-cc-studio
+├── cordis.patch.yml      # 补丁层 1：宿主行插入（id dsh-cc-studio）
 ├── lib/
 │   ├── index.js          # host: /dsh-cc-studio-rpc（validate, cc_getDraft/cc_setDraft/cc_patchDraft, cc_isCcMode,
 │   │                     #   cc_validateDraft, 草稿槽 cc_migrateDraft, 已存库 cc_*Library, 容器 cc_importFromPng/cc_exportPng(+imageB64)/
@@ -242,14 +264,18 @@ dsh-cc-studio/
 │   ├── agent.js          # CC 模式 Tools：6 步共创 + 2 Lorebook 管理 + 6 已存库 CRUD = 14 个，含「先与用户讨论」提示
 │   └── client.js         # client: dock 胶囊 + overlay 工坊 + settings.section（DSW Token 深浅色、品牌紫、
 │                         #   五维回显、长文本大框、JSON/PNG/CHARX 导入导出/写入）
-├── presets/cc/           # CC 模式预设模板（共创 persona + cc-studio-agent）
-│   ├── preset.yml
-│   └── agent.cordis.yml
-├── tests/                # 5 个测试文件、216 项断言（不随包发布）
-│   ├── rpc-channel.test.mjs       # host 半 RPC 通道回归（假 ctx + 真实 http，23 项断言）
-│   ├── preset-install.test.mjs    # 预设自动安装决策 + 预设行契约，41 项断言
-│   ├── cc-detection.test.mjs      # CC 模式探测的源码级守卫，32 项断言
-│   └── client-greetings.test.mjs  # 客户端问候语与 i18n 守卫，62 项断言
+├── presets/
+│   ├── cc.patch.yml      # 补丁层 2：CC 预设声明行（dsh ≥ 0.1.7-alpha.1）
+│   └── cc/               # CC 预设目录模板（dsh ≤ 0.1.6-alpha.2，插件挂载时安装到用户根）
+│       ├── preset.yml
+│       └── agent.cordis.yml
+├── tests/                # 6 个测试文件、278 项断言（不随包发布）
+│   ├── rpc-channel.test.mjs       # host 半 RPC 通道回归（假 ctx + 真实 http，45 项断言）
+│   ├── preset-install.test.mjs    # 预设安装决策 + native 让位 + 两份清单防漂移 + 行契约，66 项断言
+│   ├── cc-detection.test.mjs      # CC 模式探测的源码级守卫，50 项断言
+│   ├── client-greetings.test.mjs  # 客户端问候语与 i18n 守卫，62 项断言
+│   ├── draft-slot-sync.test.mjs   # 草稿槽行为级回归（假 React/slot/RPC harness），18 项断言
+│   └── data-root.test.mjs         # 落盘根：DSH_HOME 优先 + 读时回退 ~/.dsh，37 项断言
 ├── CHANGELOG.md          # 完整版本历史
 ├── README.md             # 中文（默认）
 └── README_EN.md          # English
@@ -260,8 +286,8 @@ dsh-cc-studio/
 ## 开发与测试
 
 ```bash
-npm test                                   # 5 个文件、216 项断言（五个 node 脚本串联）
-node tests/rpc-channel.test.mjs            # 只跑 host 半 RPC 通道回归（23 项断言）
+npm test                                   # 6 个文件、278 项断言（六个 node 脚本串联）
+node tests/rpc-channel.test.mjs            # 只跑 host 半 RPC 通道回归（45 项断言）
 ```
 
 - **改客户端**：`lib/client.js` 改动刷新页面即可；跑着 dsh 仓库的 `pnpm run dev:web` 时可热更新。
@@ -280,6 +306,7 @@ node tests/rpc-channel.test.mjs            # 只跑 host 半 RPC 通道回归（
 
 完整历史见 [CHANGELOG.md](./CHANGELOG.md)。最近几版：
 
+- `0.3.6` 修 dsh `0.1.7-alpha.1` 上「`CC 模式` 预设消失」+ 落盘根统一。① 预设：那一版起 dsh 的预设只来自组合里的**声明行**，`<DSH_HOME>/.agent-presets/` 已无人读取（目录还在、只是没人看），插件改为随包带一层补丁 `presets/cc.patch.yml`（与内置 `standard` 同构的 `@deepseek-ai/dsh-agent-preset` 声明），新版上不再写任何文件，目录安装只为 ≤ `0.1.6-alpha.2` 保留并在新版自动让位。② 草稿与角色库：以前写死 `~/.dsh`、不认 `DSH_HOME`（自定义 `DSH_HOME` 的用户两套根并存，隔离实测还会写进真实 `~/.dsh`），现在改为 **`DSH_HOME` 优先 + 读时回退 `~/.dsh`**，未设置时路径与以前完全一致。测试 216 → 278 项。
 - `0.3.5` 修 #5「前端与 Tools 读到不同草稿槽」：`useCcPreset` 读的 `useSessions().current` 字段在 dsh `0.1.6-alpha.2` 的 `SessionListState` 里并不存在（恒为 `null`），加上启动时那次无 key 的拉取占掉了全局节流，前端一直用 `default` 槽 —— 而模型经 Tools 写的是 `session-<会话id>` 槽，于是「模型说写好了 / 工坊说没数据」。现在会话 id 只从 slot props 取并发布到 store、拉草稿没有会话 id 就一次都不发、节流按 key、主机回传 key 不一致时不渲染而是告警；另修胶囊闪退（根域实例每秒钟把会话域实例判定的 CC 状态清掉）并新增 `cc_migrateDraft` 与「迁入本会话槽」一键救回。测试 158 → 216 项（新增行为级 `tests/draft-slot-sync.test.mjs`）。
 - `0.3.4` 适配 dsh `0.1.6-alpha.2` 并补回两处预设漏抄：CC 预设缺 `present` 行（CC 模式下模型没有「登记交付物」的工具，且不报错）、`tool-subagent` 行缺 `modelSelectionSettings: true`（子代理的指定模型入口被静默关掉）；顺带补上 alpha.2 新增的 `tool-plugin-manager` 行（`disabled`，与内置 `standard` 对齐到只剩有意的行差）。新增 7 项预设行契约守卫。
 - `0.3.3` 发布流程自动化：打 `v*` tag 即由 GitHub Actions 发布到 npm（OIDC trusted publishing，零密钥）并自动建 GitHub Release；手动触发默认只做安全自检。插件运行时行为未变。
