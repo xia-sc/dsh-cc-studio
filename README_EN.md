@@ -15,8 +15,8 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 | Item | Value |
 | --- | --- |
 | Package | `@xia-sc/dsh-cc-studio` |
-| Version | `0.3.6` |
-| Host RPC | `/dsh-cc-studio-rpc` (self-owned route, works on dsh ≥ `0.1.5-rc.1`; verified on `0.1.6-alpha.2` / `0.1.7-alpha.1`) |
+| Version | `0.3.7` |
+| Host RPC | `/dsh-cc-studio-rpc` (self-owned route, works on dsh ≥ `0.1.5-rc.1`; verified on `0.1.6-alpha.2` / `0.1.7-alpha.1` / `0.1.7-rc.1`) |
 | CC preset | `presets/cc.patch.yml` (dsh ≥ `0.1.7-alpha.1`, a composition declaration row) / `<DSH_HOME>/.agent-presets/cc` (≤ `0.1.6-alpha.2`, the legacy directory) |
 | Client mounts | `conversation.input.dock` (capsule) + `shell.overlay` (workshop) + `settings.section` |
 | Persistence | `<DSH_HOME>/cc-library/` (cards), `<DSH_HOME>/cc-drafts/` (per-session drafts); `DSH_HOME` defaults to `~/.dsh`. Since 0.3.6 `DSH_HOME` is honoured, and the old `~/.dsh` location is **still read** (read-time fallback) |
@@ -29,7 +29,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
 
 # pin a version
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.3.6
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.3.7
 ```
 
 **Or from GitHub**:
@@ -305,6 +305,7 @@ Light/dark via `var(--dsw-alias-*)` (`body[data-ds-dark-theme]`), primary stays 
 
 Full history lives in [CHANGELOG.md](./CHANGELOG.md) (Chinese). Latest:
 
+- `0.3.7` dsh `0.1.7-rc.1` compatibility audit: **nothing needed adapting** (an isolated host verified the RPC route/wire protocol, the preset roster, all three client mounts, the draft-slot key, the data roots, and a PNG/CHARX round-trip). The one real fix is a preset row that had been missing **since the preset was first written**: `command-goal` has been in the shipped `standard` since `0.1.6-alpha.2`, but the initial copy dropped it — no error, no `broken`, just no `/goal` slash command in a CC Mode session (same class as the `present` row restored in 0.3.4). It is now restored in both carriers, guarded by a row-set snapshot test. Also corrects three doc claims that would mislead the next upgrade (async iteration of `IncomingMessage` does *not* throw here — the official `/api` bridge uses `for await` itself; `/api/agentPresets/list` does carry optional `name`/`description`/`broken`; the channel/endpoint name regexes live in `dsh-client-connection`, not `webServer.register`), and adds a cross-file guard for the implicit "client `preset.ccLabel` must equal the host preset's display name" coupling. It also trims the CC Mode description shown in the session-mode dropdown: it used to list the model-side tool names (`cc_get_card` / `cc_patch_character` / …), which filled the dropdown without telling the user anything (tool names only mean something to the model reading the persona); it now just says "the model asks before it fills / live capsule sync / full-screen workshop / export JSON, PNG, CHARX". Tests 278 → 281.
 - `0.3.6` Two fixes. ① The `CC Mode` preset disappearing on dsh `0.1.7-alpha.1`: from that version on dsh takes presets only from **declaration rows** in a composition, and `<DSH_HOME>/.agent-presets/` is no longer read by any code (the directory is still there, nobody looks at it). The plugin now ships a patch layer `presets/cc.patch.yml` (a `@deepseek-ai/dsh-agent-preset` declaration, structurally identical to the built-in `standard`) and writes nothing on the new version; the directory install is kept for ≤ `0.1.6-alpha.2` only and stands down automatically on newer dsh. ② Data roots unified: drafts and the card library used to be hard-wired to `~/.dsh` and ignored `DSH_HOME` (custom-`DSH_HOME` users ended up with two sets of roots, and an isolated run wrote into the real `~/.dsh`), now **`DSH_HOME` first with a read-time fallback to `~/.dsh`** — unchanged paths when `DSH_HOME` is unset. Tests 216 → 278.
 - `0.3.5` Fixes #5, "frontend and Tools read different draft slots": `useCcPreset` read `useSessions().current`, a field that does not exist in dsh `0.1.6-alpha.2`'s `SessionListState` (it was always `null`), and the keyless pull at startup consumed the global throttle, so the UI stayed on the `default` slot while the model's Tools wrote to `session-<sessionId>` — hence "the model says it wrote it / the workshop says there is no data". Now the session id is taken from slot props only and published to the store, a draft pull without a session id is never sent, throttling is per key, and a host response whose `key` differs is not rendered but surfaced as a warning. Also fixes the capsule flicker (the root-scope instance was clearing the CC verdict the session-scope instance had just made) and adds `cc_migrateDraft` with a one-click "migrate into this session" recovery. Tests 158 → 216 (+ a behavioural `tests/draft-slot-sync.test.mjs`).
 - `0.3.4` dsh `0.1.6-alpha.2` compatibility plus two preset omissions restored: the CC preset was missing the `present` row (so CC Mode's model had no "register a deliverable" tool, silently) and the `tool-subagent` row was missing `modelSelectionSettings: true` (silently disabling per-subagent model selection); also adds the `tool-plugin-manager` row dsh added in alpha.2 (`disabled`, so the preset now differs from the shipped `standard` only where intended). Adds 7 preset row-contract guards.

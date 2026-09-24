@@ -15,8 +15,8 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 | 项目 | 值 |
 | --- | --- |
 | 插件包名 | `@xia-sc/dsh-cc-studio` |
-| 当前版本 | `0.3.6` |
-| 宿主 RPC | `/dsh-cc-studio-rpc`（自带路由，适配 dsh ≥ `0.1.5-rc.1`；已在 `0.1.6-alpha.2` / `0.1.7-alpha.1` 实测） |
+| 当前版本 | `0.3.7` |
+| 宿主 RPC | `/dsh-cc-studio-rpc`（自带路由，适配 dsh ≥ `0.1.5-rc.1`；已在 `0.1.6-alpha.2` / `0.1.7-alpha.1` / `0.1.7-rc.1` 实测） |
 | CC 预设 | `presets/cc.patch.yml`（dsh ≥ `0.1.7-alpha.1`，组合声明行）／`<DSH_HOME>/.agent-presets/cc`（≤ `0.1.6-alpha.2`，目录形态） |
 | 客户端挂载点 | `conversation.input.dock`（胶囊）+ `shell.overlay`（工坊）+ `settings.section` |
 | 落盘位置 | `<DSH_HOME>/cc-library/`（角色卡）、`<DSH_HOME>/cc-drafts/`（会话草稿）；`DSH_HOME` 默认 `~/.dsh`。0.3.6 起认 `DSH_HOME`，旧的 `~/.dsh` 位置**仍然读得到**（读时回退） |
@@ -29,7 +29,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
 
 # 锁定版本
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.3.6
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.3.7
 ```
 
 **或从 GitHub 源安装**：
@@ -306,6 +306,7 @@ node tests/rpc-channel.test.mjs            # 只跑 host 半 RPC 通道回归（
 
 完整历史见 [CHANGELOG.md](./CHANGELOG.md)。最近几版：
 
+- `0.3.7` dsh `0.1.7-rc.1` 兼容性审计：**接口面无一处需要适配**（隔离宿主实测了 RPC 路由/线协议、预设 roster、三个前端挂载点、草稿槽 key、落盘根、PNG/CHARX 往返）。真正的修复是预设里**一行自始漏抄**：`command-goal` 在内置 `standard` 里从 `0.1.6-alpha.2` 起就有，本预设初次拷贝时就漏了它 —— 不报错、不判 broken，只是 CC 模式会话少了 `/goal` 斜杠命令（与 0.3.4 补回的 `present` 同类），现已两份载体同步补齐并加了**行集快照**守卫。另更正 3 处会误导下次升级的文档口径（「异步迭代 `IncomingMessage` 必抛」实测不成立且官方 `/api` 桥自己就在用；`/api/agentPresets/list` 其实带可选 `name`/`description`/`broken`；channel/endpoint 命名正则在 `dsh-client-connection` 而非 `webServer.register`），并给「客户端 `preset.ccLabel` 必须逐字等于宿主预设显示名」这条隐性耦合补了跨文件守卫。顺带精简了 roster 下拉里「CC 模式」的介绍文案：原来把模型侧的 6 个工具名（`cc_get_card` / `cc_patch_character` / …）全列在用户界面上，既撑满下拉项又对用户没有信息量（工具名只对读 persona 的模型有意义），现在只讲「模型先问再填 / 胶囊实时同步 / 工坊全屏编辑 / 导出 JSON、PNG、CHARX」。测试 278 → 281 项。
 - `0.3.6` 修 dsh `0.1.7-alpha.1` 上「`CC 模式` 预设消失」+ 落盘根统一。① 预设：那一版起 dsh 的预设只来自组合里的**声明行**，`<DSH_HOME>/.agent-presets/` 已无人读取（目录还在、只是没人看），插件改为随包带一层补丁 `presets/cc.patch.yml`（与内置 `standard` 同构的 `@deepseek-ai/dsh-agent-preset` 声明），新版上不再写任何文件，目录安装只为 ≤ `0.1.6-alpha.2` 保留并在新版自动让位。② 草稿与角色库：以前写死 `~/.dsh`、不认 `DSH_HOME`（自定义 `DSH_HOME` 的用户两套根并存，隔离实测还会写进真实 `~/.dsh`），现在改为 **`DSH_HOME` 优先 + 读时回退 `~/.dsh`**，未设置时路径与以前完全一致。测试 216 → 278 项。
 - `0.3.5` 修 #5「前端与 Tools 读到不同草稿槽」：`useCcPreset` 读的 `useSessions().current` 字段在 dsh `0.1.6-alpha.2` 的 `SessionListState` 里并不存在（恒为 `null`），加上启动时那次无 key 的拉取占掉了全局节流，前端一直用 `default` 槽 —— 而模型经 Tools 写的是 `session-<会话id>` 槽，于是「模型说写好了 / 工坊说没数据」。现在会话 id 只从 slot props 取并发布到 store、拉草稿没有会话 id 就一次都不发、节流按 key、主机回传 key 不一致时不渲染而是告警；另修胶囊闪退（根域实例每秒钟把会话域实例判定的 CC 状态清掉）并新增 `cc_migrateDraft` 与「迁入本会话槽」一键救回。测试 158 → 216 项（新增行为级 `tests/draft-slot-sync.test.mjs`）。
 - `0.3.4` 适配 dsh `0.1.6-alpha.2` 并补回两处预设漏抄：CC 预设缺 `present` 行（CC 模式下模型没有「登记交付物」的工具，且不报错）、`tool-subagent` 行缺 `modelSelectionSettings: true`（子代理的指定模型入口被静默关掉）；顺带补上 alpha.2 新增的 `tool-plugin-manager` 行（`disabled`，与内置 `standard` 对齐到只剩有意的行差）。新增 7 项预设行契约守卫。

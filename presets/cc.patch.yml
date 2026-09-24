@@ -26,7 +26,10 @@
         # CC_PRESET_ID 与宿主 isCcPreset() 都按 'cc' 精确比较，改名会让两边同时失联。
         id: cc
         name: CC 模式
-        description: CCv3 角色卡工坊 — LLM 通过 6 个 Tool 引导填表（cc_get_card / cc_patch_character / cc_patch_world / cc_add_lorebook_entries / cc_patch_greetings / cc_validate），胶囊实时同步，工坊全屏编辑，导出 chara_card_v3。
+        # 这段是 roster 下拉里显示给用户的介绍（与目录模板 preset.yml 的 description 逐字一致，
+        # 有测试钉住）。别再往里塞 Tool 清单 —— 模型侧的工作流已经写在 persona 里，
+        # 这里列一串工具名只会把下拉框撑满、对用户没有信息量。
+        description: CCv3 角色卡工坊 — 用对话把点子补成完整的角色卡（chara_card_v3）：模型先问再填，胶囊实时同步，工坊全屏编辑，导出 JSON / PNG / CHARX。
         # 排序只在 roster 里可见：内置四个是 1..4，CC 模式排在它们后面。
         order: 50
         plugins:
@@ -131,6 +134,14 @@
           - id: tool-skill
             name: '@deepseek-ai/dsh-tool-skill'
             disabled: true
+
+          # 0.3.7 补回：内置 `standard` 自 0.1.6-alpha.2 起就带这一行，本预设初次拷贝时整行漏掉了
+          # （与 0.3.4 补回的 `present` 同类：不报错、不判 broken，只是少了能力）。
+          # 它与下面 `tool-goal` 不是一回事：这行给的是**人**用的 `/goal` 斜杠命令，`tool-goal`
+          # 才是给模型的工具。下面「goals」段那条注释说的「`/goal` command 留在宿主面」指的是命令
+          # 背后的 goal SERVICE，不是这个声明行 —— 别据此再把它删掉。
+          - id: command-goal
+            name: '@deepseek-ai/dsh-command-goal'
 
           # ── goals ───────────────────────────────────────────────────────────────────
 

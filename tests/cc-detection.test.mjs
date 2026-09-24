@@ -171,6 +171,24 @@ const ccSessionIdOfProps = new Function(`${grabFunction('ccSessionIdOfProps')}; 
   // 预设名进词表（否则触发「UI 层无硬编码中文」守卫）
   check('preset.ccLabel 在 zh 词表', /"preset\.ccLabel":"CC 模式"/.test(src.slice(src.indexOf('var zh='), src.indexOf('var en='))), '');
   check('preset.ccLabel 在 en 词表', /"preset\.ccLabel":"CC 模式"/.test(src.slice(src.indexOf('var en='), src.indexOf('function h(type,props)'))), '');
+
+  // 跨文件守卫（0.3.7）：DOM 兜底探测是靠「芯片的 textContent 包含 preset.ccLabel」认出预设芯片的
+  // （lib/client.js 的 ccModeFromDom），所以这个词必须**逐字等于**宿主预设的显示名
+  // （presets/cc/preset.yml 的 name，也就是 roster 芯片上渲染的那串字）。
+  // 只钉「zh/en 两表都是 CC 模式」是不够的：把 en 本地化成 "CC Mode" 依然全绿，而英文界面下
+  // 这条兜底会静默失效 —— 那时如果会话投影也没拿到值（新会话页的窗口期），胶囊就不出现。
+  const presetMeta = readFileSync(new URL('../presets/cc/preset.yml', import.meta.url), 'utf8')
+    .replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
+  const presetName = (presetMeta.split('\n').find((l) => l.startsWith('name:')) || '').slice('name:'.length).trim();
+  const labelIn = (from, to) => {
+    const m = src.slice(src.indexOf(from), src.indexOf(to)).match(/"preset\.ccLabel":"([^"]*)"/);
+    return m ? m[1] : undefined;
+  };
+  const zhLabel = labelIn('var zh=', 'var en=');
+  const enLabel = labelIn('var en=', 'function h(type,props)');
+  check('preset.ccLabel 与宿主预设显示名逐字一致（DOM 兜底靠它认芯片）',
+    !!presetName && zhLabel === presetName && enLabel === presetName,
+    `preset.yml=${JSON.stringify(presetName)} zh=${JSON.stringify(zhLabel)} en=${JSON.stringify(enLabel)}`);
 }
 
 const failed = results.filter((r) => !r.pass);

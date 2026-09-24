@@ -100,6 +100,14 @@
   name: '@deepseek-ai/dsh-tool-skill'
   disabled: true
 
+# 0.3.7 补回：内置 `standard` 自 0.1.6-alpha.2 起就带这一行，本预设初次拷贝时整行漏掉了
+# （与 0.3.4 补回的 `present` 同类：不报错、不判 broken，只是少了能力）。
+# 它与下面 `tool-goal` 不是一回事：这行给的是**人**用的 `/goal` 斜杠命令，`tool-goal`
+# 才是给模型的工具。下面「goals」段那条注释说的「`/goal` command 留在宿主面」指的是命令
+# 背后的 goal SERVICE，不是这个声明行 —— 别据此再把它删掉。
+- id: command-goal
+  name: '@deepseek-ai/dsh-command-goal'
+
 # ── goals ───────────────────────────────────────────────────────────────────
 
 # Only the model-facing tool. The goal SERVICE, its session driver, and the

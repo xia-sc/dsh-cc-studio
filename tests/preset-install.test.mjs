@@ -309,6 +309,36 @@ const sha256Of = (s) => createHash('sha256').update(String(s), 'utf8').digest('h
   check('三个 isolate 组都在（planning / compaction / delegation）',
     ['planMode: true', 'compaction: true', 'workflowEngine: true'].every((k) => patchText.includes(k)), '');
 
+  // 0.3.7：本预设的行集是内置 `standard` 那份 plugins 的副本，有意差异只有一处 ——
+  // `+ cc-agent`（本插件自己的 14 个 Tool 挂在本预设下）。其余每一行都必须与 standard 对齐。
+  //
+  // 漏掉整行的代价（0.3.7 实测）：`command-goal` 从初次拷贝起就缺，而它是 standard 自
+  // `0.1.6-alpha.2` 起一直有的一行 —— 不报错、预设不判 broken、胶囊与工坊全正常，只是
+  // CC 模式会话里没有 `/goal` 斜杠命令。与 0.3.4 补回的 `present`、`modelSelectionSettings`
+  // 是同一类「静默少能力」，所以这里把行集钉成显式快照：少一行或多一行都直接红，逼人回到
+  // AGENTS.md §4 第 4 步「与目标版本内置 standard 逐行对一遍」，而不是等用户发现少了功能。
+  // 升级 dsh 后若 standard 增删了行，先确认它是不是 CC 模式该有的能力，再来改这份快照。
+  const rowIds = bodyText.split('\n').filter((l) => /^\s*- id: \S/.test(l)).map((l) => l.trim().replace(/^- id: /, ''));
+  const EXPECTED_ROWS = [
+    'persona', 'agent-instructions', 'tool-bash', 'tool-pwsh', 'tool-fs', 'tool-fs-search', 'tool-jobs',
+    'skill-filesystem', 'tool-skill', 'command-goal', 'tool-goal',
+    'planning', 'plan-mode',
+    'compaction', 'compaction-basic', 'command-compact', 'tool-result-pruner',
+    'delegation', 'tool-subagent-control', 'tool-subagent-list-agents', 'tool-subagent', 'tool-subagent-fork',
+    'tool-subagent-codex', 'tool-subagent-claude-code', 'workflow-ptc', 'tool-workflow', 'tool-ralph',
+    'tool-ask-user', 'tool-todo', 'tool-web', 'present', 'tool-plugin-manager',
+    'cc-agent',
+  ];
+  const missingRows = EXPECTED_ROWS.filter((id) => !rowIds.includes(id));
+  const extraRows = rowIds.filter((id) => !EXPECTED_ROWS.includes(id));
+  check('行集与内置 standard 对齐（快照：漏抄/多抄一整行都会红）',
+    missingRows.length === 0 && extraRows.length === 0,
+    missingRows.length || extraRows.length
+      ? `缺 [${missingRows.join(', ') || '-'}] 多 [${extraRows.join(', ') || '-'}]`
+      : `${rowIds.length} 行`);
+  check("command-goal 已补回且包名正确（0.3.7 修的自始漏抄）",
+    /- id: command-goal\s*\n\s*name: '@deepseek-ai\/dsh-command-goal'/.test(patchText), '');
+
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   const patches = pkg.dsh && pkg.dsh.bundle && pkg.dsh.bundle.patch;
   check('package.json 的 dsh.bundle.patch 列两层补丁', Array.isArray(patches) && patches.length === 2, JSON.stringify(patches));

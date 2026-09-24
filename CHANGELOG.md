@@ -2,6 +2,74 @@
 
 `dsh-cc-studio` 的版本变更记录，倒序排列（最新在上）。README 只保留最近几条，完整历史在本文件。
 
+## 0.3.7
+
+**dsh `0.1.7-rc.1` 兼容性审计**：结论是**接口面无一处需要适配**——真正的修复只有一处**预设漏抄**（`command-goal`，自始就缺、与 rc.1 无关），外加 3 处会误导下次升级的**文档口径失准**与 1 处**未被测试钉住的隐性耦合**。
+
+### 审计范围与结论（怎么验的）
+
+两条独立证据链都指向「兼容」，没有一个「不兼容」项：
+
+| 面 | 结论 | 关键证据 |
+| --- | --- | --- |
+| 宿主半（RPC 路由 + 线协议 + `inject` 四服务） | 兼容 | 隔离宿主实测：不带 cookie 打 `/dsh-cc-studio-rpc/ping` 得 **401**，而同机随机路径是 **405**（证明路由确实注册、围栏是插件自己调的）；带 cookie 后 `ping` 回 `{"type":"server-response",…}`，未知端点回 **200 + `details.code="unknown-endpoint"`**；`webServer.register` 的 `{kind:"prefix",path,handler}` 契约未变 |
+| 预设半（14 个 Tool 的注册契约） | 兼容 | `tools.register` 仍要求 `output`、仍**不对 `parameters` 做 JSON-Schema 子集校验**（`minItems`/`maxItems` 不抛）；`exec.agent.session.id` 链路成立 |
+| 草稿槽 key 不变量 | 兼容 | 显式 `sessionId` → `keySource:"arg"`；缺会话 id → `key` 回落 `default` 且 `keySource:"fallback"` |
+| 落盘根 | 兼容 | 隔离 `DSH_HOME` 下 `cc-drafts/`、`cc-library/` 正常落盘；**未**创建 `.agent-presets/`（`status:"native"` 确实让位） |
+| 容器互通 | 兼容 | PNG（`tEXt` `ccv3` 块）与 CHARX（ZIP + `card.json`）导出→导入往返，名称与 description 逐字一致 |
+| 预设投递 | 兼容 | rc.1 仍是 `dsh-agent-preset` + `dsh-agent-preset-registry`（`register` + `compositionInventory` 都在），全树 grep 无任何 `.agent-presets` / `discoverPresets` 读者 |
+| 预设 roster | 兼容 | 活宿主 5 条含 `{"id":"cc","name":"CC 模式","order":50}`，`broken` 为空，29 行里 `cc-agent` 为 `fiberPhase: active` |
+| 客户端半（三个挂载点 + 9 项契约） | 兼容 | 活页面 Client Inspect：`conversation.input.dock` / `shell.overlay` / `settings.section` 三个 occupant 全部 `active: true` 且 registrant 为 `dsh-cc-studio`；`SessionListState` 仍然没有 `current`；`projectionValues.agentPreset` 仍是官方自己的读法 |
+
+实测环境：隔离 profile + 隔离 `DSH_HOME`/`HOME`/`USERPROFILE`（端口 3099），**真实 `~/.dsh` 全程零变化**（`cc-drafts` / `cc-library` / `.agent-presets` 逐文件哈希比对一致）。
+
+### 一、`command-goal` 一行漏抄（唯一的功能性修复）
+
+**现象**：CC 模式会话里没有 `/goal` 斜杠命令。不报错、预设**不判 broken**、胶囊与工坊全都正常 —— 就是少了一个人用的命令。
+
+**根因**：本预设的 `plugins` 是内置 `standard` 的副本，但初次拷贝时就漏了这一行，而它**在 `0.1.6-alpha.2` 的 standard 里本来就有**（`dsh-agent-presets/presets/standard/agent.cordis.yml:95`，位置在 `tool-skill` 之后、`tool-goal` 之前，与 `0.1.7-rc.1` 完全一致）。`git log -S 'command-goal' -- presets/ lib/` 全历史**零命中**，所以它是**自始漏抄**，与 rc.1 无关 —— 和 0.3.4 补回的 `present` 行、`modelSelectionSettings: true` 是同一类「静默少能力」。
+
+**修法**：两份载体同步补该行（`presets/cc.patch.yml` 的声明层 + `presets/cc/agent.cordis.yml` 的目录形态）。`tests/preset-install.test.mjs` 第 12 节新增两道守卫：**行集快照**（33 行，漏抄/多抄一整行都红）+ `command-goal` 的包名断言。快照是刻意的：它把 AGENTS.md §4 第 4 步「与目标版本内置 `standard` 逐行对一遍」变成机械可检的，而不是等用户发现少了功能。
+
+**注意**：文件里那段照抄自 `standard` 的注释写着「the `/goal` command stay on the host plane」，指的是命令背后的 goal **SERVICE**（以及 Gateway 的 Remote 接收方）；`standard` 自己是在预设里带这一行的，别据此再把它删掉。
+
+**生效方式**：改的是预设层，**重启 `dsh web`** 即可（≥ `0.1.7` 上没有任何安装步骤；≤ `0.1.6` 需删掉 `<DSH_HOME>/.agent-presets/cc` 后重启，或配 `presetInstall: force`）。客户端半未改，无需硬刷新。
+
+### 二、3 处文档口径失准 + 1 处资源地址描述（都不影响运行）
+
+审计中实测推翻了写在 AGENTS.md 与代码注释里的三条断言，已一并更正（`AGENTS.md` §2.3 / §4 / §6 / §7 / §8 + `lib/index.js` 的读体注释）：
+
+1. **「异步迭代 `IncomingMessage` 在这个运行时会抛错」——不成立**。`0.1.7-rc.1` + Node v26.9.0 下 `for await (const chunk of req)` 正常返回；而且官方 `/api` 桥**自己就在用它**（`dsh-client-connection/lib/index.js:58`）。插件继续走 `data/end/error` 事件式（`readBoundedBody`，无收益不动），但这条不再是「必须」的理由。
+2. **「`/api/agentPresets/list` 会剥掉 `name`/`broken`」——不成立**。该 Remote 的线 schema 带 `name` / `description` / `broken` 三个**可选**字段（`dsh-agent-preset-registry/lib/typert.remote-client.js:5-14`）；内置四个预设看不到 `name`，是因为它们的声明行本来就没写 `name`（本插件的 `cc` 写了，实测正常返回「CC 模式」）。要看**逐行** `fiberPhase` 才必须用 `pluginInventory/list`。
+3. **channel / endpoint 的命名正则不属于 `webServer.register`**。那两个正则属于 `dsh-client-connection`（客户端 `assertTarget` 与 `HostConnectionService.register`）；`webServer.register` 只做重复检测（`dsh-host-webserver/lib/index.js:177-184`），什么 path 都收。
+4. 附带更正：客户端资源的真实地址通常是**多个包合批**的一条 `plugins/??a/client.js,b/client.js&rev=<批次哈希>`（rc.1 活页面上本插件就在这样一条 5.5MB 的 `link` 里），`rev` 是**批次**的哈希 —— 只截本包那一段再配别的批次 rev 会 404。
+
+**生效方式**：纯文档与注释，不影响行为（无需重启或刷新）。
+
+### 三、隐性耦合补上跨文件守卫
+
+**风险**：DOM 兜底探测（`ccModeFromDom`）靠「芯片 `textContent` 含 `t("preset.ccLabel")`」认预设芯片，因此这个词**必须逐字等于**宿主预设的显示名（`presets/cc/preset.yml` 的 `name`，也就是 roster 芯片上渲染的那串字）。既有测试只钉了「`preset.ccLabel` 在 zh 与 en 两表里都是 `CC 模式`」——**把 en 本地化成 `CC Mode` 依然全绿**，而英文界面下这条兜底会静默失效。
+
+**修法**：`tests/cc-detection.test.mjs` 新增跨文件守卫：`client.js` 里 zh/en 的 `preset.ccLabel` 必须等于 `presets/cc/preset.yml` 的 `name`。
+
+**生效方式**：仅测试。
+
+### 四、CC 模式预设的介绍文案精简（roster 下拉）
+
+**现象**：会话模式下拉里「CC 模式」那一项，介绍写成「LLM 通过 6 个 Tool 引导填表（`cc_get_card` / `cc_patch_character` / …）」，把模型侧的 6 个工具名全列在用户界面上 —— 下拉项被撑满、对用户没有信息量（工具名只对读 persona 的模型有意义）。
+
+**修法**：`presets/cc/preset.yml` 与 `presets/cc.patch.yml` 的 `description` 同步改为
+`CCv3 角色卡工坊 — 用对话把点子补成完整的角色卡（chara_card_v3）：模型先问再填，胶囊实时同步，工坊全屏编辑，导出 JSON / PNG / CHARX。`
+模型侧的强制工作流仍原样写在 persona 里（`1) cc_get_card … 6) cc_validate`），一个字没动；声明层加了一行注释说明「这里别再塞 Tool 清单」。`tests/preset-install.test.mjs` 既有的「描述与目录模板 `preset.yml` 逐字一致」守卫继续生效，改一边就会红。
+
+**生效方式**：改的是预设层，**重启 `dsh web`**（≥ `0.1.7` 无安装步骤）后下拉里即为新文案。
+
+### 测试
+
+278 → **281** 项（`45 + 68 + 51 + 62 + 18 + 37`），6 个文件全绿。两个新守卫都做过**变异测试**：把 en 的 `ccLabel` 改成 `CC Mode` → 跨文件守卫红；把两份载体的 `command-goal` 一起删掉 → 防漂移守卫仍绿、**只有行集快照红**（说明它能精确定位到这类漏抄）。
+
+---
+
 ## 0.3.6
 
 **适配 dsh `0.1.7-alpha.1`：修「`CC 模式` 预设从 roster 里消失」**。那一版起 dsh 的预设机制换代了 —— 预设不再是「用户目录里的一份 YAML」，而是**组合里的一个声明行**；`<DSH_HOME>/.agent-presets/` 已经没有任何代码读取。顺带修掉**草稿与角色库不认 `DSH_HOME`** 的老问题（同一次兼容性审计里实测踩到，见本版第二节）。

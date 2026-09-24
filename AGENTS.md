@@ -16,7 +16,7 @@ lib/client.js   1664 行 ── 浏览器半：手写 bundle，胶囊(Capsule) +
 presets/cc.patch.yml     ── 补丁层 2：CC 预设的**声明行**（dsh ≥ 0.1.7-alpha.1 唯一认的形态）
 presets/cc/              ── CC 预设的目录模板（dsh ≤ 0.1.6-alpha.2，挂载时安装到 <DSH_HOME>/.agent-presets/cc）
 cordis.patch.yml         ── 补丁层 1：宿主组合补丁（insert 一个插件行）
-tests/*.test.mjs         ── 6 个测试文件、278 项断言；**不随包发布**
+tests/*.test.mjs         ── 6 个测试文件、281 项断言；**不随包发布**
 dist/*.zip               ── 历史发布包（按版本命名），不是构建产物，不要改
 .github/workflows/       ── CI：打 v* tag 自动发 npm（OIDC）+ 建 Release（正文抽自 CHANGELOG.md）
 .github/scripts/         ── release-notes.mjs：上面那个 Release 正文/标题的抽取脚本，可本地直接跑
@@ -66,9 +66,9 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
 | 请求体 | `{ type: "client-request", rpcId, method, payload }`，`method` 必须等于 URL 里的 endpoint |
 | 响应体 | `{ type: "server-response", rpcId, result: { ok: true, value } \| { ok: false, error: { code, message, details } } }` |
 | 鉴权 | 先过 `connection.requestRejection(req)` 围栏（host/origin + 会话 cookie），插件**不能绕过** |
-| 命名约束 | channel `/^\/[A-Za-z0-9._~-]+$/`，endpoint 每段 `/^[A-Za-z0-9_$.-]+$/`，与 `dsh-client-connection` 保持一致 |
+| 命名约束 | channel `/^\/[A-Za-z0-9._~-]+$/`、endpoint 每段 `/^[A-Za-z0-9_$.-]+$/` —— 这两个正则属于 **`dsh-client-connection`**（客户端 `assertTarget` 与 `HostConnectionService.register`），**不是** `webServer.register` 的校验：后者只做重复检测（`dsh-host-webserver lib/index.js:177-184`），什么 path 都收（0.3.7 更正） |
 | 体积上限 | `RPC_MAX_BODY_BYTES = 48MB`（PNG ≤20MB、CHARX ≤30MB 的 base64 都走这里） |
-| 请求体读取 | 必须用 `data/end/error` **事件式**；**异步迭代 `IncomingMessage` 在这个运行时会抛错**（连官方的 `/api` 帧也受影响） |
+| 请求体读取 | 用 `data/end/error` **事件式**（`readBoundedBody`：48MB 上限 + `aborted` 兜底）。0.3.7 更正：这里曾断言「异步迭代 `IncomingMessage` 在这个运行时会抛错」，**在 `0.1.7-rc.1` + Node v26.9.0 上实测不成立** —— `for await (const c of req)` 正常返回，官方 `/api` 桥自己就在用它（`dsh-client-connection lib/index.js:58`）。实现不改（事件式无收益不动），但**别再拿「必抛」当理由** |
 
 客户端侧一律走 `ctx.connection.rpc.call("/dsh-cc-studio-rpc", endpoint, { args })`（`lib/client.js` 里有 `rpc()` 包装）。
 
@@ -159,12 +159,15 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
 | `0.1.6-alpha.1` | 正常（0.3.1 起） | 预设行 `workflow-worker-thread` → `workflow-ptc`，否则预设整体被判 broken |
 | `0.1.6-alpha.2` | 正常（0.3.4 起） | 内置 `standard` 相比 alpha.1 只多一行 `tool-plugin-manager`（`disabled`）。0.3.4 补回 `present` 行与 spawn 行的 `modelSelectionSettings: true` |
 | `0.1.7-alpha.1` | 正常（0.3.6 起） | **预设机制换代**：目录形态（`.agent-presets/`）整体下线，改由组合里的 `@deepseek-ai/dsh-agent-preset` 声明行投递；0.3.6 随包带 `presets/cc.patch.yml`。内置 `standard` 与 `0.1.6-alpha.2` 逐行 diff 只差 persona 的 `suffix`（去掉），**行名集合完全相同** |
+| `0.1.7-rc.1` | 正常（0.3.7 起） | **接口面无变化，无需适配**（0.3.7 的兼容性审计）：预设注册表仍是 `dsh-agent-preset` + `dsh-agent-preset-registry`（`register` + `compositionInventory` 都在），`.agent-presets/` 仍无读者；活宿主实测 roster 5 条含 `cc`（审计时 29 行、`cc-agent` active、`broken` 空；0.3.7 补 `command-goal` 后复测 30 行），三个 slot occupant 全 `active` 且 registrant 为本包。0.3.7 补的是预设**自始漏抄**的一行 `command-goal`（与 rc.1 无关） |
 
 已实测对齐的接口（0.1.6-alpha.2）：`webServer.register`、connection RPC 线协议 + `connection.requestRejection`、`conversation.input.dock` / `shell.overlay` / `settings.section` 三个 slot、`ctx.locale.bind/translate`、`agents.currentInitiator/get`、`tools.register`（要求 `output: { schema, render }`，且只对 `output.schema` 做 JSON-Schema 子集断言 —— `parameters` 不查子集，`minItems`/`maxItems` 不会抛）。
 
 已实测对齐的接口（0.1.7-alpha.1）：上面整条仍然成立（`inject` 的四个服务、RPC 线协议、三个 slot、`tools.register` 都没变）—— 换代的只有预设这一块：`agentPresets` 的实现从 `dsh-agent-presets`（**复数**，导出 `discoverPresets` / `unresolvableRows`）换成 `dsh-agent-preset-registry`（**单数**，`register` / `compositionInventory` / `composedPreset`），载体换成组合声明行，`<DSH_HOME>/.agent-presets/` 再没有任何读者（新注册表连 `fs` 都不 import）。
 
-**实测手法（可复用）**：宿主半靠「未知路径 404/405 vs 插件路由 401」校准（证明路由确实注册、且围栏是插件自己调的）；客户端半用 Client Inspect 读活页面的 Slot 台账，看三个挂载点是否 `active: true` 且 registrant 等于包名；预设半按 `tools.register` 契约在隔离 harness 里挂 `lib/agent.js`。**预设 roster** 直接用活宿主的官方 Remote：dsh 把每个 Remote 挂成 `POST /api/<namespace>/<method>`（envelope 同 connection RPC；cookie 由 `/?token=…` 换），`POST /api/agentPresets/list` 看条目、`POST /api/pluginInventory/list` 看**含 `broken` 与每行 `fiberPhase` 的完整台账**（前者会剥掉 `name`/`broken`）。0.1.6 上则用 `discoverPresets`（`compositionProblem` + `unresolvableRows`）。
+**已实测对齐的接口（0.1.7-rc.1，0.3.7 的兼容性审计）**：上面两条**整条仍然成立，没有一处需要适配**。静态面：`inject` 四个服务齐全；`webServer.register` 的 `{kind:"prefix", path, handler}` 契约未变（且它本来就不校验 path 正则，见 2.3）；RPC 线与 `connection.requestRejection` 逐字未变（`connection.rpc.handle()` 对外部插件仍不可用）；`tools.register` 仍要求 `output`、仍不对 `parameters` 做子集校验；三个 slot 的声明与 `sessionId` 标准位都在；`projectionValues.agentPreset` 仍是**官方客户端自己的读法**（`dsh-client-ui-agent-preset lib/client.js:368-371` 与本插件同路径）；预设注册表仍是单数包，`register` + `compositionInventory` 都在，`.agent-presets/` 仍无读者。活宿主实测（隔离 profile + 隔离 `DSH_HOME`/`HOME`/`USERPROFILE`，端口 3099）：`cc` 在 roster 里（`{"id":"cc","name":"CC 模式","order":50}`、29 行、`cc-agent` `fiberPhase: active`、`broken` 为空；0.3.7 补行后复测 30 行、`command-goal` 为 `active`、顺序 `tool-skill → command-goal → tool-goal` 与 `standard` 一致）、三个 slot occupant 全 `active` 且 registrant 为 `dsh-cc-studio`、未知端点仍 200 + 失败帧（`details.code="unknown-endpoint"`）、`keySource` 的 `arg`/`fallback` 语义未变、PNG（`tEXt` `ccv3`）与 CHARX（ZIP + `card.json`）导出→导入往返一致、新版**没有**重写 `<DSH_HOME>/.agent-presets/`（`status:"native"` 确实生效）。
+
+**实测手法（可复用）**：宿主半靠「未知路径 404/405 vs 插件路由 401」校准（证明路由确实注册、且围栏是插件自己调的）；客户端半用 Client Inspect 读活页面的 Slot 台账，看三个挂载点是否 `active: true` 且 registrant 等于包名；预设半按 `tools.register` 契约在隔离 harness 里挂 `lib/agent.js`。**预设 roster** 直接用活宿主的官方 Remote：dsh 把每个 Remote 挂成 `POST /api/<namespace>/<method>`（envelope 同 connection RPC；cookie 由 `/?token=…` 换），`POST /api/agentPresets/list` 看条目、`POST /api/pluginInventory/list` 看**含 `broken` 与每行 `fiberPhase` 的完整台账**。0.3.7 更正：`agentPresets/list` 的线 schema 其实**带** `name` / `description` / `broken` 三个**可选**字段（`dsh-agent-preset-registry lib/typert.remote-client.js:5-14`）—— 内置四个预设看不到 `name`，是因为它们的声明行本来就没写 `name`，**不是被剥掉**（本插件的 `cc` 写了，就正常返回「CC 模式」）；只是它没有逐行台账，要看每行 `fiberPhase` 还得用 `pluginInventory/list`。0.1.6 上则用 `discoverPresets`（`compositionProblem` + `unresolvableRows`）。
 
 **升级时最便宜的第一刀**：`dsh --profile <名字> --dump-config` —— 只打印组合、不 mount、不起服务，层注释 `# == <包名>` 下面就能确认声明行到底有没有被组合进来。（启动 `dsh web` 的正确形式是 `dsh --profile <名字> --no-open --port <端口>`，**不写 `web` 位置参数**，写了会报 `too many arguments`。）另注：插件的 `info` 日志只进 Cordis logger，默认**不落 stdout**（`dsh web` 只打印一行 URL），所以「grep 启动日志」不是有效的安装判据 —— 0.3.6 实测。
 
@@ -199,15 +202,15 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
 ## 6. 本地验证
 
 ```bash
-npm test          # 6 个文件：45 + 66 + 50 + 62 + 18 + 37 = 278 项断言，全绿才算过
+npm test          # 6 个文件：45 + 68 + 51 + 62 + 18 + 37 = 281 项断言，全绿才算过
 ```
 
 测试只跑纯函数与源码级守卫（不启动 dsh、不写真实用户目录），所以**还需要手工验证**：
 
 - **改宿主/客户端**：重启 `dsh web`（宿主改动）+ 刷新页面（客户端改动）。
-  - 客户端资源真实地址形如 `/plugins/??@xia-sc/dsh-cc-studio/client.js&rev=<内容哈希>`，**缺 `??` 或 `rev` 都会 404**，`rev` 随 `lib/client.js` 内容变化。
+  - 客户端资源走 `/plugins/??…&rev=<内容哈希>`，**缺 `??` 或 `rev` 都会 404**。⚠️ 真实地址通常是**多个包合批**的一条（`??a/client.js,b/client.js,…&rev=<该批次哈希>`；0.1.7-rc.1 活页面实测本插件就在这样一条 5.5MB 的 `<link rel=preload>` 里），`rev` 是**批次**的哈希 —— 从 HTML 里抄地址要抄整条 `href`，只截本包那一段再配别的批次的 rev 会 404（0.3.7 实测踩到）。
 - **改预设**：分两代 —— ≥ `0.1.7-alpha.1` 改 `presets/cc.patch.yml`，重启 `dsh web` 即生效（**没有任何安装步骤**）；≤ `0.1.6-alpha.2` 改 `presets/cc/agent.cordis.yml`，预设只在插件挂载时安装，想强制重装就删掉 `<DSH_HOME>/.agent-presets/cc` 后重启，或把插件行配成 `presetInstall: force`。两处一起改（第 5 条）。
-- **验证预设是否被判 broken**：≥ `0.1.7-alpha.1` 先 `dsh --profile <名字> --dump-config` 确认 `preset-cc` 被组合进来了（层注释 `# == <包名>` 下），再查 roster —— GUI 设置 →「Agent 预设」，或直接 `POST /api/pluginInventory/list`（含 `broken` 与每行 `fiberPhase`；`/api/agentPresets/list` 会剥掉 `broken`）；≤ `0.1.6-alpha.2` 用 `dsh-agent-presets` 的 `discoverPresets(roots, harnessBase)` 直接跑发现逻辑，或看 GUI 里是否显示「加载失败」。
+- **验证预设是否被判 broken**：≥ `0.1.7-alpha.1` 先 `dsh --profile <名字> --dump-config` 确认 `preset-cc` 被组合进来了（层注释 `# == <包名>` 下），再查 roster —— GUI 设置 →「Agent 预设」，或直接 `POST /api/pluginInventory/list`（含 `broken` 与每行 `fiberPhase`；`/api/agentPresets/list` 只给 `id`/`order`/`isDefault` + 可选的 `name`/`description`/`broken`，**没有逐行台账**）；≤ `0.1.6-alpha.2` 用 `dsh-agent-presets` 的 `discoverPresets(roots, harnessBase)` 直接跑发现逻辑，或看 GUI 里是否显示「加载失败」。
 - **验证 RPC 通道**：`/`（首页）与 RPC 都受会话 cookie 保护，不带 cookie 只会得到 `401 unauthorized`；用 `dsh web` 启动时打印的 token 访问一次 `/?token=…` 换取 cookie（名字形如 `dsh-auth-<base64url>`），再 POST 带信封的 JSON。
 - **想整套隔离实测**（推荐，别拿真实 `~/.dsh` 试）：
   0. **`DSH_HOME`、`HOME`、`USERPROFILE` 都要指到临时目录**：0.3.6 起写盘认 `DSH_HOME`，但**读盘会回退 `homedir()/.dsh`**，只隔离 `DSH_HOME` 会读到（0.3.6 之前还会写进）真实用户数据 —— 见 2.6 与第 7 条第 12 项。
@@ -224,7 +227,7 @@ npm test          # 6 个文件：45 + 66 + 50 + 62 + 18 + 37 = 278 项断言，
 1. **预设里一个包名写错 → 整个预设「加载失败」**（2.4）。升级 dsh 后第一个要看的永远是这里。
 2. **读错会话预设字段** → 切 CC 模式不出现胶囊，要刷新才行（3.3）。
 3. **数组字段用「每行一条」互转** → `''.split('\n') === ['']`，空数组往返一趟凭空多一条空问候语；多段问候语被静默拆条。现在 `alternate_greetings` / `group_only_greetings` 是**逐条编辑**，不要重新引入 `join/split`。
-4. **异步迭代 `IncomingMessage`** 在该运行时抛错（2.3）。
+4. **（0.3.7 更正：已不再是坑）异步迭代 `IncomingMessage`** —— 旧注释断言会抛错，实测 `0.1.7-rc.1` + Node v26.9.0 **不抛**（官方 `/api` 桥就在用）。插件保持事件式读体即可，见 2.3。
 5. **`connection.rpc.handle()` 对外部插件不可用**（2.3），别想着「修好它」。
 6. **测试没隔离 `DSH_HOME`** → 污染真实用户预设目录（2.6）。
 7. **UI 层写死中文** → 切到 English 仍显示中文；必须进 `zh`/`en` 词表。
@@ -241,10 +244,10 @@ npm test          # 6 个文件：45 + 66 + 50 + 62 + 18 + 37 = 278 项断言，
 `@xia-sc/dsh-cc-studio` is a DSH plugin (a CCv3 character-card studio). Key rules for agents working here:
 
 - **No build step.** `lib/*.js` is the shipped artifact: plain ESM, and `lib/client.js` is a hand-written browser bundle wrapping `window.__ModuleLoader__.load(...)`. `React.createElement` only — no JSX, no TypeScript, no bundler.
-- **The host half owns its HTTP route.** `connection.rpc.handle()` is unusable by external plugins on dsh ≥ 0.1.5-rc.1, so the plugin registers `POST /dsh-cc-studio-rpc/<endpoint>` on `webServer` and speaks the connection RPC wire protocol itself. Read request bodies with `data`/`end`/`error` events — async iteration throws on this runtime.
+- **The host half owns its HTTP route.** `connection.rpc.handle()` is unusable by external plugins on dsh ≥ 0.1.5-rc.1, so the plugin registers `POST /dsh-cc-studio-rpc/<endpoint>` on `webServer` and speaks the connection RPC wire protocol itself. Read request bodies with `data`/`end`/`error` events. (The old comment's claim that async iteration *throws on this runtime* did **not** reproduce on `0.1.7-rc.1` with Node v26.9.0 — the official `/api` bridge uses `for await` itself; the event form is kept only because changing it buys nothing.)
 - **One bad row breaks the preset — and the preset now ships as a composition row.** Keep **both** plugin lists in sync: `presets/cc/agent.cordis.yml` (the legacy `<DSH_HOME>/.agent-presets/<id>/` form, dsh ≤ 0.1.6-alpha.2) and `presets/cc.patch.yml` (a `@deepseek-ai/dsh-agent-preset` declaration row inserted by the second entry of `dsh.bundle.patch`, dsh ≥ 0.1.7-alpha.1 — the only form 0.1.7 reads; it scans no directories at all). A bad package name makes the preset unusable in both generations (0.1.6: whole preset `broken`; 0.1.7: `record.broken` diagnostic on a still-listed preset). A test pins the two lists as verbatim-identical apart from comments.
 - **Never overwrite user files** when auto-installing the preset; the `planPresetInstall` invariants are pinned by tests. That install path is legacy-only now: on dsh ≥ 0.1.7 `installCcPreset` detects the new registry (`register` + `compositionInventory`) and stands down with `status: "native"`, writing nothing. To disable CC Mode on the new dsh, disable the `preset-cc` row from a profile patch layer instead.
 - **Data roots & test isolation.** One set of roots since 0.3.6: `dataRoots(sub)` returns `[primary, legacy]`, where primary = `DSH_HOME` (trimmed, if set) or `homedir()/.dsh`, and legacy = `homedir()/.dsh` (deduped when equal). Drafts, the card library and the preset directory all go through it: **writes hit the primary only, reads fall back** — implemented identically in `lib/index.js` and `lib/agent.js`, pinned by `tests/data-root.test.mjs` (which also forbids hard-wired `homedir()/.dsh/cc-*` again). Still isolate `DSH_HOME`, `HOME` **and** `USERPROFILE` in any test: with only `DSH_HOME` set, reads still reach the real `~/.dsh`.
-- **Tests:** `npm test` — 6 files, 278 assertions, all green. Every bug fix needs a regression test plus a `CHANGELOG.md` entry (symptom → root cause → fix → how it takes effect). `tests/draft-slot-sync.test.mjs` boots `lib/client.js` inside a fake React/slot/RPC harness, so client-half plumbing can be asserted behaviourally instead of only by source regex.
+- **Tests:** `npm test` — 6 files, 281 assertions, all green. Every bug fix needs a regression test plus a `CHANGELOG.md` entry (symptom → root cause → fix → how it takes effect). `tests/draft-slot-sync.test.mjs` boots `lib/client.js` inside a fake React/slot/RPC harness, so client-half plumbing can be asserted behaviourally instead of only by source regex.
 - **Draft-slot key invariant:** the browser must pass the session id explicitly; a host-side fallback to the `default` slot means "the caller had no session context", and the client refuses to render that slot instead of painting it. `SessionListState` has no `current` field — read the session id from slot props (`props.sessionId`, `props.session.sessionId`). Two slot instances (Capsule in session scope, Workshop in root scope) share one store, so a root-scope instance may never write a `false` CC verdict.
-- **dsh compatibility:** verified on `0.1.5-rc.1/rc.2`, `0.1.6-alpha.1`, `0.1.6-alpha.2` and `0.1.7-alpha.1`. When bumping, diff the dsh packages this plugin lives on, check *how that version delivers presets*, then re-check both preset lists against the shipped `standard` preset. Cheapest first probe on any new version: `dsh --profile <name> --dump-config` (composes and prints, mounts nothing).
+- **dsh compatibility:** verified on `0.1.5-rc.1/rc.2`, `0.1.6-alpha.1`, `0.1.6-alpha.2`, `0.1.7-alpha.1` and `0.1.7-rc.1` (the last one: nothing needed adapting — see §4). When bumping, diff the dsh packages this plugin lives on, check *how that version delivers presets*, then re-check both preset lists against the shipped `standard` preset. Cheapest first probe on any new version: `dsh --profile <name> --dump-config` (composes and prints, mounts nothing).
