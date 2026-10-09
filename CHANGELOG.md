@@ -2,6 +2,66 @@
 
 `dsh-cc-studio` 的版本变更记录，倒序排列（最新在上）。README 只保留最近几条，完整历史在本文件。
 
+## 0.3.8
+
+**DSH STORE 上架契约补齐**（对应 [DSH-Store issue #1173](https://github.com/AI-Scarlett/DSH-Store/issues/1173)）：把 manifest 里「能被自动判定」的门禁全部补齐，并把权限边界写进 README —— 但**这个 issue 光靠改仓库修不完**，另有两件事只能由 STORE 侧或真机实测解决，见本文末尾「还没解决的」。
+
+### 一、现象
+
+DSH STORE 的八小时复检把本插件标成 `Catalog blocked / external-only`，并且条目一直停在 **0.3.0**（包名还是 `@dsh-plugins/dsh-cc-studio`）。issue 里列出的确定性原因是 6 条：
+
+1. `manifest repository does not match the canonical GitHub repository`
+2. `DSH compatibility is not explicitly declared`
+3. `Node.js compatibility is not explicitly declared`
+4. `runtime or optional dependencies require a separate supply-chain review`
+5. `runtime source contains the files permission signal`
+6. `runtime source contains the credentials permission signal`
+
+### 二、根因（两层，别只修一层）
+
+**第一层：manifest 缺声明。** 第 1 条是 0.3.0 时 package.json **根本没有 `repository` 字段**（0.3.2 起已有，且 `git+https://…git` 会被 STORE 的 `canonicalGithubRepository` 规范化成 `https://github.com/xia-sc/dsh-cc-studio`，这条其实早已满足）；第 2、3 条是本仓库一直没写 `dsh.compatibility` 与 `engines.node`；第 4 条来自 `dependencies` 里那个**从 0.3.0 起就没被任何代码 import 过**的 `@deepseek-ai/cordis`。
+
+**第二层（真正卡死的地方）：STORE 条目身份过期。** Catalog 条目的 `packageName` 是 0.3.0 时的旧名 `@dsh-plugins/dsh-cc-studio`，而仓库在 0.3.2 已改名为 `@xia-sc/dsh-cc-studio`。STORE 的 `assessUpstreamVersion` 第一步就是 `manifest.name !== entry.packageName → update-blocked`（理由 `the upstream package name no longer matches the Catalog identity`），于是**复检根本读不到 0.3.x 的 manifest**，条目被永久钉在 0.3.0 的 commit 上，status/`updatePolicy` 也一起冻结在 `blocked` / `external-only`。也就是说：不解决身份，后面补多少声明都不会被读到。
+
+**第 5、6 条不是缺陷，是本插件的功能本身。** STORE 的自动低风险通道（`source-verified`）要求运行时代码完全不出现文件、网络、命令、凭据四类信号；而本插件核心功能就是角色卡/草稿落盘（`node:fs` → 文件信号），并且要读 `DSH_HOME`（扫描器把任何 `process.env` 读取都判为凭据信号）。**结论：自动通过永远不可能拿到，也不该为此改运行时代码** —— 对这类合法插件，商城的正确档位是 `user-reviewed`（展示变更、由用户逐次确认安装）。
+
+### 三、修法（本版做了什么）
+
+| 改动 | 位置 |
+| --- | --- |
+| 声明 Node 兼容 | `package.json` 的 `engines.node: ">=22"` |
+| 声明 DSH 兼容范围 + 逐版本精确证据 | `package.json` 的 `dsh.compatibility`：`dsh: ">=0.1.5-rc.1"`；`dshReleases` 只写**实测过**的 `0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.1` / `0.1.6-alpha.2` / `0.1.7-alpha.1` / `0.1.7-rc.1` = `compatible`（未测的 `0.1.7-alpha.2` / `0.1.7-rc.2` / `0.2.x` 一律不写，商城如实显示未知） |
+| 去掉零使用的运行依赖 | 删除 `dependencies` 的 `@deepseek-ai/cordis`（全仓 `grep` 只命中 package.json 自身） |
+| 权限与兼容披露 | `README.md` / `README_EN.md` 新增「兼容与权限」节：文件、网络、命令、凭据四类权限逐条写明，并解释为什么商城不会给它 `source-verified` |
+| 把契约钉进测试 | `tests/preset-install.test.mjs` 新增 11 项守卫：repository 规范化后等于 canonical 仓库、`engines.node` 存在、`dshReleases` 键是完整 SemVer、值域三态、至少一条 `compatible`、无运行/可选依赖、无 `preinstall`/`install`/`postinstall`/`prepare`、`files` 非空、两半只 import `node:` 与相对路径、README 保留披露节 |
+
+### 四、dsh `0.2.0-rc.2` 兼容性审计（本版做完，结论：**无需适配**）
+
+背景：商城当前 latest-three 窗口是 `0.2.0-rc.1` / `0.2.0-rc.2` / `0.2.1-alpha.1`，而此前只实测到 `0.1.7-rc.1` —— 窗口内没有精确 `compatible`，条目会被判「兼容性暂缓下架」。所以对 **`0.2.0-rc.2`**（npm 上的 `latest`）做了完整实测。
+
+| 面 | 结论 | 证据（全部在 0.2.0-rc.2 上实测，不是推断） |
+| --- | --- | --- |
+| 宿主行 / 预设行组合 | 兼容 | `dsh --profile <p> --dump-config`：`# == @xia-sc/dsh-cc-studio` 层下 `- id: dsh-cc-studio` 与 `- id: preset-cc` 都在；`preset-cc` 子树 **34 行与仓库 `presets/cc.patch.yml` 逐行零差异** |
+| 宿主半 RPC 路由 | 兼容 | 活宿主与隔离宿主各一遍：不带 cookie 打 `POST /dsh-cc-studio-rpc/ping` → **401 unauthorized**、随机路径 → **405**（证明路由注册且围栏是插件自己调的）；用启动 token 换 cookie 后 → `200` + `{"type":"server-response","result":{"ok":true,…}}`；未知端点 → **200 + `details.code="unknown-endpoint"`** |
+| 会话槽 key 不变量 | 兼容 | 显式 `sessionId` → `keySource:"arg"`、`key=audit-session`；信封的 `payload` 只认 `payload.args`（`lib/index.js:854`），与旧版行为一致 |
+| 容器互通 | 兼容 | `cc_setDraft` → `cc_exportPng`（`89504e47…` PNG 头 + `tEXt` `ccv3` 块，1252 B；改名后 1300 B）→ `cc_importFromPng`：名称/描述**逐字一致**；`cc_exportCharx`（`504b0304…` ZIP）→ `cc_importFromCharx` 同样逐字一致；`cc_saveToLibrary` / `cc_listLibrary` 正常 |
+| 预设 roster | 兼容 | `POST /api/agentPresets/list` → `standard, ptc, minimal, cordis, cc`（`cc` 带 `name`/`description`、`order:50`）；`POST /api/pluginInventory/list` → `cc` 的 `broken` 为空，30 行里 24 行 `fiberPhase: "active"`，其余 6 行是两代都不参与解析的 `disabled` 行（`tool-bash` / `skill-filesystem` / `tool-skill` / `tool-plugin-manager` / `tool-subagent-codex` / `tool-subagent-claude-code`）；`cc-agent` 为 `enabled:true, active`，`command-goal` 为 `active` |
+| 客户端半 | 兼容 | 运行中的 0.2.0-rc.2 宿主上用 Client Inspect 读活页面：`conversation.input.dock` / `shell.overlay` / `settings.section` 三个 occupant 全部 `active: true` 且 registrant 为 `dsh-cc-studio`；隔离宿主首页的合批资源 `/plugins/??…,@xia-sc/dsh-cc-studio/client.js…&rev=…` → **200**（11.0 MB，含 `__ModuleLoader__` 与本包 id） |
+| 隔离有效性 | 通过 | 隔离 `DSH_HOME` + `HOME` + `USERPROFILE`：本次产生的草稿（`audit-session` / `audit-png-read` / `audit-charx-read`）与角色卡全部落在隔离根；真实 `~/.dsh/cc-drafts` 最新文件仍是审计前的 09-11 |
+
+因此 `"0.2.0-rc.2": "compatible"` 已写进 `dsh.compatibility.dshReleases`。`0.2.0-rc.1` / `0.2.1-alpha.1` **没测，仍不声明** —— 同一个窗口不代表同一个结论，不许用推断代替实测。
+
+**静态侧交叉验证（与上面实测相互独立）**：`dsh-host-webserver` 与 `dsh-client-connection` 的 `lib/index.js` / `lib/client.js` 在 `0.1.7-rc.1` 与 `0.2.0-rc.2` 之间**逐字节相同**（整个包只有 `package.json` 与 `README.i18n.yaml` 变）；`dsh-tools` 的 `lib/index.js` 只差 2 处（`:935` 描述文案、`:3459` 新增可选 `ask.displayReason`），`tools.register` 仍在原处、仍只对 `output.schema` 做子集断言（JSON-Schema 子集实现文件两版哈希相同）；`dsh-web-app/presets/standard.patch.yml` **逐字节相同**，所以内置 `standard` 在 0.2.0-rc.2 上仍是那 32 个插件行 —— 活宿主实测也印证：`cc` 的插件行 = standard 的 32 行 + `cc-agent`，零缺失零多余；`dsh-agent-preset-registry` 唯一的对外收缩是删掉 `modeSelectionEnabled`（本插件不读、shipped 组合也没配这个键）；预设注册表仍不 import `fs`，`.agent-presets/` 仍无任何读者。
+
+### 五、还没解决的（需要 STORE 侧）
+
+1. **旧条目身份迁移**：必须把 Catalog 条目 `dsh-cc-studio` 的 `packageName` 从 `@dsh-plugins/dsh-cc-studio` 改成 `@xia-sc/dsh-cc-studio`（并重新固定 Commit）。**不能靠重新提交插件绕过**：新包名会算出一个新条目，但 `entryIds: ["dsh-cc-studio"]` 与旧条目冲突，预检直接以 `SUBMISSION_ENTRY_COLLISION` 失败。
+2. **档位**：因为第 5、6 条权限信号，商城只应按 `user-reviewed` 收录（人工审查 + 用户逐次确认），不应期待 `approved/source-verified`。
+
+### 六、生效方式
+
+本版的全部改动都在清单与文档（`package.json` / README / CHANGELOG / AGENTS.md / 测试），**运行时代码一行未动** —— 所以 0.2.0-rc.2 上跑的就是本次审计验证过的同一份代码，**不需要**重启 `dsh web`、也不需要刷新页面；`npm test`（6 个文件、292 项断言）全绿即可。要让商城看到新 Commit 需发布新版本（打 `v0.3.8` tag 走 CI）；但在上一条身份迁移完成前，STORE 的复检仍会因包名不匹配而读不到它。
+
 ## 0.3.7
 
 **dsh `0.1.7-rc.1` 兼容性审计**：结论是**接口面无一处需要适配**——真正的修复只有一处**预设漏抄**（`command-goal`，自始就缺、与 rc.1 无关），外加 3 处会误导下次升级的**文档口径失准**与 1 处**未被测试钉住的隐性耦合**。

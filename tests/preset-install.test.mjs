@@ -346,6 +346,52 @@ const sha256Of = (s) => createHash('sha256').update(String(s), 'utf8').digest('h
     Array.isArray(patches) && patches.every((p) => existsSync(new URL('../' + p.replace(/^\.\//, ''), import.meta.url))), JSON.stringify(patches));
   check('声明层在补丁列表里（插件行 + 预设声明各一层）',
     Array.isArray(patches) && patches.includes('./presets/cc.patch.yml') && patches.includes('./cordis.patch.yml'), JSON.stringify(patches));
+
+  // —— DSH STORE 上架契约（issue #1173）——
+  // STORE 自动策略（registry/automation-policy.json 的 automaticApproval）里「声明类」门禁是可修的：
+  // repository 规范化后必须等于 canonical 仓库、必须有 DSH/Node 兼容声明、不能有运行依赖与生命周期脚本。
+  // 而 files / credentials 两个权限信号是本插件的固有能力（草稿与角色库落盘、读 DSH_HOME 环境变量），
+  // 触发即意味着自动低风险通道（source-verified）永远不可能通过，商城对这类合法插件只会按
+  // user-reviewed（本机逐次确认）收录 —— 所以**不要**为了消除信号去改运行时代码（那是规避扫描器）。
+  // 这里只把「声明类」门禁钉死，防止再次静默漂移。
+  const canonicalRepository = (value) => String(value ?? '')
+    .replace(/^git\+/, '').replace(/^git:\/\//, 'https://')
+    .replace(/\.git\/?$/i, '').replace(/\/$/, '');
+  check('repository 规范化后等于 canonical GitHub 仓库（STORE requireManifestRepositoryMatch）',
+    canonicalRepository(pkg.repository && pkg.repository.url) === 'https://github.com/xia-sc/dsh-cc-studio',
+    canonicalRepository(pkg.repository && pkg.repository.url));
+  check('engines.node 明确声明（STORE requireNodeCompatibility）',
+    typeof pkg.engines?.node === 'string' && pkg.engines.node.trim() !== '', String(pkg.engines?.node));
+  const compat = (pkg.dsh && pkg.dsh.compatibility) || {};
+  const releases = compat.dshReleases || {};
+  const releaseKeys = Object.keys(releases);
+  const FULL_SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+  check('dsh.compatibility.dshReleases 的键是完整 SemVer（STORE 只额外认 rc.7 / rc.8 两个历史别名）',
+    releaseKeys.length > 0 && releaseKeys.every((k) => FULL_SEMVER.test(k)), releaseKeys.join(', '));
+  check('dshReleases 的值域是 compatible / incompatible / unknown',
+    Object.values(releases).every((v) => ['compatible', 'incompatible', 'unknown'].includes(v)),
+    JSON.stringify(releases));
+  check('至少一条精确 compatible（商城 latest-three 窗口要求 ≥1，范围声明不算证据）',
+    Object.values(releases).includes('compatible'), JSON.stringify(releases));
+  check('声明 DSH 兼容范围（范围只显示「待验证」，不替代逐版本证据）',
+    typeof compat.dsh === 'string' && compat.dsh.trim() !== '', String(compat.dsh));
+  const runtimeDeps = Object.keys({ ...(pkg.dependencies || {}), ...(pkg.optionalDependencies || {}) });
+  check('没有运行/可选依赖（STORE allowRuntimeDependencies=false）', runtimeDeps.length === 0, runtimeDeps.join(', '));
+  check('没有 preinstall/install/postinstall/prepare 生命周期脚本（STORE allowLifecycleScripts=false）',
+    ['preinstall', 'install', 'postinstall', 'prepare'].every((k) => (pkg.scripts || {})[k] === undefined),
+    Object.keys(pkg.scripts || {}).join(', '));
+  check('files 显式声明分发清单（STORE requireExplicitFiles）',
+    Array.isArray(pkg.files) && pkg.files.length > 0, JSON.stringify(pkg.files));
+  const externalImports = ['index.js', 'agent.js'].flatMap((name) => {
+    const src = readFileSync(new URL('../lib/' + name, import.meta.url), 'utf8');
+    return [...src.matchAll(/^\s*import[^;\n]*?from\s*["']([^"']+)["']/gm)].map((m) => m[1])
+      .filter((spec) => !spec.startsWith('.') && !spec.startsWith('node:'));
+  });
+  check('宿主半与预设半只 import node: 内建 / 相对路径（重新引入外部包 = 多一条供应链审查）',
+    externalImports.length === 0, externalImports.join(', '));
+  const readmeText = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+  check('README 有「兼容与权限」披露节（STORE 的权限元数据取自 manifest / README / 运行时代码）',
+    readmeText.includes('## 兼容与权限'), '');
 }
 
 // —— 清理 ——

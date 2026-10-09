@@ -1,6 +1,6 @@
 {
   "name": "@xia-sc/dsh-cc-studio",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "description": "CCv3 角色卡工坊：融合工坊 + CC 模式 + JSON/PNG/CHARX + 中英双语（跟随全局）",
   "keywords": [
     "dsh",
@@ -22,6 +22,9 @@
   },
   "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
@@ -52,10 +55,19 @@
         "@deepseek-ai/dsh-client-ui-conversation",
         "@deepseek-ai/dsh-client-ui-layout"
       ]
+    },
+    "compatibility": {
+      "dsh": ">=0.1.5-rc.1",
+      "dshReleases": {
+        "0.1.5-rc.1": "compatible",
+        "0.1.5-rc.2": "compatible",
+        "0.1.6-alpha.1": "compatible",
+        "0.1.6-alpha.2": "compatible",
+        "0.1.7-alpha.1": "compatible",
+        "0.1.7-rc.1": "compatible",
+        "0.2.0-rc.2": "compatible"
+      }
     }
-  },
-  "dependencies": {
-    "@deepseek-ai/cordis": "^4.0.1"
   },
   "publishConfig": {
     "access": "public"

@@ -15,7 +15,8 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 | 项目 | 值 |
 | --- | --- |
 | 插件包名 | `@xia-sc/dsh-cc-studio` |
-| 当前版本 | `0.3.7` |
+| 当前版本 | `0.3.8` |
+| 兼容与权限 | DSH `>=0.1.5-rc.1`、Node `>=22`、**零运行依赖**；权限边界见 [兼容与权限](#兼容与权限) |
 | 宿主 RPC | `/dsh-cc-studio-rpc`（自带路由，适配 dsh ≥ `0.1.5-rc.1`；已在 `0.1.6-alpha.2` / `0.1.7-alpha.1` / `0.1.7-rc.1` 实测） |
 | CC 预设 | `presets/cc.patch.yml`（dsh ≥ `0.1.7-alpha.1`，组合声明行）／`<DSH_HOME>/.agent-presets/cc`（≤ `0.1.6-alpha.2`，目录形态） |
 | 客户端挂载点 | `conversation.input.dock`（胶囊）+ `shell.overlay`（工坊）+ `settings.section` |
@@ -286,7 +287,7 @@ dsh-cc-studio/
 ## 开发与测试
 
 ```bash
-npm test                                   # 6 个文件、278 项断言（六个 node 脚本串联）
+npm test                                   # 6 个文件、292 项断言（六个 node 脚本串联）
 node tests/rpc-channel.test.mjs            # 只跑 host 半 RPC 通道回归（45 项断言）
 ```
 
@@ -297,6 +298,27 @@ node tests/rpc-channel.test.mjs            # 只跑 host 半 RPC 通道回归（
 
 深浅色通过 `var(--dsw-alias-*)` 自动适配（`body[data-ds-dark-theme]`），主操作固定 `#7c5cff` 保证对比度。切换路径：设置 → 外观 → 浅色/深色/跟随系统，刷新后工坊立即生效。
 
+## 兼容与权限
+
+上架元数据（`dsh.compatibility` / `engines` / 运行依赖）与权限边界都集中在这里；DSH STORE 的固定源审查读的也是这几处。
+
+| 项 | 值 |
+| --- | --- |
+| DSH 兼容范围 | `>=0.1.5-rc.1`（`package.json` 的 `dsh.compatibility.dsh`） |
+| 逐版本证据 | `dsh.compatibility.dshReleases` 里 `0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.1` / `0.1.6-alpha.2` / `0.1.7-alpha.1` / `0.1.7-rc.1` / **`0.2.0-rc.2`** 为 `compatible`。**没实测过的版本不写**（`0.1.7-alpha.2`、`0.1.7-rc.2`、`0.2.0-rc.1`、`0.2.1-alpha.1` 保持未声明，商城显示为未知），而不是先写 `compatible` 再补测 |
+| Node.js | `engines.node: ">=22"`（实测运行时 Node v26.9.0） |
+| Profile | `web`（由 `dsh.client.platform` 推出） |
+| 运行依赖 | **无**。`lib/*.js` 只 `import` `node:` 内建与相对路径；随包的补丁 / 预设是静态 YAML，没有安装期脚本 |
+| 生命周期脚本 | **无** `preinstall` / `install` / `postinstall` / `prepare`（只有 `test` 与 `prepublishOnly`，只在本仓库跑，不发给安装端） |
+| 权限 · 文件 | 读 `<DSH_HOME>`（含旧根 `~/.dsh`）下自己的三个目录：`cc-drafts/`、`cc-library/`、`.agent-presets/cc/`（后者只在 dsh ≤ `0.1.6-alpha.2` 上写）；另读自身 `package.json`。不写宿主配置，不碰别的插件的数据 |
+| 权限 · 网络 | 无。宿主半只在宿主 `webServer` 上注册 `POST /dsh-cc-studio-rpc/<endpoint>`；浏览器半只打同源 RPC |
+| 权限 · 命令 | 无。不起子进程、不执行 shell |
+| 权限 · 凭据 | 不读也不存任何 token / 密钥 / cookie。只读两个环境变量：`DSH_HOME`、`DSH_CC_STUDIO_PRESET_INSTALL`。宿主 HTTP 路由复用宿主自己的 cookie 围栏（`connection.requestRejection`），插件不解析凭据 |
+
+> **为什么商城不会给它「自动通过」**：DSH STORE 的自动低风险通道（`source-verified`）要求运行时代码**完全不出现**文件、网络、命令、凭据四类信号；而本插件的核心功能就是角色卡与草稿落盘（文件信号），并且要读 `DSH_HOME`（扫描器把任何 `process.env` 读取都算凭据信号）。这两条不会为了迎合扫描器而消除 —— 对这类合法插件，商城的正确档位是 `user-reviewed`（展示变更、由用户逐次确认安装）。
+
+一次性 Profile 的安装 / 启动 / 卸载证据见 [CHANGELOG.md](./CHANGELOG.md) 的 `0.3.7` 小节：隔离 profile + 隔离 `DSH_HOME` / `HOME` / `USERPROFILE`，三个前端挂载点全部 `active`、预设 roster 含 `cc`、RPC 往返一致、PNG / CHARX 导出→导入往返一致，真实 `~/.dsh` 全程零变化。
+
 ## 规范依据
 
 - [CCv3 SPEC_V3.md](https://github.com/kwaroran/character-card-spec-v3/blob/main/SPEC_V3.md)（权威）
@@ -306,6 +328,7 @@ node tests/rpc-channel.test.mjs            # 只跑 host 半 RPC 通道回归（
 
 完整历史见 [CHANGELOG.md](./CHANGELOG.md)。最近几版：
 
+- `0.3.8` 补 DSH STORE 上架契约（[Store #1173](https://github.com/AI-Scarlett/DSH-Store/issues/1173)）：`engines.node: ">=22"`、`dsh.compatibility`（兼容范围 + **只写实测过版本**的精确矩阵）、删掉那个从 0.3.0 起就没被任何代码 import 过的 `@deepseek-ai/cordis` 运行依赖，README / README_EN 新增「兼容与权限」披露节，`tests/preset-install.test.mjs` 加 11 项契约守卫（281 → 292 项断言）。**但这个 issue 光改仓库修不完**：商城条目的包名还停在 0.3.0 的旧名 `@dsh-plugins/dsh-cc-studio`，STORE 复检第一步就因「包名与条目身份不符」判 `update-blocked`，得先由 STORE 侧迁移条目身份（重新提交也绕不过，`entryIds` 会撞旧条目）；而 files / credentials 两个权限信号是本插件的核心功能（角色卡草稿落盘 + 读 `DSH_HOME`），自动低风险通道**不可能**通过，商城只应按 `user-reviewed`（用户逐次确认）收录。另已做完 **dsh `0.2.0-rc.2` 兼容性审计**（隔离宿主实测宿主行/预设行组合、RPC 线协议与围栏、会话槽 key、预设 roster 含 `cc` 且 `broken` 空、三个客户端挂载点 `active`、PNG/CHARX 往返逐字一致、真实 `~/.dsh` 零变化），矩阵补上 `0.2.0-rc.2: compatible`；`0.2.0-rc.1` / `0.2.1-alpha.1` 未测，仍不声明。
 - `0.3.7` dsh `0.1.7-rc.1` 兼容性审计：**接口面无一处需要适配**（隔离宿主实测了 RPC 路由/线协议、预设 roster、三个前端挂载点、草稿槽 key、落盘根、PNG/CHARX 往返）。真正的修复是预设里**一行自始漏抄**：`command-goal` 在内置 `standard` 里从 `0.1.6-alpha.2` 起就有，本预设初次拷贝时就漏了它 —— 不报错、不判 broken，只是 CC 模式会话少了 `/goal` 斜杠命令（与 0.3.4 补回的 `present` 同类），现已两份载体同步补齐并加了**行集快照**守卫。另更正 3 处会误导下次升级的文档口径（「异步迭代 `IncomingMessage` 必抛」实测不成立且官方 `/api` 桥自己就在用；`/api/agentPresets/list` 其实带可选 `name`/`description`/`broken`；channel/endpoint 命名正则在 `dsh-client-connection` 而非 `webServer.register`），并给「客户端 `preset.ccLabel` 必须逐字等于宿主预设显示名」这条隐性耦合补了跨文件守卫。顺带精简了 roster 下拉里「CC 模式」的介绍文案：原来把模型侧的 6 个工具名（`cc_get_card` / `cc_patch_character` / …）全列在用户界面上，既撑满下拉项又对用户没有信息量（工具名只对读 persona 的模型有意义），现在只讲「模型先问再填 / 胶囊实时同步 / 工坊全屏编辑 / 导出 JSON、PNG、CHARX」。测试 278 → 281 项。
 - `0.3.6` 修 dsh `0.1.7-alpha.1` 上「`CC 模式` 预设消失」+ 落盘根统一。① 预设：那一版起 dsh 的预设只来自组合里的**声明行**，`<DSH_HOME>/.agent-presets/` 已无人读取（目录还在、只是没人看），插件改为随包带一层补丁 `presets/cc.patch.yml`（与内置 `standard` 同构的 `@deepseek-ai/dsh-agent-preset` 声明），新版上不再写任何文件，目录安装只为 ≤ `0.1.6-alpha.2` 保留并在新版自动让位。② 草稿与角色库：以前写死 `~/.dsh`、不认 `DSH_HOME`（自定义 `DSH_HOME` 的用户两套根并存，隔离实测还会写进真实 `~/.dsh`），现在改为 **`DSH_HOME` 优先 + 读时回退 `~/.dsh`**，未设置时路径与以前完全一致。测试 216 → 278 项。
 - `0.3.5` 修 #5「前端与 Tools 读到不同草稿槽」：`useCcPreset` 读的 `useSessions().current` 字段在 dsh `0.1.6-alpha.2` 的 `SessionListState` 里并不存在（恒为 `null`），加上启动时那次无 key 的拉取占掉了全局节流，前端一直用 `default` 槽 —— 而模型经 Tools 写的是 `session-<会话id>` 槽，于是「模型说写好了 / 工坊说没数据」。现在会话 id 只从 slot props 取并发布到 store、拉草稿没有会话 id 就一次都不发、节流按 key、主机回传 key 不一致时不渲染而是告警；另修胶囊闪退（根域实例每秒钟把会话域实例判定的 CC 状态清掉）并新增 `cc_migrateDraft` 与「迁入本会话槽」一键救回。测试 158 → 216 项（新增行为级 `tests/draft-slot-sync.test.mjs`）。

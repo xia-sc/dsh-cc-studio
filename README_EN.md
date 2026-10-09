@@ -15,7 +15,8 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 | Item | Value |
 | --- | --- |
 | Package | `@xia-sc/dsh-cc-studio` |
-| Version | `0.3.7` |
+| Version | `0.3.8` |
+| Compatibility & permissions | dsh `>=0.1.5-rc.1`, Node `>=22`, **zero runtime dependencies**; permission bounds in [Compatibility & permissions](#compatibility--permissions) |
 | Host RPC | `/dsh-cc-studio-rpc` (self-owned route, works on dsh ≥ `0.1.5-rc.1`; verified on `0.1.6-alpha.2` / `0.1.7-alpha.1` / `0.1.7-rc.1`) |
 | CC preset | `presets/cc.patch.yml` (dsh ≥ `0.1.7-alpha.1`, a composition declaration row) / `<DSH_HOME>/.agent-presets/cc` (≤ `0.1.6-alpha.2`, the legacy directory) |
 | Client mounts | `conversation.input.dock` (capsule) + `shell.overlay` (workshop) + `settings.section` |
@@ -268,10 +269,10 @@ dsh-cc-studio/
 │   └── cc/               # legacy preset directory template (dsh ≤ 0.1.6-alpha.2, installed on mount)
 │       ├── preset.yml
 │       └── agent.cordis.yml
-├── tests/                # 6 files, 278 assertions (not published with the package)
+├── tests/                # 6 files, 292 assertions (not published with the package)
 │   ├── rpc-channel.test.mjs       # host-half RPC channel regression (fake ctx + real http, 45 assertions)
-│   ├── preset-install.test.mjs    # install decisions + native hand-off + anti-drift + row contract, 66 assertions
-│   ├── cc-detection.test.mjs      # source-level guards for CC Mode detection, 50 assertions
+│   ├── preset-install.test.mjs    # install decisions + native hand-off + anti-drift + row contract + DSH STORE listing contract, 79 assertions
+│   ├── cc-detection.test.mjs      # source-level guards for CC Mode detection, 51 assertions
 │   ├── client-greetings.test.mjs  # client greetings and i18n guards, 62 assertions
 │   ├── draft-slot-sync.test.mjs   # behavioural draft-slot regression (fake React/slot/RPC harness), 18 assertions
 │   └── data-root.test.mjs         # data roots: DSH_HOME first + read-time fallback to ~/.dsh, 37 assertions
@@ -285,7 +286,7 @@ dsh-cc-studio/
 ## Development and tests
 
 ```bash
-npm test                                   # 6 files, 278 assertions (six node scripts chained)
+npm test                                   # 6 files, 292 assertions (six node scripts chained)
 node tests/rpc-channel.test.mjs            # only the host-half RPC channel regression (45 assertions)
 ```
 
@@ -296,6 +297,27 @@ node tests/rpc-channel.test.mjs            # only the host-half RPC channel regr
 
 Light/dark via `var(--dsw-alias-*)` (`body[data-ds-dark-theme]`), primary stays `#7c5cff`. Switch at Settings → Appearance → Light/Dark/Follow system, the workshop updates on refresh.
 
+## Compatibility & permissions
+
+The listing metadata (`dsh.compatibility`, `engines`, runtime dependencies) and the permission bounds live here; DSH STORE's fixed-source review reads the same places.
+
+| Item | Value |
+| --- | --- |
+| DSH range | `>=0.1.5-rc.1` (`dsh.compatibility.dsh` in `package.json`) |
+| Per-release evidence | `dsh.compatibility.dshReleases` marks `0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.1` / `0.1.6-alpha.2` / `0.1.7-alpha.1` / `0.1.7-rc.1` / **`0.2.0-rc.2`** as `compatible`. Versions that were **never tested are not written** (`0.1.7-alpha.2`, `0.1.7-rc.2`, `0.2.0-rc.1`, `0.2.1-alpha.1` stay undeclared and show as unknown) instead of being claimed first and tested later |
+| Node.js | `engines.node: ">=22"` (verified on Node v26.9.0) |
+| Profile | `web` (derived from `dsh.client.platform`) |
+| Runtime dependencies | **none**: `lib/*.js` only imports `node:` builtins and relative paths; the bundled patch/preset files are static YAML with no install-time script |
+| Lifecycle scripts | **none** (`preinstall` / `install` / `postinstall` / `prepare`); only `test` and `prepublishOnly`, which run in this repository and never on an installer |
+| Files | reads its own three directories under `<DSH_HOME>` (plus the legacy `~/.dsh` root): `cc-drafts/`, `cc-library/`, `.agent-presets/cc/` (written only on dsh ≤ `0.1.6-alpha.2`), and its own `package.json`. It never writes host config or touches another plugin's data |
+| Network | none: the host half only registers `POST /dsh-cc-studio-rpc/<endpoint>` on the host's `webServer`; the client half only calls same-origin RPC |
+| Commands | none: no subprocess, no shell |
+| Credentials | reads and stores no token, key or cookie. It reads exactly two environment variables (`DSH_HOME`, `DSH_CC_STUDIO_PRESET_INSTALL`), and its HTTP route reuses the **host's** cookie fence (`connection.requestRejection`) without parsing credentials itself |
+
+> **Why DSH STORE will never auto-approve it:** STORE's automatic low-risk channel (`source-verified`) requires runtime source to contain **no** files, network, commands or credentials signals. This plugin's core feature is persisting character cards and drafts (the files signal), and it must read `DSH_HOME` (the scanner counts any `process.env` read as a credentials signal). Neither will be removed to please a scanner — for a legitimate plugin like this, the correct store tier is `user-reviewed` (it shows the change and asks the user to confirm each install).
+
+Disposable-Profile install / start / uninstall evidence lives in the `0.3.7` section of [CHANGELOG.md](./CHANGELOG.md): an isolated profile with isolated `DSH_HOME` / `HOME` / `USERPROFILE`, all three client mounts `active`, `cc` present in the preset roster, RPC round-trips identical, PNG / CHARX export→import identical, and the real `~/.dsh` unchanged throughout.
+
 ## Spec
 
 - [CCv3 SPEC_V3.md](https://github.com/kwaroran/character-card-spec-v3/blob/main/SPEC_V3.md) (authoritative)
@@ -305,6 +327,7 @@ Light/dark via `var(--dsw-alias-*)` (`body[data-ds-dark-theme]`), primary stays 
 
 Full history lives in [CHANGELOG.md](./CHANGELOG.md) (Chinese). Latest:
 
+- `0.3.8` DSH STORE listing contract ([Store #1173](https://github.com/AI-Scarlett/DSH-Store/issues/1173)): `engines.node: ">=22"`, `dsh.compatibility` (a range plus an exact per-release matrix that **only lists tested versions**), removal of the `@deepseek-ai/cordis` runtime dependency that no code has imported since 0.3.0, a new "Compatibility & permissions" section in both READMEs, and 11 contract guards in `tests/preset-install.test.mjs` (281 → 292 assertions). **Changing this repository alone cannot close the issue**: the store entry still carries the 0.3.0 package name `@dsh-plugins/dsh-cc-studio`, so STORE's recheck fails at step one with `update-blocked` ("package name no longer matches the Catalog identity") and never reads a 0.3.x manifest — STORE has to migrate the entry identity (re-submitting does not bypass it: the shared `entryIds` collide with the old entry). And the files / credentials permission signals are the plugin's core features (card and draft persistence, reading `DSH_HOME`), so the automatic low-risk channel can never pass; the correct tier is `user-reviewed` (per-install user confirmation). A **dsh `0.2.0-rc.2` compatibility audit** is also done (isolated host: host/preset row composition, RPC wire protocol and fence, draft-slot key, preset roster containing `cc` with an empty `broken`, all three client mounts `active`, PNG/CHARX round-trips byte-identical, real `~/.dsh` untouched), so the matrix now declares `0.2.0-rc.2: compatible`; `0.2.0-rc.1` / `0.2.1-alpha.1` were not tested and stay undeclared.
 - `0.3.7` dsh `0.1.7-rc.1` compatibility audit: **nothing needed adapting** (an isolated host verified the RPC route/wire protocol, the preset roster, all three client mounts, the draft-slot key, the data roots, and a PNG/CHARX round-trip). The one real fix is a preset row that had been missing **since the preset was first written**: `command-goal` has been in the shipped `standard` since `0.1.6-alpha.2`, but the initial copy dropped it — no error, no `broken`, just no `/goal` slash command in a CC Mode session (same class as the `present` row restored in 0.3.4). It is now restored in both carriers, guarded by a row-set snapshot test. Also corrects three doc claims that would mislead the next upgrade (async iteration of `IncomingMessage` does *not* throw here — the official `/api` bridge uses `for await` itself; `/api/agentPresets/list` does carry optional `name`/`description`/`broken`; the channel/endpoint name regexes live in `dsh-client-connection`, not `webServer.register`), and adds a cross-file guard for the implicit "client `preset.ccLabel` must equal the host preset's display name" coupling. It also trims the CC Mode description shown in the session-mode dropdown: it used to list the model-side tool names (`cc_get_card` / `cc_patch_character` / …), which filled the dropdown without telling the user anything (tool names only mean something to the model reading the persona); it now just says "the model asks before it fills / live capsule sync / full-screen workshop / export JSON, PNG, CHARX". Tests 278 → 281.
 - `0.3.6` Two fixes. ① The `CC Mode` preset disappearing on dsh `0.1.7-alpha.1`: from that version on dsh takes presets only from **declaration rows** in a composition, and `<DSH_HOME>/.agent-presets/` is no longer read by any code (the directory is still there, nobody looks at it). The plugin now ships a patch layer `presets/cc.patch.yml` (a `@deepseek-ai/dsh-agent-preset` declaration, structurally identical to the built-in `standard`) and writes nothing on the new version; the directory install is kept for ≤ `0.1.6-alpha.2` only and stands down automatically on newer dsh. ② Data roots unified: drafts and the card library used to be hard-wired to `~/.dsh` and ignored `DSH_HOME` (custom-`DSH_HOME` users ended up with two sets of roots, and an isolated run wrote into the real `~/.dsh`), now **`DSH_HOME` first with a read-time fallback to `~/.dsh`** — unchanged paths when `DSH_HOME` is unset. Tests 216 → 278.
 - `0.3.5` Fixes #5, "frontend and Tools read different draft slots": `useCcPreset` read `useSessions().current`, a field that does not exist in dsh `0.1.6-alpha.2`'s `SessionListState` (it was always `null`), and the keyless pull at startup consumed the global throttle, so the UI stayed on the `default` slot while the model's Tools wrote to `session-<sessionId>` — hence "the model says it wrote it / the workshop says there is no data". Now the session id is taken from slot props only and published to the store, a draft pull without a session id is never sent, throttling is per key, and a host response whose `key` differs is not rendered but surfaced as a warning. Also fixes the capsule flicker (the root-scope instance was clearing the CC verdict the session-scope instance had just made) and adds `cc_migrateDraft` with a one-click "migrate into this session" recovery. Tests 158 → 216 (+ a behavioural `tests/draft-slot-sync.test.mjs`).
