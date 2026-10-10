@@ -15,7 +15,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 | Item | Value |
 | --- | --- |
 | Package | `@xia-sc/dsh-cc-studio` |
-| Version | `0.3.8` |
+| Version | `0.4.0` |
 | Compatibility & permissions | dsh `>=0.1.5-rc.1`, Node `>=22`, **zero runtime dependencies**; permission bounds in [Compatibility & permissions](#compatibility--permissions) |
 | Host RPC | `/dsh-cc-studio-rpc` (self-owned route, works on dsh ≥ `0.1.5-rc.1`; verified on `0.1.6-alpha.2` / `0.1.7-alpha.1` / `0.1.7-rc.1`) |
 | CC preset | `presets/cc.patch.yml` (dsh ≥ `0.1.7-alpha.1`, a composition declaration row) / `<DSH_HOME>/.agent-presets/cc` (≤ `0.1.6-alpha.2`, the legacy directory) |
@@ -269,12 +269,14 @@ dsh-cc-studio/
 │   └── cc/               # legacy preset directory template (dsh ≤ 0.1.6-alpha.2, installed on mount)
 │       ├── preset.yml
 │       └── agent.cordis.yml
-├── tests/                # 6 files, 292 assertions (not published with the package)
+├── tests/                # 8 files, 335 assertions (not published with the package)
 │   ├── rpc-channel.test.mjs       # host-half RPC channel regression (fake ctx + real http, 45 assertions)
 │   ├── preset-install.test.mjs    # install decisions + native hand-off + anti-drift + row contract + DSH STORE listing contract, 79 assertions
 │   ├── cc-detection.test.mjs      # source-level guards for CC Mode detection, 51 assertions
 │   ├── client-greetings.test.mjs  # client greetings and i18n guards, 62 assertions
 │   ├── draft-slot-sync.test.mjs   # behavioural draft-slot regression (fake React/slot/RPC harness), 18 assertions
+│   ├── nav-highlight.test.mjs     # workshop step-nav tri-state regression (selection / keyboard focus / hover stay exclusive), 23 assertions
+│   ├── clear-card.test.mjs        # "clear the current card" confirmation regression, 20 assertions
 │   └── data-root.test.mjs         # data roots: DSH_HOME first + read-time fallback to ~/.dsh, 37 assertions
 ├── CHANGELOG.md          # full version history (Chinese)
 ├── README.md             # Chinese (default)
@@ -286,7 +288,7 @@ dsh-cc-studio/
 ## Development and tests
 
 ```bash
-npm test                                   # 6 files, 292 assertions (six node scripts chained)
+npm test                                   # 8 files, 335 assertions (eight node scripts chained)
 node tests/rpc-channel.test.mjs            # only the host-half RPC channel regression (45 assertions)
 ```
 
@@ -327,6 +329,7 @@ Disposable-Profile install / start / uninstall evidence lives in the `0.3.7` sec
 
 Full history lives in [CHANGELOG.md](./CHANGELOG.md) (Chinese). Latest:
 
+- `0.4.0` Fixes the workshop's left step-list highlight: after clicking a step, that row grew a stray outline ring, and switching steps with the top capsules left the ring behind on the old row — two rows looked selected at once. Root cause: `navItem` only painted the `s.cur` selection and never touched browser focus (a clicked `<button>` keeps focus, so the host/UA focus outline stayed painted on its edge). Now: nav rows call `preventDefault()` on `mousedown` (mouse clicks no longer steal focus, Tab still works), the `outline` is owned by the plugin (a 2px brand ring appears only for `:focus-visible`), the selection uses a brand-tinted background plus a left bar and `aria-current`, and hover feedback plus "clear the ring on any mouse press" were added. Adds a **"Clear current card" button** (under *Validate* in the left rail; a `window.confirm` gate swaps the draft back to an empty card and drops the library link, so a later "Save current" creates a new card instead of overwriting the saved one). And **rebuilds the workshop UI** (the main event): the 360px right rail is gone — the live CCv3 preview and the CBS cheatsheet moved to collapsible rows at the bottom of the reading pane (collapsed by default, the preview row still shows the spec and pass/fail badges), and the pure-intro "fusion notes" block was dropped entirely; fields render as document-style rows (borderless auto-growing textareas via `field-sizing: content`) with editing demoted to ⛶ big-box on demand, widening the reading pane from ~700px to ~876px at 1400px. Every feature is kept. `tests/nav-highlight.test.mjs` (23 assertions) and `tests/clear-card.test.mjs` (20) pin the new behaviour. Tests 292 → 335.
 - `0.3.8` DSH STORE listing contract ([Store #1173](https://github.com/AI-Scarlett/DSH-Store/issues/1173)): `engines.node: ">=22"`, `dsh.compatibility` (a range plus an exact per-release matrix that **only lists tested versions**), removal of the `@deepseek-ai/cordis` runtime dependency that no code has imported since 0.3.0, a new "Compatibility & permissions" section in both READMEs, and 11 contract guards in `tests/preset-install.test.mjs` (281 → 292 assertions). **Changing this repository alone cannot close the issue**: the store entry still carries the 0.3.0 package name `@dsh-plugins/dsh-cc-studio`, so STORE's recheck fails at step one with `update-blocked` ("package name no longer matches the Catalog identity") and never reads a 0.3.x manifest — STORE has to migrate the entry identity (re-submitting does not bypass it: the shared `entryIds` collide with the old entry). And the files / credentials permission signals are the plugin's core features (card and draft persistence, reading `DSH_HOME`), so the automatic low-risk channel can never pass; the correct tier is `user-reviewed` (per-install user confirmation). A **dsh `0.2.0-rc.2` compatibility audit** is also done (isolated host: host/preset row composition, RPC wire protocol and fence, draft-slot key, preset roster containing `cc` with an empty `broken`, all three client mounts `active`, PNG/CHARX round-trips byte-identical, real `~/.dsh` untouched), so the matrix now declares `0.2.0-rc.2: compatible`; `0.2.0-rc.1` / `0.2.1-alpha.1` were not tested and stay undeclared.
 - `0.3.7` dsh `0.1.7-rc.1` compatibility audit: **nothing needed adapting** (an isolated host verified the RPC route/wire protocol, the preset roster, all three client mounts, the draft-slot key, the data roots, and a PNG/CHARX round-trip). The one real fix is a preset row that had been missing **since the preset was first written**: `command-goal` has been in the shipped `standard` since `0.1.6-alpha.2`, but the initial copy dropped it — no error, no `broken`, just no `/goal` slash command in a CC Mode session (same class as the `present` row restored in 0.3.4). It is now restored in both carriers, guarded by a row-set snapshot test. Also corrects three doc claims that would mislead the next upgrade (async iteration of `IncomingMessage` does *not* throw here — the official `/api` bridge uses `for await` itself; `/api/agentPresets/list` does carry optional `name`/`description`/`broken`; the channel/endpoint name regexes live in `dsh-client-connection`, not `webServer.register`), and adds a cross-file guard for the implicit "client `preset.ccLabel` must equal the host preset's display name" coupling. It also trims the CC Mode description shown in the session-mode dropdown: it used to list the model-side tool names (`cc_get_card` / `cc_patch_character` / …), which filled the dropdown without telling the user anything (tool names only mean something to the model reading the persona); it now just says "the model asks before it fills / live capsule sync / full-screen workshop / export JSON, PNG, CHARX". Tests 278 → 281.
 - `0.3.6` Two fixes. ① The `CC Mode` preset disappearing on dsh `0.1.7-alpha.1`: from that version on dsh takes presets only from **declaration rows** in a composition, and `<DSH_HOME>/.agent-presets/` is no longer read by any code (the directory is still there, nobody looks at it). The plugin now ships a patch layer `presets/cc.patch.yml` (a `@deepseek-ai/dsh-agent-preset` declaration, structurally identical to the built-in `standard`) and writes nothing on the new version; the directory install is kept for ≤ `0.1.6-alpha.2` only and stands down automatically on newer dsh. ② Data roots unified: drafts and the card library used to be hard-wired to `~/.dsh` and ignored `DSH_HOME` (custom-`DSH_HOME` users ended up with two sets of roots, and an isolated run wrote into the real `~/.dsh`), now **`DSH_HOME` first with a read-time fallback to `~/.dsh`** — unchanged paths when `DSH_HOME` is unset. Tests 216 → 278.

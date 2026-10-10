@@ -119,14 +119,14 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   check('源码中不再出现每行一条的标签', !src.includes('（每行一条）'), '');
 }
 
-// —— 8) UI 接线：每条一个编辑框，fieldHead 只服务 string ——
+// —— 8) UI 接线：每条一个编辑框，阅读态 field() 只服务 string ——
 {
   const defs = [...src.matchAll(/function greetingList\s*\(/g)].length;
   const uses = [...src.matchAll(/greetingList\("([a-z_]+)"/g)].map((m) => m[1]);
   check('greetingList 定义 1 次', defs === 1, String(defs));
   check('greetingList 被两个问候语字段使用', eq(uses, ['alternate_greetings', 'group_only_greetings']), JSON.stringify(uses));
-  check('fieldHead 签名不含 isArray', /function fieldHead\(title, key\)/.test(src), '');
-  check('fieldHead 调用点均为 2 参（无数组分支）', !/fieldHead\([^)]*,\s*true\s*\)/.test(src), '');
+  check('阅读态字段构造器 field(title, key, opts) 存在（0.4.0 起取代 fieldHead）', /function field\(title, key, opts\)/.test(src), '');
+  check('field 调用点不传数组分支标志', !/\bfield\([^)]*,\s*true\s*\)/.test(src), '');
   check('每条问候语有独立 textarea（value 取元素原文）', /value:String\(text==null\? "": text\)/.test(src), '');
 }
 
@@ -155,7 +155,7 @@ for (const id of ['expandIdea', 'expandWorld', 'setCustomTag', 'addCustomTag', '
   check('长文本「取消」绑定 cancelEditingText', /store\.cancelEditingText\(\);\s*\}\},\s*t\("action\.cancel"\)/.test(src), '');
   check('世界观「取消」绑定 cancelEditingWorld', /store\.cancelEditingWorld\(\);\s*\}\},\s*t\("action\.cancel"\)/.test(src), '');
   check('setEditingText 携带 revert 闭包', /function setEditingText\(title, value, setter, revert\)/.test(src), '');
-  const perItemRevert = [...src.matchAll(/setGreetingAt\(d\[key\], i, raw\)/g)].length;
+  const perItemRevert = [...src.matchAll(/setGreetingAt\(d\[key\], i, text\)/g)].length;
   check('每条问候语的大框也有回滚', perItemRevert >= 1, String(perItemRevert));
 }
 

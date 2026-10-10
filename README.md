@@ -15,7 +15,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 | 项目 | 值 |
 | --- | --- |
 | 插件包名 | `@xia-sc/dsh-cc-studio` |
-| 当前版本 | `0.3.8` |
+| 当前版本 | `0.4.0` |
 | 兼容与权限 | DSH `>=0.1.5-rc.1`、Node `>=22`、**零运行依赖**；权限边界见 [兼容与权限](#兼容与权限) |
 | 宿主 RPC | `/dsh-cc-studio-rpc`（自带路由，适配 dsh ≥ `0.1.5-rc.1`；已在 `0.1.6-alpha.2` / `0.1.7-alpha.1` / `0.1.7-rc.1` 实测） |
 | CC 预设 | `presets/cc.patch.yml`（dsh ≥ `0.1.7-alpha.1`，组合声明行）／`<DSH_HOME>/.agent-presets/cc`（≤ `0.1.6-alpha.2`，目录形态） |
@@ -270,12 +270,14 @@ dsh-cc-studio/
 │   └── cc/               # CC 预设目录模板（dsh ≤ 0.1.6-alpha.2，插件挂载时安装到用户根）
 │       ├── preset.yml
 │       └── agent.cordis.yml
-├── tests/                # 6 个测试文件、278 项断言（不随包发布）
+├── tests/                # 8 个测试文件、335 项断言（不随包发布）
 │   ├── rpc-channel.test.mjs       # host 半 RPC 通道回归（假 ctx + 真实 http，45 项断言）
-│   ├── preset-install.test.mjs    # 预设安装决策 + native 让位 + 两份清单防漂移 + 行契约，66 项断言
-│   ├── cc-detection.test.mjs      # CC 模式探测的源码级守卫，50 项断言
+│   ├── preset-install.test.mjs    # 预设安装决策 + native 让位 + 两份清单防漂移 + 行契约，79 项断言
+│   ├── cc-detection.test.mjs      # CC 模式探测的源码级守卫，51 项断言
 │   ├── client-greetings.test.mjs  # 客户端问候语与 i18n 守卫，62 项断言
 │   ├── draft-slot-sync.test.mjs   # 草稿槽行为级回归（假 React/slot/RPC harness），18 项断言
+│   ├── nav-highlight.test.mjs     # 工坊步骤导航三态回归（选中/键盘焦点/悬停互斥），23 项断言
+│   ├── clear-card.test.mjs        # 「清空当前角色卡」二次确认回归，20 项断言
 │   └── data-root.test.mjs         # 落盘根：DSH_HOME 优先 + 读时回退 ~/.dsh，37 项断言
 ├── CHANGELOG.md          # 完整版本历史
 ├── README.md             # 中文（默认）
@@ -287,7 +289,7 @@ dsh-cc-studio/
 ## 开发与测试
 
 ```bash
-npm test                                   # 6 个文件、292 项断言（六个 node 脚本串联）
+npm test                                   # 8 个文件、335 项断言（八个 node 脚本串联）
 node tests/rpc-channel.test.mjs            # 只跑 host 半 RPC 通道回归（45 项断言）
 ```
 
@@ -328,6 +330,7 @@ node tests/rpc-channel.test.mjs            # 只跑 host 半 RPC 通道回归（
 
 完整历史见 [CHANGELOG.md](./CHANGELOG.md)。最近几版：
 
+- `0.4.0` 修工坊左侧步骤列表的高亮：鼠标点过某一步后，那一项周围会多出一圈「莫名其妙的描边」，再用顶部胶囊切步时描边还赖在旧项上，看起来像同时选中了两项。根因是 `navItem` 只画 `s.cur` 的选中态、从没管过浏览器焦点（`<button>` 被点击后一直持有焦点，宿主/UA 的焦点描边就留在按钮外沿）。现在：导航项 `onMouseDown` 阻止默认（鼠标点击不抢焦点、键盘 Tab 照旧）、`outline` 由插件自己接管（只在 `:focus-visible` 时给 2px 品牌色环）、选中态换成品牌紫淡底 + 左竖条 + `aria-current`，并补上 hover 反馈与「鼠标一动就收起焦点环」。新增**「清空当前角色卡」按钮**（左侧底部「校验」下面，`window.confirm` 二次确认后换回空卡，并解除与已存角色的关联 —— 否则接着点「保存当前」会把库里那张覆盖成空卡）。**并重构了工坊 UI（本版主线）**：砍掉右侧占地 360px 那一栏，实时 CCv3 预览与 CBS 速查收到主区底部、**默认全部折叠**（预览那行仍显示 spec 与通过/失败徽章；原「融合说明」那块纯介绍文案已删除）；字段改成「文档式」阅读排版（无边框 textarea + `field-sizing: content` 自动撑高），手动编辑退成次要入口（长文走 ⛶ 大框），阅读区从 ~700px 拓到 ~876px。功能一个没少。`tests/nav-highlight.test.mjs`（23 项）与 `tests/clear-card.test.mjs`（20 项）钉住新行为。测试 292 → 335 项。
 - `0.3.8` 补 DSH STORE 上架契约（[Store #1173](https://github.com/AI-Scarlett/DSH-Store/issues/1173)）：`engines.node: ">=22"`、`dsh.compatibility`（兼容范围 + **只写实测过版本**的精确矩阵）、删掉那个从 0.3.0 起就没被任何代码 import 过的 `@deepseek-ai/cordis` 运行依赖，README / README_EN 新增「兼容与权限」披露节，`tests/preset-install.test.mjs` 加 11 项契约守卫（281 → 292 项断言）。**但这个 issue 光改仓库修不完**：商城条目的包名还停在 0.3.0 的旧名 `@dsh-plugins/dsh-cc-studio`，STORE 复检第一步就因「包名与条目身份不符」判 `update-blocked`，得先由 STORE 侧迁移条目身份（重新提交也绕不过，`entryIds` 会撞旧条目）；而 files / credentials 两个权限信号是本插件的核心功能（角色卡草稿落盘 + 读 `DSH_HOME`），自动低风险通道**不可能**通过，商城只应按 `user-reviewed`（用户逐次确认）收录。另已做完 **dsh `0.2.0-rc.2` 兼容性审计**（隔离宿主实测宿主行/预设行组合、RPC 线协议与围栏、会话槽 key、预设 roster 含 `cc` 且 `broken` 空、三个客户端挂载点 `active`、PNG/CHARX 往返逐字一致、真实 `~/.dsh` 零变化），矩阵补上 `0.2.0-rc.2: compatible`；`0.2.0-rc.1` / `0.2.1-alpha.1` 未测，仍不声明。
 - `0.3.7` dsh `0.1.7-rc.1` 兼容性审计：**接口面无一处需要适配**（隔离宿主实测了 RPC 路由/线协议、预设 roster、三个前端挂载点、草稿槽 key、落盘根、PNG/CHARX 往返）。真正的修复是预设里**一行自始漏抄**：`command-goal` 在内置 `standard` 里从 `0.1.6-alpha.2` 起就有，本预设初次拷贝时就漏了它 —— 不报错、不判 broken，只是 CC 模式会话少了 `/goal` 斜杠命令（与 0.3.4 补回的 `present` 同类），现已两份载体同步补齐并加了**行集快照**守卫。另更正 3 处会误导下次升级的文档口径（「异步迭代 `IncomingMessage` 必抛」实测不成立且官方 `/api` 桥自己就在用；`/api/agentPresets/list` 其实带可选 `name`/`description`/`broken`；channel/endpoint 命名正则在 `dsh-client-connection` 而非 `webServer.register`），并给「客户端 `preset.ccLabel` 必须逐字等于宿主预设显示名」这条隐性耦合补了跨文件守卫。顺带精简了 roster 下拉里「CC 模式」的介绍文案：原来把模型侧的 6 个工具名（`cc_get_card` / `cc_patch_character` / …）全列在用户界面上，既撑满下拉项又对用户没有信息量（工具名只对读 persona 的模型有意义），现在只讲「模型先问再填 / 胶囊实时同步 / 工坊全屏编辑 / 导出 JSON、PNG、CHARX」。测试 278 → 281 项。
 - `0.3.6` 修 dsh `0.1.7-alpha.1` 上「`CC 模式` 预设消失」+ 落盘根统一。① 预设：那一版起 dsh 的预设只来自组合里的**声明行**，`<DSH_HOME>/.agent-presets/` 已无人读取（目录还在、只是没人看），插件改为随包带一层补丁 `presets/cc.patch.yml`（与内置 `standard` 同构的 `@deepseek-ai/dsh-agent-preset` 声明），新版上不再写任何文件，目录安装只为 ≤ `0.1.6-alpha.2` 保留并在新版自动让位。② 草稿与角色库：以前写死 `~/.dsh`、不认 `DSH_HOME`（自定义 `DSH_HOME` 的用户两套根并存，隔离实测还会写进真实 `~/.dsh`），现在改为 **`DSH_HOME` 优先 + 读时回退 `~/.dsh`**，未设置时路径与以前完全一致。测试 216 → 278 项。
