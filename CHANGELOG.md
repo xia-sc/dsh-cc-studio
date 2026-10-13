@@ -2,6 +2,28 @@
 
 `dsh-cc-studio` 的版本变更记录，倒序排列（最新在上）。README 只保留最近几条，完整历史在本文件。
 
+## 0.4.1
+
+**文档补充：README 里写明桌面版（DeepSeek Harness Desktop）支持。** 运行时代码一行未动。
+
+### 一、动机
+
+README 的安装章节通篇以 `dsh plugin --profile web …` 为例，读者看不出「桌面版能不能用」。实际上桌面版就是同一个 dsh 宿主（Electron 内嵌），插件照样从 profile 的 `dsh.profile.bundles` 加载 —— 能力上早就支持，只是文档没写。
+
+### 二、改了什么（只动文档）
+
+| 位置 | 内容 |
+| --- | --- |
+| 「安装」章引言（README / README_EN） | 点明同时支持 `dsh web` 与桌面版，并说明差异只有 profile 名与「重启应用」两步 |
+| 新增「7. 桌面版（DeepSeek Harness Desktop）」 | 安装入口（应用内左侧「插件」面板，或 `dsh plugin --profile desktop add …`）、profile 名通常是 `desktop`、宿主与客户端改动的生效方式、数据位置；并提示「重启应用 ≈ 重启宿主、刷新窗口 ≈ 刷新页面」，排查时可混用 |
+| 「兼容与权限」表 | 新增「宿主形态」一行；原来容易误读的 `Profile \| web` 改成「客户端平台」，并说明它是 `dsh.client.platform`（**浏览器半**的平台标识），与 dsh 的 profile 名不是一回事 |
+| 安装示例 | 锁定版本的示例从过时的 `@0.3.7` 更新为 `@0.4.0` |
+
+### 三、验证与生效
+
+- `npm test` 335 项全绿（`tests/preset-install.test.mjs` 钉住的 README 披露节与 manifest 契约都没被碰到）。
+- 只改文档：**不需要重启、也不需要刷新页面**。桌面版的实际支持能力由 0.4.0 的实测覆盖 —— 桌面 profile 上工坊 / 胶囊 / 导入导出 / 草稿落盘全流程通过。
+
 ## 0.4.0
 
 本版三件事，都是**纯客户端**改动（`lib/client.js`），宿主半一行未动：

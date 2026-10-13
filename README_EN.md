@@ -15,7 +15,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 | Item | Value |
 | --- | --- |
 | Package | `@xia-sc/dsh-cc-studio` |
-| Version | `0.4.0` |
+| Version | `0.4.1` |
 | Compatibility & permissions | dsh `>=0.1.5-rc.1`, Node `>=22`, **zero runtime dependencies**; permission bounds in [Compatibility & permissions](#compatibility--permissions) |
 | Host RPC | `/dsh-cc-studio-rpc` (self-owned route, works on dsh ≥ `0.1.5-rc.1`; verified on `0.1.6-alpha.2` / `0.1.7-alpha.1` / `0.1.7-rc.1`) |
 | CC preset | `presets/cc.patch.yml` (dsh ≥ `0.1.7-alpha.1`, a composition declaration row) / `<DSH_HOME>/.agent-presets/cc` (≤ `0.1.6-alpha.2`, the legacy directory) |
@@ -24,13 +24,15 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 
 ## Install
 
+This plugin supports **both `dsh web` (the CLI-launched Web GUI) and DSH Desktop (DeepSeek Harness Desktop)**: they are the same dsh host, and the plugin is loaded from the profile's `dsh.profile.bundles` either way — same loading path, same feature set. The steps below use the `web` profile; the only differences on Desktop are the profile name and "restart the app instead of `dsh web`" — see **[7. Desktop](#7-desktop-deepseek-harness-desktop)** below.
+
 ### 1. From npm (recommended)
 
 ```bash
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
 
 # pin a version
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.3.7
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.4.0
 ```
 
 **Or from GitHub**:
@@ -218,6 +220,22 @@ Cards in `~/.dsh/cc-library/` and drafts in `~/.dsh/cc-drafts/` survive uninstal
 | Validation errors | Required `spec: chara_card_v3` / `spec_version: 3.0` / `group_only_greetings`; the main icon must be unique; regexes must be valid |
 | After a restart the browser shows `Failed to load plugins` / `web boot: 1 entry did not activate` / `import failed` | The rename was not followed by a reinstall under the new name: the profile's install identity (`dsh.profile.bundles` and the `link:` in `dependencies`) still says `@dsh-plugins/dsh-cc-studio`, while `package.json` and `lib/client.js` now say `@xia-sc/dsh-cc-studio`, so the client asset cannot be resolved (the host still boots — only the browser half dies). Confirm it by comparing the directory name under `~/.dsh/profiles/web/node_modules/` with the `name` in `package.json`; fix it by reinstalling under the new name (see the migration commands in "5. Update and uninstall"), restarting `dsh web`, and doing a **hard refresh** (`Ctrl+Shift+R`) — the old page's boot graph is cached, so a plain reload repeats the same error |
 
+### 7. Desktop (DeepSeek Harness Desktop)
+
+**DSH Desktop is the same dsh host** (Electron-embedded), and the plugin is still loaded from the profile's `dsh.profile.bundles` — so this plugin needs **no Desktop-specific adaptation**: the three client mounts (capsule / workshop / settings), the `CC Mode` preset, the RPC channel, draft and card-library persistence are all identical to `dsh web` (0.4.0 was verified end-to-end on a Desktop profile: capsule → workshop → import/export → draft persistence).
+
+Only two steps differ:
+
+| | `dsh web` (CLI) | Desktop |
+| --- | --- | --- |
+| Install | `dsh plugin --profile web add @xia-sc/dsh-cc-studio` | Install `@xia-sc/dsh-cc-studio` from the in-app **Plugins** panel on the left; with the CLI available you can also run `dsh plugin --profile desktop add @xia-sc/dsh-cc-studio` |
+| profile | usually `web` | usually `desktop` (`~/.dsh/profiles/desktop`); check what the app shows |
+| Host / plugin changes | restart `dsh web` | quit and reopen the desktop app |
+| Client-only changes (`lib/client.js`) | reload the page | reload inside the app window (restart the app if you cannot find a reload entry) |
+| Data location | `<DSH_HOME>/cc-drafts/`, `<DSH_HOME>/cc-library/` (defaults to `~/.dsh`) | identical — Desktop shares the same `DSH_HOME` and data roots |
+
+> The Desktop app window *is* its Web GUI (the port is assigned by the app), so "restart the app" ≈ restart the host and "reload the window" ≈ reload the page — interchangeable when troubleshooting.
+
 ## Quick start
 
 1. Create a session and pick **CC Mode** (the capsule appears above the composer).
@@ -308,7 +326,8 @@ The listing metadata (`dsh.compatibility`, `engines`, runtime dependencies) and 
 | DSH range | `>=0.1.5-rc.1` (`dsh.compatibility.dsh` in `package.json`) |
 | Per-release evidence | `dsh.compatibility.dshReleases` marks `0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.1` / `0.1.6-alpha.2` / `0.1.7-alpha.1` / `0.1.7-rc.1` / **`0.2.0-rc.2`** as `compatible`. Versions that were **never tested are not written** (`0.1.7-alpha.2`, `0.1.7-rc.2`, `0.2.0-rc.1`, `0.2.1-alpha.1` stay undeclared and show as unknown) instead of being claimed first and tested later |
 | Node.js | `engines.node: ">=22"` (verified on Node v26.9.0) |
-| Profile | `web` (derived from `dsh.client.platform`) |
+| Host form | `dsh web` (CLI) and **DSH Desktop (DeepSeek Harness Desktop)** are the same host + profile-bundles mechanism, **both supported** (differences and install steps: [7. Desktop](#7-desktop-deepseek-harness-desktop)) |
+| Client platform | `dsh.client.platform: "web"` — that is the **browser-half** platform tag, not the dsh profile name (`web` / `desktop` / …); Desktop and the CLI load the very same client bundle |
 | Runtime dependencies | **none**: `lib/*.js` only imports `node:` builtins and relative paths; the bundled patch/preset files are static YAML with no install-time script |
 | Lifecycle scripts | **none** (`preinstall` / `install` / `postinstall` / `prepare`); only `test` and `prepublishOnly`, which run in this repository and never on an installer |
 | Files | reads its own three directories under `<DSH_HOME>` (plus the legacy `~/.dsh` root): `cc-drafts/`, `cc-library/`, `.agent-presets/cc/` (written only on dsh ≤ `0.1.6-alpha.2`), and its own `package.json`. It never writes host config or touches another plugin's data |
@@ -329,6 +348,7 @@ Disposable-Profile install / start / uninstall evidence lives in the `0.3.7` sec
 
 Full history lives in [CHANGELOG.md](./CHANGELOG.md) (Chinese). Latest:
 
+- `0.4.1` Docs: README / README_EN now spell out **DSH Desktop (DeepSeek Harness Desktop) support** — a new "7. Desktop" section (where to install, profile name, restart-app vs reload-window, data roots), a "Host form" row in the compatibility table, and the easily-misread `Profile | web` row renamed to "Client platform". No runtime code changed.
 - `0.4.0` Fixes the workshop's left step-list highlight: after clicking a step, that row grew a stray outline ring, and switching steps with the top capsules left the ring behind on the old row — two rows looked selected at once. Root cause: `navItem` only painted the `s.cur` selection and never touched browser focus (a clicked `<button>` keeps focus, so the host/UA focus outline stayed painted on its edge). Now: nav rows call `preventDefault()` on `mousedown` (mouse clicks no longer steal focus, Tab still works), the `outline` is owned by the plugin (a 2px brand ring appears only for `:focus-visible`), the selection uses a brand-tinted background plus a left bar and `aria-current`, and hover feedback plus "clear the ring on any mouse press" were added. Adds a **"Clear current card" button** (under *Validate* in the left rail; a `window.confirm` gate swaps the draft back to an empty card and drops the library link, so a later "Save current" creates a new card instead of overwriting the saved one). And **rebuilds the workshop UI** (the main event): the 360px right rail is gone — the live CCv3 preview and the CBS cheatsheet moved to collapsible rows at the bottom of the reading pane (collapsed by default, the preview row still shows the spec and pass/fail badges), and the pure-intro "fusion notes" block was dropped entirely; fields render as document-style rows (borderless auto-growing textareas via `field-sizing: content`) with editing demoted to ⛶ big-box on demand, widening the reading pane from ~700px to ~876px at 1400px. Every feature is kept. `tests/nav-highlight.test.mjs` (23 assertions) and `tests/clear-card.test.mjs` (20) pin the new behaviour. Tests 292 → 335.
 - `0.3.8` DSH STORE listing contract ([Store #1173](https://github.com/AI-Scarlett/DSH-Store/issues/1173)): `engines.node: ">=22"`, `dsh.compatibility` (a range plus an exact per-release matrix that **only lists tested versions**), removal of the `@deepseek-ai/cordis` runtime dependency that no code has imported since 0.3.0, a new "Compatibility & permissions" section in both READMEs, and 11 contract guards in `tests/preset-install.test.mjs` (281 → 292 assertions). **Changing this repository alone cannot close the issue**: the store entry still carries the 0.3.0 package name `@dsh-plugins/dsh-cc-studio`, so STORE's recheck fails at step one with `update-blocked` ("package name no longer matches the Catalog identity") and never reads a 0.3.x manifest — STORE has to migrate the entry identity (re-submitting does not bypass it: the shared `entryIds` collide with the old entry). And the files / credentials permission signals are the plugin's core features (card and draft persistence, reading `DSH_HOME`), so the automatic low-risk channel can never pass; the correct tier is `user-reviewed` (per-install user confirmation). A **dsh `0.2.0-rc.2` compatibility audit** is also done (isolated host: host/preset row composition, RPC wire protocol and fence, draft-slot key, preset roster containing `cc` with an empty `broken`, all three client mounts `active`, PNG/CHARX round-trips byte-identical, real `~/.dsh` untouched), so the matrix now declares `0.2.0-rc.2: compatible`; `0.2.0-rc.1` / `0.2.1-alpha.1` were not tested and stay undeclared.
 - `0.3.7` dsh `0.1.7-rc.1` compatibility audit: **nothing needed adapting** (an isolated host verified the RPC route/wire protocol, the preset roster, all three client mounts, the draft-slot key, the data roots, and a PNG/CHARX round-trip). The one real fix is a preset row that had been missing **since the preset was first written**: `command-goal` has been in the shipped `standard` since `0.1.6-alpha.2`, but the initial copy dropped it — no error, no `broken`, just no `/goal` slash command in a CC Mode session (same class as the `present` row restored in 0.3.4). It is now restored in both carriers, guarded by a row-set snapshot test. Also corrects three doc claims that would mislead the next upgrade (async iteration of `IncomingMessage` does *not* throw here — the official `/api` bridge uses `for await` itself; `/api/agentPresets/list` does carry optional `name`/`description`/`broken`; the channel/endpoint name regexes live in `dsh-client-connection`, not `webServer.register`), and adds a cross-file guard for the implicit "client `preset.ccLabel` must equal the host preset's display name" coupling. It also trims the CC Mode description shown in the session-mode dropdown: it used to list the model-side tool names (`cc_get_card` / `cc_patch_character` / …), which filled the dropdown without telling the user anything (tool names only mean something to the model reading the persona); it now just says "the model asks before it fills / live capsule sync / full-screen workshop / export JSON, PNG, CHARX". Tests 278 → 281.

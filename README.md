@@ -15,7 +15,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 | 项目 | 值 |
 | --- | --- |
 | 插件包名 | `@xia-sc/dsh-cc-studio` |
-| 当前版本 | `0.4.0` |
+| 当前版本 | `0.4.1` |
 | 兼容与权限 | DSH `>=0.1.5-rc.1`、Node `>=22`、**零运行依赖**；权限边界见 [兼容与权限](#兼容与权限) |
 | 宿主 RPC | `/dsh-cc-studio-rpc`（自带路由，适配 dsh ≥ `0.1.5-rc.1`；已在 `0.1.6-alpha.2` / `0.1.7-alpha.1` / `0.1.7-rc.1` 实测） |
 | CC 预设 | `presets/cc.patch.yml`（dsh ≥ `0.1.7-alpha.1`，组合声明行）／`<DSH_HOME>/.agent-presets/cc`（≤ `0.1.6-alpha.2`，目录形态） |
@@ -24,13 +24,15 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 
 ## 安装
 
+本插件同时支持 **`dsh web`（CLI 起的 Web GUI）** 与 **DSH 桌面版（DeepSeek Harness Desktop）**：两者是同一个 dsh 宿主，插件都装在 profile 的 `dsh.profile.bundles` 里，加载方式与全部功能完全一致。下面以 `web` profile 为例；桌面版的差异只有 profile 名与「重启应用」这一步，见下文 **[7. 桌面版](#7-桌面版deepseek-harness-desktop)**。
+
 ### 1. 从 npm 安装（推荐）
 
 ```bash
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
 
 # 锁定版本
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.3.7
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.4.0
 ```
 
 **或从 GitHub 源安装**：
@@ -219,6 +221,22 @@ dsh plugin --profile web add @xia-sc/dsh-cc-studio
 | 校验报错 | 必填 `spec: chara_card_v3` / `spec_version: 3.0` / `group_only_greetings`；主图标需唯一；正则需合法 |
 | 重启后浏览器报 `Failed to load plugins` / `web boot: 1 entry did not activate` / `import failed` | 包名迁移后**没有按新名重装**：profile 里的安装身份（`dsh.profile.bundles` 那行与 `dependencies` 里的 `link:`）还是旧名 `@dsh-plugins/dsh-cc-studio`，而包内 `package.json` 与 `lib/client.js` 已改叫 `@xia-sc/dsh-cc-studio`，客户端资源就解析不上（宿主照样起，只有浏览器那一半挂）。看一眼 `~/.dsh/profiles/web/node_modules/` 下的目录名是否等于 `package.json` 的 `name` 即可确认；修法是按新名重装（见「5. 更新与卸载」的迁移命令）→ 重启 `dsh web` → **硬刷新**（`Ctrl+Shift+R`；旧页面的引导图是缓存，普通刷新会复现同一句错） |
 
+### 7. 桌面版（DeepSeek Harness Desktop）
+
+**桌面版就是同一个 dsh 宿主**（Electron 内嵌），插件照样装在 profile 的 `dsh.profile.bundles` 里，所以本插件**不需要任何额外适配**：三个客户端挂载点（胶囊 / 工坊 / 设置页）、`CC 模式` 预设、RPC 通道、草稿与角色卡落盘，都与 `dsh web` 一模一样（0.4.0 在桌面版 profile 上实测跑通全流程：胶囊 → 工坊 → 导入导出 → 草稿落盘）。
+
+差异只有「怎么装」和「怎么生效」两步：
+
+| | `dsh web`（CLI） | 桌面版 |
+| --- | --- | --- |
+| 安装 | `dsh plugin --profile web add @xia-sc/dsh-cc-studio` | 应用内左侧「插件」面板安装 `@xia-sc/dsh-cc-studio`；装了 CLI 的话也可以用 `dsh plugin --profile desktop add @xia-sc/dsh-cc-studio` |
+| profile | 一般是 `web` | 一般是 `desktop`（`~/.dsh/profiles/desktop`），以应用内显示为准 |
+| 宿主 / 插件改动 | 重启 `dsh web` | 退出并重新打开桌面应用 |
+| 只改客户端（`lib/client.js`） | 刷新页面 | 在应用窗口里刷新（找不到刷新入口就重启应用） |
+| 数据位置 | `<DSH_HOME>/cc-drafts/`、`<DSH_HOME>/cc-library/`（默认 `~/.dsh`） | 同上，桌面版共用同一套 `DSH_HOME` 与落盘目录 |
+
+> 桌面版的应用窗口本身就是它的 Web GUI（端口由应用分配），所以「重启应用」≈ 重启宿主、「刷新窗口」≈ 刷新页面，排查问题时两者可以混用。
+
 ## 快速上手
 
 1. 新建会话，会话模式选 **CC 模式**（胶囊随即出现在输入框上方）。
@@ -309,7 +327,8 @@ node tests/rpc-channel.test.mjs            # 只跑 host 半 RPC 通道回归（
 | DSH 兼容范围 | `>=0.1.5-rc.1`（`package.json` 的 `dsh.compatibility.dsh`） |
 | 逐版本证据 | `dsh.compatibility.dshReleases` 里 `0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.1` / `0.1.6-alpha.2` / `0.1.7-alpha.1` / `0.1.7-rc.1` / **`0.2.0-rc.2`** 为 `compatible`。**没实测过的版本不写**（`0.1.7-alpha.2`、`0.1.7-rc.2`、`0.2.0-rc.1`、`0.2.1-alpha.1` 保持未声明，商城显示为未知），而不是先写 `compatible` 再补测 |
 | Node.js | `engines.node: ">=22"`（实测运行时 Node v26.9.0） |
-| Profile | `web`（由 `dsh.client.platform` 推出） |
+| 宿主形态 | `dsh web`（CLI）与 **DSH 桌面版（DeepSeek Harness Desktop）** 都是同一套宿主 + profile bundles 机制，**均支持**（差异与安装方式见 [7. 桌面版](#7-桌面版deepseek-harness-desktop)） |
+| 客户端平台 | `dsh.client.platform: "web"` —— 这是**浏览器半**的平台标识，与 dsh 的 profile 名（`web` / `desktop` …）不是一回事；桌面版与 CLI 加载的是同一份客户端 bundle |
 | 运行依赖 | **无**。`lib/*.js` 只 `import` `node:` 内建与相对路径；随包的补丁 / 预设是静态 YAML，没有安装期脚本 |
 | 生命周期脚本 | **无** `preinstall` / `install` / `postinstall` / `prepare`（只有 `test` 与 `prepublishOnly`，只在本仓库跑，不发给安装端） |
 | 权限 · 文件 | 读 `<DSH_HOME>`（含旧根 `~/.dsh`）下自己的三个目录：`cc-drafts/`、`cc-library/`、`.agent-presets/cc/`（后者只在 dsh ≤ `0.1.6-alpha.2` 上写）；另读自身 `package.json`。不写宿主配置，不碰别的插件的数据 |
@@ -330,6 +349,7 @@ node tests/rpc-channel.test.mjs            # 只跑 host 半 RPC 通道回归（
 
 完整历史见 [CHANGELOG.md](./CHANGELOG.md)。最近几版：
 
+- `0.4.1` 文档补充：README / README_EN 写明**桌面版（DeepSeek Harness Desktop）支持** —— 新增「7. 桌面版」一节（安装入口、profile 名、重启应用 vs 刷新窗口、数据位置），「兼容与权限」表补「宿主形态」行，并把容易误读的 `Profile | web` 改名为「客户端平台」。运行时代码一行未动。
 - `0.4.0` 修工坊左侧步骤列表的高亮：鼠标点过某一步后，那一项周围会多出一圈「莫名其妙的描边」，再用顶部胶囊切步时描边还赖在旧项上，看起来像同时选中了两项。根因是 `navItem` 只画 `s.cur` 的选中态、从没管过浏览器焦点（`<button>` 被点击后一直持有焦点，宿主/UA 的焦点描边就留在按钮外沿）。现在：导航项 `onMouseDown` 阻止默认（鼠标点击不抢焦点、键盘 Tab 照旧）、`outline` 由插件自己接管（只在 `:focus-visible` 时给 2px 品牌色环）、选中态换成品牌紫淡底 + 左竖条 + `aria-current`，并补上 hover 反馈与「鼠标一动就收起焦点环」。新增**「清空当前角色卡」按钮**（左侧底部「校验」下面，`window.confirm` 二次确认后换回空卡，并解除与已存角色的关联 —— 否则接着点「保存当前」会把库里那张覆盖成空卡）。**并重构了工坊 UI（本版主线）**：砍掉右侧占地 360px 那一栏，实时 CCv3 预览与 CBS 速查收到主区底部、**默认全部折叠**（预览那行仍显示 spec 与通过/失败徽章；原「融合说明」那块纯介绍文案已删除）；字段改成「文档式」阅读排版（无边框 textarea + `field-sizing: content` 自动撑高），手动编辑退成次要入口（长文走 ⛶ 大框），阅读区从 ~700px 拓到 ~876px。功能一个没少。`tests/nav-highlight.test.mjs`（23 项）与 `tests/clear-card.test.mjs`（20 项）钉住新行为。测试 292 → 335 项。
 - `0.3.8` 补 DSH STORE 上架契约（[Store #1173](https://github.com/AI-Scarlett/DSH-Store/issues/1173)）：`engines.node: ">=22"`、`dsh.compatibility`（兼容范围 + **只写实测过版本**的精确矩阵）、删掉那个从 0.3.0 起就没被任何代码 import 过的 `@deepseek-ai/cordis` 运行依赖，README / README_EN 新增「兼容与权限」披露节，`tests/preset-install.test.mjs` 加 11 项契约守卫（281 → 292 项断言）。**但这个 issue 光改仓库修不完**：商城条目的包名还停在 0.3.0 的旧名 `@dsh-plugins/dsh-cc-studio`，STORE 复检第一步就因「包名与条目身份不符」判 `update-blocked`，得先由 STORE 侧迁移条目身份（重新提交也绕不过，`entryIds` 会撞旧条目）；而 files / credentials 两个权限信号是本插件的核心功能（角色卡草稿落盘 + 读 `DSH_HOME`），自动低风险通道**不可能**通过，商城只应按 `user-reviewed`（用户逐次确认）收录。另已做完 **dsh `0.2.0-rc.2` 兼容性审计**（隔离宿主实测宿主行/预设行组合、RPC 线协议与围栏、会话槽 key、预设 roster 含 `cc` 且 `broken` 空、三个客户端挂载点 `active`、PNG/CHARX 往返逐字一致、真实 `~/.dsh` 零变化），矩阵补上 `0.2.0-rc.2: compatible`；`0.2.0-rc.1` / `0.2.1-alpha.1` 未测，仍不声明。
 - `0.3.7` dsh `0.1.7-rc.1` 兼容性审计：**接口面无一处需要适配**（隔离宿主实测了 RPC 路由/线协议、预设 roster、三个前端挂载点、草稿槽 key、落盘根、PNG/CHARX 往返）。真正的修复是预设里**一行自始漏抄**：`command-goal` 在内置 `standard` 里从 `0.1.6-alpha.2` 起就有，本预设初次拷贝时就漏了它 —— 不报错、不判 broken，只是 CC 模式会话少了 `/goal` 斜杠命令（与 0.3.4 补回的 `present` 同类），现已两份载体同步补齐并加了**行集快照**守卫。另更正 3 处会误导下次升级的文档口径（「异步迭代 `IncomingMessage` 必抛」实测不成立且官方 `/api` 桥自己就在用；`/api/agentPresets/list` 其实带可选 `name`/`description`/`broken`；channel/endpoint 命名正则在 `dsh-client-connection` 而非 `webServer.register`），并给「客户端 `preset.ccLabel` 必须逐字等于宿主预设显示名」这条隐性耦合补了跨文件守卫。顺带精简了 roster 下拉里「CC 模式」的介绍文案：原来把模型侧的 6 个工具名（`cc_get_card` / `cc_patch_character` / …）全列在用户界面上，既撑满下拉项又对用户没有信息量（工具名只对读 persona 的模型有意义），现在只讲「模型先问再填 / 胶囊实时同步 / 工坊全屏编辑 / 导出 JSON、PNG、CHARX」。测试 278 → 281 项。
