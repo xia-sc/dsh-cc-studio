@@ -111,7 +111,9 @@ function flatten(node, out) {
   (node.children || []).forEach((c) => flatten(c, out));
   return out;
 }
-const STEP_KEYS = ['step.world', 'step.char', 'step.lore', 'step.export'];
+const STEP_KEYS = ['step.world', 'step.char', 'step.lore'];
+// 0.4.1：导出不再是「第 4 步」—— 左侧导航与顶部胶囊都只剩写作三步，
+// 「校验导出」并进了左下角那枚按钮（文案仍是 step.export，所以它不再算导航项，见 export-entry.test.mjs）。
 const navButtons = (tree) => flatten(tree).filter((n) => n.type === 'button' && STEP_KEYS.indexOf(n.children[0]) >= 0);
 const stepChips = (tree) => flatten(tree).filter((n) => n.type === 'span' && typeof n.children[0] === 'string' && /^\d\. step\./.test(n.children[0]));
 
@@ -131,8 +133,8 @@ run(render().effects);          // 建立 store 订阅（否则重渲染读到�
 let tree = redraw();
 let btns = navButtons(tree);
 
-check('① 左侧步骤导航渲染出 4 项，顶部胶囊也渲染出 4 个',
-  btns.length === 4 && stepChips(tree).length === 4,
+check('① 左侧步骤导航渲染出 3 项，顶部胶囊也渲染出 3 个（导出已不是第 4 步）',
+  btns.length === 3 && stepChips(tree).length === 3,
   'nav=' + btns.length + ' chips=' + stepChips(tree).length);
 check('② 初始只有第 1 项是选中态（剩下的都是透明底）',
   onlyIndex(btns, 0), JSON.stringify(activeFlags(btns)));
@@ -150,8 +152,8 @@ check('③c 旧项（第 1 项）回到透明底', btns[0].props.style.backgroun
 // —— 核心修复：鼠标点击不抢焦点 ——
 let prevented = 0;
 btns.forEach((b) => b.props.onMouseDown({ preventDefault() { prevented++; } }));
-check('④ 4 个导航项都用 onMouseDown preventDefault 阻止鼠标抢焦点（旧项不会再留着焦点环）',
-  prevented === 4, String(prevented));
+check('④ 3 个导航项都用 onMouseDown preventDefault 阻止鼠标抢焦点（旧项不会再留着焦点环）',
+  prevented === 3, String(prevented));
 check('④b 导航项默认不画 outline（焦点环只由我们自己在键盘焦点时给）',
   btns.every((b) => b.props.style.outline === 'none'),
   btns.map((b) => String(b.props.style.outline)).join(','));

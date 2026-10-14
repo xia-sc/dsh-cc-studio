@@ -125,15 +125,17 @@ store.setPanel(true);
 run(render().effects);
 let tree = redraw();
 
-const validateBtn = buttonByKey(tree, 'action.validate');
+// 0.4.1：底部这枚按钮从「校验」改成了「校验导出」入口（点它切到导出页，校验动作在那一页里），
+// 文案键仍是 step.export —— 本文件只关心它与「清空」的相对位置和焦点处理，与那页无关。
+const entryBtn = buttonByKey(tree, 'step.export');
 const clearBtn = buttonByKey(tree, 'action.clear');
-check('① 底部动作区渲染出「校验」与「清空」两枚按钮', !!validateBtn && !!clearBtn,
-  'validate=' + !!validateBtn + ' clear=' + !!clearBtn);
-check('①b 清空按钮排在「校验」之后（用户要的位置：校验下面）',
-  flatten(tree).indexOf(clearBtn) > flatten(tree).indexOf(validateBtn),
-  String(flatten(tree).indexOf(clearBtn)) + ' > ' + String(flatten(tree).indexOf(validateBtn)));
+check('① 底部动作区渲染出「校验导出」入口与「清空」两枚按钮', !!entryBtn && !!clearBtn,
+  'entry=' + !!entryBtn + ' clear=' + !!clearBtn);
+check('①b 清空按钮排在入口之后（用户要的位置：校验下面）',
+  flatten(tree).indexOf(clearBtn) > flatten(tree).indexOf(entryBtn),
+  String(flatten(tree).indexOf(clearBtn)) + ' > ' + String(flatten(tree).indexOf(entryBtn)));
 check('①c 两枚按钮都阻止鼠标点击抢焦点（否则又是一圈焦点描边）',
-  typeof validateBtn.props.onMouseDown === 'function' && typeof clearBtn.props.onMouseDown === 'function',
+  typeof entryBtn.props.onMouseDown === 'function' && typeof clearBtn.props.onMouseDown === 'function',
   typeof clearBtn.props.onMouseDown);
 
 // —— 先填点内容，再验证「取消不清」「确认才清」——

@@ -249,12 +249,13 @@ dsh plugin --profile web add @xia-sc/dsh-cc-studio
 
 ### 融合工坊（客户端）
 
-- **布局**：输入框上方胶囊（CC 模式自动出现）→ `shell.overlay` 全屏工坊，左侧导航 4 页（**5维世界观 / 角色细化 / 世界书 / 校验导出**）/ 自适应主区 / 280px 已存角色侧栏 / 360px 实时 `card.json` 预览。深浅色自适应（DSW Token + 品牌紫 `#7c5cff` 固定）。
+- **布局**：输入框上方胶囊（CC 模式自动出现）→ `shell.overlay` 全屏工坊，左侧导航 **3 页**（**5维世界观 / 角色细化 / 世界书**）+ 左下角「**校验导出**」入口 / 自适应主区 / 268px 可折叠已存角色侧栏 / 主区底部两块默认收起的阅读辅助（实时 `card.json` 预览、CBS 速查）。深浅色自适应（DSW Token + 品牌紫 `#7c5cff` 固定）。
+- **导出入口只有两处**（0.4.1 归一）：左下角「校验导出」与已存角色卡片上的「导出」，两者打开的是同一个**导出页**（`JSON / PNG / 写入PNG / CHARX / 校验`）——导出页导出的始终是当前工坊里的角色卡（标题后面就写着卡名，没名字时显示「未命名」），要导某张已存卡请先「载入」；顶部工具条不再有「导出 JSON」。卡片上的「导出」点下去会立刻变成「已切到 ✓」，若那张卡还没载入，导出页顶部会提示「要导它请先点它那行的『载入』」。
 - **风格标签**：在「角色细化」中以逗号分隔编辑 `tags`，实时写回 `data.tags`。
-- **5 维世界观**：年表 / 势力 / 地理 / 力量体系 / 日常 → `cc_patch_world(autoLorebook=true)` 自动生成带 `@@position / @@depth / @@activate` 的 Lorebook 条目（至少 1 条 `constant` 常驻；再次调用自动覆盖旧自动条目、保留手动条目）。每维为**预览卡片 + 展开大框编辑**（小卡显示 140 字预览/字数，点击卡片或「⛶ 编辑」弹出 720px 大框）。
-- **全量长文本大框编辑**：`description / personality / scenario / system_prompt / post_history_instructions / first_mes / alternate_greetings / group_only_greetings / mes_example / creator_notes` 全部是「标签 + 右上 `⛶`」的小框 + 720px 大框，实时同步，解决多行长文在小框里难预览/编辑。
-- **已存角色侧栏（ID 化 CRUD）**：280px 可折叠，高亮当前载入卡（紫框 + 顶部 `已载入 ID:xxxx`，显示 ID 前 8 位），`★ 保存当前` 在已载入 ID 时原地覆盖、`＋ 另存为新` 强制新建、`✎ 重命名` / `＋ 新建`；搜索/载入/导出/删除落盘 `~/.dsh/cc-library/<id>.json`。
-- **导入导出**：`⬆ 导入 JSON/PNG/CHARX` 自动识别容器；`⬇ JSON` / `⬇ PNG`（1×1 占位图）/ `⬆ 写入 PNG`（写入你上传的任意 PNG，自动剥离旧 `ccv3/chara` 块并 `CRC32` 重算）/ `⬇ CHARX`（打包 `card.json`）。
+- **5 维世界观**：年表 / 势力 / 地理 / 力量体系 / 日常 → `cc_patch_world(autoLorebook=true)` 自动生成带 `@@position / @@depth / @@activate` 的 Lorebook 条目（至少 1 条 `constant` 常驻；再次调用自动覆盖旧自动条目、保留手动条目）。五维默认是**文档式阅读排版**（无边框 textarea 按内容自动撑高，点进去就能改），写长文可点右上「⛶」开 720px 大框（带打开时快照，「取消」真回滚）。
+- **全量长文本大框编辑**：`description / personality / scenario / system_prompt / post_history_instructions / first_mes / alternate_greetings / group_only_greetings / mes_example / creator_notes` 都可点「⛶」开 720px 大框，实时同步，解决多行长文难预览/编辑的问题。
+- **已存角色侧栏（ID 化 CRUD）**：268px 可折叠（收成 40px 竖条），高亮当前载入卡（紫框 + 顶部 `已载入 ID:xxxx`，显示 ID 前 8 位），`★ 保存当前` 在已载入 ID 时原地覆盖、`＋ 另存为新` 强制新建、`✎ 重命名` / `＋ 新建`；搜索 / 载入 / 导出 / 删除落盘 `~/.dsh/cc-library/<id>.json`。
+- **导入导出**：侧栏 `⬆ 导入 JSON/PNG/CHARX` 自动识别容器；导出页 `⬇ JSON` / `⬇ PNG`（1×1 占位图）/ `⬆ 写入 PNG`（写入你上传的任意 PNG，自动剥离旧 `ccv3/chara` 块并 `CRC32` 重算）/ `⬇ CHARX`（打包 `card.json`）。
 - **中英双语**：完整 `zh / en` 词表（`locale: dshCcStudio`），跟随全局 `设置 → 通用 → 语言` 自动切换（胶囊/工坊/设置即时刷新，插件内无手动开关）。
 - **深浅色自适应**：全量使用 `var(--dsw-alias-bg-* / border-l1/l2 / label-primary/secondary)`，主按钮/选中态固定品牌紫，刷新即生效。
 
@@ -288,7 +289,7 @@ dsh-cc-studio/
 │   └── cc/               # CC 预设目录模板（dsh ≤ 0.1.6-alpha.2，插件挂载时安装到用户根）
 │       ├── preset.yml
 │       └── agent.cordis.yml
-├── tests/                # 8 个测试文件、335 项断言（不随包发布）
+├── tests/                # 10 个测试文件、380 项断言（不随包发布）
 │   ├── rpc-channel.test.mjs       # host 半 RPC 通道回归（假 ctx + 真实 http，45 项断言）
 │   ├── preset-install.test.mjs    # 预设安装决策 + native 让位 + 两份清单防漂移 + 行契约，79 项断言
 │   ├── cc-detection.test.mjs      # CC 模式探测的源码级守卫，51 项断言
@@ -296,6 +297,8 @@ dsh-cc-studio/
 │   ├── draft-slot-sync.test.mjs   # 草稿槽行为级回归（假 React/slot/RPC harness），18 项断言
 │   ├── nav-highlight.test.mjs     # 工坊步骤导航三态回归（选中/键盘焦点/悬停互斥），23 项断言
 │   ├── clear-card.test.mjs        # 「清空当前角色卡」二次确认回归，20 项断言
+│   ├── export-entry.test.mjs      # 导出入口归一回归（三处导出收成两处），31 项断言
+│   ├── close-button.test.mjs      # 工坊关闭按钮 ✕（悬停红底）回归，14 项断言
 │   └── data-root.test.mjs         # 落盘根：DSH_HOME 优先 + 读时回退 ~/.dsh，37 项断言
 ├── CHANGELOG.md          # 完整版本历史
 ├── README.md             # 中文（默认）
@@ -307,7 +310,7 @@ dsh-cc-studio/
 ## 开发与测试
 
 ```bash
-npm test                                   # 8 个文件、335 项断言（八个 node 脚本串联）
+npm test                                   # 10 个文件、380 项断言（十个 node 脚本串联）
 node tests/rpc-channel.test.mjs            # 只跑 host 半 RPC 通道回归（45 项断言）
 ```
 
@@ -349,7 +352,7 @@ node tests/rpc-channel.test.mjs            # 只跑 host 半 RPC 通道回归（
 
 完整历史见 [CHANGELOG.md](./CHANGELOG.md)。最近几版：
 
-- `0.4.1` 文档补充：README / README_EN 写明**桌面版（DeepSeek Harness Desktop）支持** —— 新增「7. 桌面版」一节（安装入口、profile 名、重启应用 vs 刷新窗口、数据位置），「兼容与权限」表补「宿主形态」行，并把容易误读的 `Profile | web` 改名为「客户端平台」。运行时代码一行未动。
+- `0.4.1` **导出入口归一**：同一个「导出」原本在工坊里出现三处（顶部「⬇ 导出 JSON」/ 左侧导航第 4 步「校验导出」/ 已存角色卡片里的「导出」），彼此重复又不一致。现在顶部那枚删掉；左侧导航与顶部胶囊都只留写作三步，「校验导出」与左下角那枚「校验」按钮合并成一枚入口，点开即是导出页；卡片上的「导出」保留原位置、但改成切到同一页 —— 导出动作只剩导出页那一套实现（卡片「导出」不再直接下载 JSON，`store.exportLibraryEntry` 旁路已删），导出页新增一行说明「导出的是当前工坊里的卡，要导某张已存角色请先载入」。**另一半是文档**：README / README_EN 写明**桌面版（DeepSeek Harness Desktop）支持** —— 新增「7. 桌面版」一节（安装入口、profile 名、重启应用 vs 刷新窗口、数据位置），「兼容与权限」表补「宿主形态」行，并把容易误读的 `Profile | web` 改名为「客户端平台」。另外按实机反馈补了四处：导出页标题带上当前卡名（没名字时显示「未命名」）、卡片「导出」点下去立刻变成「已切到 ✓」并在 6 秒后复原、导出页在「你点的那张卡还没载入」时给出醒目提示、左下角那枚入口按钮**不做选中态**（它一旦跟着亮，就和卡片那枚反馈凑成「两处看起来像选中」）。工作坊头部的「收起」也换成了「✕」图标按钮（悬停红底白字，点击关闭）。测试 335 → 380 项（新增 `tests/export-entry.test.mjs` 31 项、`tests/close-button.test.mjs` 14 项）。
 - `0.4.0` 修工坊左侧步骤列表的高亮：鼠标点过某一步后，那一项周围会多出一圈「莫名其妙的描边」，再用顶部胶囊切步时描边还赖在旧项上，看起来像同时选中了两项。根因是 `navItem` 只画 `s.cur` 的选中态、从没管过浏览器焦点（`<button>` 被点击后一直持有焦点，宿主/UA 的焦点描边就留在按钮外沿）。现在：导航项 `onMouseDown` 阻止默认（鼠标点击不抢焦点、键盘 Tab 照旧）、`outline` 由插件自己接管（只在 `:focus-visible` 时给 2px 品牌色环）、选中态换成品牌紫淡底 + 左竖条 + `aria-current`，并补上 hover 反馈与「鼠标一动就收起焦点环」。新增**「清空当前角色卡」按钮**（左侧底部「校验」下面，`window.confirm` 二次确认后换回空卡，并解除与已存角色的关联 —— 否则接着点「保存当前」会把库里那张覆盖成空卡）。**并重构了工坊 UI（本版主线）**：砍掉右侧占地 360px 那一栏，实时 CCv3 预览与 CBS 速查收到主区底部、**默认全部折叠**（预览那行仍显示 spec 与通过/失败徽章；原「融合说明」那块纯介绍文案已删除）；字段改成「文档式」阅读排版（无边框 textarea + `field-sizing: content` 自动撑高），手动编辑退成次要入口（长文走 ⛶ 大框），阅读区从 ~700px 拓到 ~876px。功能一个没少。`tests/nav-highlight.test.mjs`（23 项）与 `tests/clear-card.test.mjs`（20 项）钉住新行为。测试 292 → 335 项。
 - `0.3.8` 补 DSH STORE 上架契约（[Store #1173](https://github.com/AI-Scarlett/DSH-Store/issues/1173)）：`engines.node: ">=22"`、`dsh.compatibility`（兼容范围 + **只写实测过版本**的精确矩阵）、删掉那个从 0.3.0 起就没被任何代码 import 过的 `@deepseek-ai/cordis` 运行依赖，README / README_EN 新增「兼容与权限」披露节，`tests/preset-install.test.mjs` 加 11 项契约守卫（281 → 292 项断言）。**但这个 issue 光改仓库修不完**：商城条目的包名还停在 0.3.0 的旧名 `@dsh-plugins/dsh-cc-studio`，STORE 复检第一步就因「包名与条目身份不符」判 `update-blocked`，得先由 STORE 侧迁移条目身份（重新提交也绕不过，`entryIds` 会撞旧条目）；而 files / credentials 两个权限信号是本插件的核心功能（角色卡草稿落盘 + 读 `DSH_HOME`），自动低风险通道**不可能**通过，商城只应按 `user-reviewed`（用户逐次确认）收录。另已做完 **dsh `0.2.0-rc.2` 兼容性审计**（隔离宿主实测宿主行/预设行组合、RPC 线协议与围栏、会话槽 key、预设 roster 含 `cc` 且 `broken` 空、三个客户端挂载点 `active`、PNG/CHARX 往返逐字一致、真实 `~/.dsh` 零变化），矩阵补上 `0.2.0-rc.2: compatible`；`0.2.0-rc.1` / `0.2.1-alpha.1` 未测，仍不声明。
 - `0.3.7` dsh `0.1.7-rc.1` 兼容性审计：**接口面无一处需要适配**（隔离宿主实测了 RPC 路由/线协议、预设 roster、三个前端挂载点、草稿槽 key、落盘根、PNG/CHARX 往返）。真正的修复是预设里**一行自始漏抄**：`command-goal` 在内置 `standard` 里从 `0.1.6-alpha.2` 起就有，本预设初次拷贝时就漏了它 —— 不报错、不判 broken，只是 CC 模式会话少了 `/goal` 斜杠命令（与 0.3.4 补回的 `present` 同类），现已两份载体同步补齐并加了**行集快照**守卫。另更正 3 处会误导下次升级的文档口径（「异步迭代 `IncomingMessage` 必抛」实测不成立且官方 `/api` 桥自己就在用；`/api/agentPresets/list` 其实带可选 `name`/`description`/`broken`；channel/endpoint 命名正则在 `dsh-client-connection` 而非 `webServer.register`），并给「客户端 `preset.ccLabel` 必须逐字等于宿主预设显示名」这条隐性耦合补了跨文件守卫。顺带精简了 roster 下拉里「CC 模式」的介绍文案：原来把模型侧的 6 个工具名（`cc_get_card` / `cc_patch_character` / …）全列在用户界面上，既撑满下拉项又对用户没有信息量（工具名只对读 persona 的模型有意义），现在只讲「模型先问再填 / 胶囊实时同步 / 工坊全屏编辑 / 导出 JSON、PNG、CHARX」。测试 278 → 281 项。
