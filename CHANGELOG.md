@@ -2,6 +2,171 @@
 
 `dsh-cc-studio` 的版本变更记录，倒序排列（最新在上）。README 只保留最近几条，完整历史在本文件。
 
+## 0.7.1
+
+**第五轮 LLM 侧回归的修复（重启后回归）。** 上一版的四项修复里有三项当场通过（N1 `creator` 写入 / N2 单次触发预警 / S2 重置不再误报 / N4 空改动不涨 rev，报告评「N2 超出建议」），另一项 S1 需要说明；同时新抓到一个**真 bug（B1）**——重启后第一次 `cc_get_card` 直接报非法 JSON。
+
+### 一、B1（★★★）：外部导入的卡缺字段 → 工具返回非法 JSON
+
+**现象**：dsh 重启后**第一次** `cc_get_card({fields:["name","creator","creator_notes"]})` 报 `Error: tool "cc_get_card" returned invalid output: value is not lossless JSON`，第二次起正常。而重启后的第一次调用往往正是 LLM 的第一步，用户看到的是「工具坏了」。
+
+**根因**（用穷举探针定位，不是猜的）：DSH 对返回值做 lossless-JSON 校验 —— **任何嵌套 `undefined` 都会让整次工具调用失败**。而**外部来源的卡**（PNG / CHARX 导入、或早期版本写下的草稿）可能整个缺字段，代码却直接读它、原样输出：
+
+- 缺 `spec_version` → `cc_get_card` 的 `fields` 路径输出 `draft.spec_version = undefined`（与报告里那条报错的参数逐一对应）；
+- 缺 `creation_date` → `draftStatus.creation_date = undefined`（两条路径都会）。
+
+「第二次起正常」是因为那之间草稿被别处重写过（工坊 / 后续写盘）顺手补齐了字段 —— 所以它只在冷启动第一次炸。
+
+**修法（三层，两半同构）**：
+
+1. **加载即补齐**：新增 `normalizeCardShape(draft)`（`lib/agent.js` 与 `lib/index.js` 各一份），草稿从磁盘恢复 / 重载时按空卡模板补齐缺失键 —— 只补 `undefined`，不覆盖已有值、不改类型（类型问题留给 `cc_validate` 报），模板之外的扩展字段原样保留。
+2. **`draftStatus.creation_date` 显式兜底为 `null`**（两半），不再漏 `undefined`。
+3. **输出卫生**：`apply()` 的 `tool()` 包装在返回前统一做一次 JSON 往返（`sanitizeJson`）—— **任何**工具、**任何**未来新增字段都不可能再把 `undefined` 漏给 DSH 的校验。
+
+顺带的可见变化：工具返回的 `draft` 现在是**拷贝**（JSON 往返的产物），调用方改它不会再改到插件内部状态。
+
+### 二、S1：机制在，但缺一个能对账的字段
+
+报告判「S1 未实现」，其验证方式是在**工具序列内部**制造 rev 变化（先显式 CAS 写一次、再裸写）。这在设计上**不会**触发漂移：`meta.rev` 记的是「上次调用结束时盘上的版本」，自己写的那一次当然算自己的 —— 所以不提示是**正确的**。真正的漂移只来自**工具序列之外**的写盘（工坊界面保存 / host 恢复 / 另一个会话），这也是 `tests/tools-contract` ⑩f 的验法（直接改草稿文件 + 递增 rev，裸写立刻报 `revDrift`）。
+
+为了让调用方**随时能自己对账**（而不是只能等那条一次性提示），本版给 `draftStatus` 增加 **`watchedRev`**：本次调用开始前工具半记着的盘上版本 —— `watchedRev ≠ rev` 就等价于「这两次调用之间别人写过」。
+
+### 三、B2：`changed` 与 `rev` 判据不一致
+
+**现象**：传与原值相同的 `creator` → `changed: ["creator"]`（说改了）而 `rev` 纹丝不动（没改）。
+
+**修法**：新增 `assignIfChanged()`，两者从此同一套判据 —— 只有值真的变了才记改动（`cc_patch_character` / `cc_update_lorebook_entry` / `cc_patch_book_meta` 全部改用它，数组按 JSON 深比较）。
+
+### 四、`build` 版本标识（来自测试者的流程建议）
+
+第五轮第一次跑出「四项全无变化」，其实是**没重启 dsh** —— 而 LLM 完全无法分辨「代码没改」和「改了但没加载」，白跑一整轮。现在**每个工具的返回都带 `build`**（与 `package.json` 的 `version` 同步，测试 ⑪i 钉住），任何一次调用都能先确认自己测的是哪一版。
+
+### 五、验证与生效
+
+- `tests/tools-contract.test.mjs` 75 → **84 项**：新增 ⑪ 区块 —— 缺 `spec_version` / `creation_date` 的草稿不再产生非法 JSON、全量路径同样补齐、**宿主半同构**、`build` 存在且与 `package.json` 同步、`watchedRev` 存在、B2 的同值不记改动 / 真改动记改动 / `cc_patch_book_meta` 同判据。
+- 验收还用了**穷举探针**：把真实草稿的每个键（`data` 一级 20 个 + 顶层 2 个 + `character_book` 7 个）逐个删掉，三条调用路径各跑一遍 —— 修复前 3 个问题案例，修复后 **0 个**。
+- `npm test` 455 项 → **464 项**，11 个文件全绿。
+- **生效方式：宿主半 + 预设半都改了 → 重启 dsh（桌面版重启应用）**。重启后随便调一个 `cc_*`，返回里带 `build: "0.7.1"` 就说明新代码已加载 —— 这也是本次新加的判据。
+
+## 0.7.0
+
+**第四轮 LLM 侧回归的修复（S1/S2/S3 验证 + 新题材/群聊卡/超长世界观三合一压测）。** 测试者专程验上一版留的三条建议，结果**三项都还没落实**（S3 更是发现那个字段**根本没有写入路径**）；压测全流程零错误，但挖出一个**真实性能陷阱**。本版把这四条 + 一条极轻微的一并修掉。
+
+### 一、N1（原 S3）：`data.creator` 是个没有写入路径的字段
+
+**现象**：`cc_validate` **每次**都警告「`data.creator` 为空（导出后别人看不到作者）」，但 `cc_patch_character` 的参数表里没有 `creator`（只有 `creator_notes`）—— 实测传进去 → `changed: []`、`message: "无改动"`，**参数被静默忽略**。工具在反复催一个它没给解决办法的问题，长会话里只会变成噪音，甚至诱导模型反复做无效写入。
+
+**修法**（三个入口一起补，此前一个都没有）：工具侧 `cc_patch_character` 加 `creator` 参数；宿主半 `cc_patchDraft` 同构支持；工坊「角色基础」页加「作者（creator）」输入框（`zh` / `en` 词表同步）。`cc_validate` 那条警告也补上解法指引（点名 `cc_patch_character` 的 `creator`）。
+
+### 二、S2：主动重置被报「内容可能已丢失」（误报会训练人忽略 warning）
+
+**现象**：模型明确 `cc_new_card({confirm:true})` 重置之后，下一次写入仍收到「⚠️ 当前会话此前无草稿…若此前有未 ★ 保存到侧边栏的内容可能已丢失」—— 根因是「有意重置」与「会话里真的没草稿」共用同一个 `isNew` 标记，没法分流。
+
+**修法**：新草稿提示改成**待告知标记** `pendingFresh` —— 只有「内存与磁盘都没有草稿、这次调用才现建了一张空卡」才是 `"welcome"`（真·host 重启后的新会话，提示有意义），`cc_new_card` 主动重置则清掉它。同时提示本身从「各工具自己拼」改成由 `apply()` 的 `tool()` 包装**统一发一次**（此前 warnings 一条、message 里再抄一条，同一个状态两份）。
+
+### 三、S1：不传 `expectedRev` 时也会发现前提过期
+
+**现象**：乐观锁是**可选参数**，弱模型不会主动传，于是完全没有保护；返回里也没有任何「你手上的版本已经过期」的迹象（测试者据此判定「未实现」）。
+
+**修法**：把「草稿被外部改过」的判据统一成一条 —— **盘上 rev 与本次调用开始前记着的 rev 不一致**（`meta.rev`；自己写的那一次不算）。命中时返回 `revDrift: {from, to}` + 一句「⚠️ 草稿已被外部修改（工坊界面操作或 host 恢复），已自动同步到最新版本（rev A → B）…」。原来的 `externalChange` 标记随之删除 —— 同一件事不再有两套状态。
+
+### 四、N2：长五维 + autoLorebook 原文照搬 = 单次触发 token 爆炸（本轮最重要）
+
+**现象**（压测实测）：`token_budget` 默认 1200、总量 2272 看着只是超一点；但一句「剑冢到底是什么地方」**单独就吃掉 1139 token**（势力 + 地理 + 力量体系(constant) + 剑冢(constant)）。
+
+**为什么危险**：lint 只报总量，而「总量超预算」是个**可以被 `cc_patch_book_meta` 调大预算「修好」的假象** —— 测试者把预算调到 2600 后 lint 就只剩一条 warning，可单次爆炸一点没变。不跑 `cc_simulate_trigger` 的话写卡时根本发现不了，只有真聊到那句话才会被吃上下文，而用户只会觉得「模型怎么变笨了」。
+
+**修法**（三条，都不改数据结构）：
+
+1. **`cc_lint_lorebook` 新增「最坏情况单次触发量」**：把**共享同一个触发词的条目**并成一组（传递闭包 —— A/B 共享 x、B/C 共享 y，那 一句话能把三条全带出来），再叠加每轮必插的 constant，取最大的那组。返回 `worstCase: {tokens, constantTokens, budget, entries, overBudget}`；超预算时给一条 warn，并写明「调大 token_budget 盖不住这条」。单字符 key 不参与共现（`"a"` 会把整本书并成一组，全是噪音）。
+2. **`cc_patch_world` 在写入时就报 `sharedLoreKeys`**：同一个实体被分给多个维度（实测里「剑冢」同时落在 `factions` / `geo` / `power`）时**当场**说破，不必等写完再跑 lint。
+3. **auto 条目过重也提示**（`heavyAutoEntries`）：单条 content 估算超过 400 token 时说明「auto 条目的 content 是五维原文照搬，写多细就多重」，并给出精炼路径。
+
+### 五、N4：空改动也消耗一个版本号
+
+**现象**：一次 `changed: []` 的写入（传了被忽略的参数）让 `rev` 从 7 递增到 8。后果轻微但真实：持有旧 rev 的调用方会白失败一次（「草稿已被外部修改」），而草稿内容其实没变。
+
+**修法**：两半同构 —— `setDraft` / `setDraftFor` 在**内容指纹未变时（忽略 `modification_date`）不落盘、不递增 rev**。工坊侧每次编辑都会调 `cc_setDraft`，同值覆盖（失焦、重复输入）同样不再涨 rev。
+
+### 六、验证与生效
+
+- `tests/tools-contract.test.mjs` 63 → **75 项**：`creator` 写入与 validate 警告闭环 / 主动重置不再误报 + **真·新会话仍然报**（成因分流的对照）/ 不传 `expectedRev` 也拿得到 `revDrift` / 空改动不涨 rev（工具半 + **宿主半同构**）/ `sharedLoreKeys` 当场警告 / lint 的 `worstCase` 与 `cc_simulate_trigger` 实测**数值吻合**（54 = 54）/ 超长维度触发 `heavyAutoEntries`。
+- `npm test` 443 项 → **455 项**，11 个文件全绿。
+- **生效方式：宿主半 + 预设半都改了 → 重启 dsh（桌面版重启应用）**。工坊那个「作者」输入框属于客户端改动，刷新页面即可，但重启后一起生效更省事。
+
+## 0.6.0
+
+**第二轮 LLM 侧回归的修复。** 上一版把第一轮 15 条发现修完后，测试者又走了一遍全流程 + 一次受控复现：10 条完全修复、2 条部分修复，同时抓出一条**新的 P0**（静默数据损坏）。本版修掉那条 P0 与 4 条残留。
+
+### 一、P0-6：草稿被外部替换时，LLM 完全无感知（已造成一次数据误伤）
+
+**事故**（第二轮实测，数据已完整恢复）：LLM 建了一张「回归测试卡」并在它上面连续操作；下一次 `cc_patch_character({personality: ""})` 的返回突然变成**另一张卡**（`loreCount` 5→9、`creation_date` 变了），于是那次「清空 personality」落在了用户刚在工坊里打开的那张卡上。根因不是「用户误点」，而是**工具链里没有任何字段能告诉模型「草稿已经不是我以为的那张卡了」**：
+
+- `draftStatus.key` 是**会话槽**标识（同一会话里恒定不变），字段名却像「草稿标识」；
+- `draftStatus.isNew` 两轮测试里**从未出现过 `true`**（`cc_new_card` 重置后仍是 `false`）；
+- 写类工具的返回里**根本没有卡名**。
+
+**三层修法**：
+
+1. **身份字段**：每个工具的返回现在都带 `cardName` + `cardId`（未关联已存卡时为 `null`）；`draftStatus` 里把 `key` 改名为 **`sessionKey`**（明说它是会话槽、不是卡片身份），并补上 `cardName` / `cardId` / `rev`。
+2. **`rev` + 自动重载**：草稿文件新增 `rev`（每次落盘 +1，**两半同构** —— 工具半与宿主半各持各的内存，只有文件里的 rev 是共同真相）。工具侧每次取草稿都比对盘上 rev：一旦发现被外部（工坊界面 / host 恢复）改过，就**以盘为准重载**，并给出一条明确提示：「⚠️ 草稿已被外部修改（工坊界面操作或 host 恢复），已自动同步到最新版本 —— 当前卡片「X」…动手改字段前先确认卡片名对不对。」（读后即清，不会每次调用都刷。）
+3. **`expectedRev`（乐观锁）**：写类工具可传上次返回里的 `draftStatus.rev`；不匹配就直接拒绝（`ok:false` + `staleRev:true`），不让模型拿过期前提去写。
+
+顺带修掉 `isNew`：`cc_new_card` 重置后现在正确返回 `true`。
+
+### 二、第一轮的残留（R1–R4）
+
+- **R1**：`cc_validate` 通过后 `next` 说「已完成」、`hint` 却说「下一步必须 cc_validate」（还写着 `6/6`）—— **半修的状态机比没修更危险**（弱模型会读信息最全的 hint）。现在 `hint` 与 `next` 同源：由 `progressHint()` 统一生成，终态是 `工作流 7/7 … · 已完成，可导出/保存`。
+- **R2**：`hint` 曾内嵌 `next` 全文、`message` 又等于 `hint`（同一句话在一份返回里出现 3 次）。现在 `hint` 只报进度、`next` 只报下一步、`message` 是给用户的一句复述（带「当前进度：」前缀），三者不再互相复制。
+- **R3**：`cc_validate` 的 `message` 里「校验通过 ✓」连说两遍（拼了 `next` 又来一遍）→ 去掉拼接。
+- **R4**：重新生成 `autoLorebook` 会**静默覆盖手工改过的 keys** → 新增 `autoLoreEdited` 计数 + warning：「被替换的 N 条旧自动条目（…）的 keys 曾被手工改过，这次已重建回默认维度名，手工触发词会丢。」判定依据是 `extensions.cc_world_ref` + keys 是否偏离默认的「维度名 + 英文维度名」。
+
+### 三、验证与生效
+
+- `tests/tools-contract.test.mjs` 50 → **63 项**：新增身份字段 / `sessionKey` / rev 递增 / **外部改写后自动重载 + 提示**（直接改草稿文件模拟工坊侧写入）/ 乐观锁的拒绝与放行 / `isNew` / R1 终态 hint / R2 三处不再互相复制 / R3 去重 / R4 覆盖提醒。
+- `npm test` 430 项 → **443 项**，11 个文件全绿。
+- **生效方式：宿主半 + 预设半都改了 → 重启 dsh（桌面版重启应用）**。
+
+## 0.5.0
+
+**一整轮「LLM 侧体验测试」的修复。** 让另一个 LLM 以**工具使用者**的身份把 `cc_*` 工具链完整走了一遍（做出一张可用卡 `江晚` + 存库回环），交回 15 条发现 + 8 项工具建议。本版把 P0/P1 全部修掉、补了 5 个它点名「缺」的工具，宿主半 / 工具半 / 客户端 / 预设四层都有改动。
+
+### 一、P0：四条真会咬人的
+
+1. **`autoLorebook` 的 keys 只有维度名**（`年表/timeline`、`地理/geography`…）→ 真实对话永远不会说「地理」，5 条里 4 条是**死条目**，却让用户以为「世界书已经齐了」。现在 `cc_patch_world` 新增 **`loreKeys`**：模型写五维时一并自报实体名（如 `{geo:["旧校舍","广播室","天台"]}`）；不给就用「维度名 + 英文维度名」兜底，并在返回里明确警告「这样永远命中不了」。
+2. **状态机跳步**：auto 一次生成 5 条 → 世界书判定立刻为「齐」→ `step` 从 3 跳到 5、`next` 直接指向问候语，可工具契约里 `cc_add_lorebook_entries` 写着**必调** —— 模型同时收到两条相反指令。现在世界书的完成态是「**≥5 条且至少 1 条共创条目**」（自动条目不算完成），validate 也会因此报 error。
+3. **校验通过后 `next` 仍写着「下一步必须 cc_validate」**（同一次返回里 `hint` 却说「已通过」）—— 弱模型的死循环诱因。现在通过后有终态：`done: true`、`workflow.step: 7`，`next` 指向导出/保存。
+4. **载入后不传 id 保存会产生重复卡**（`cc_load_from_library` 的文档承诺「再次保存将按此 ID 更新」并未实现）→ 用户载入自己的卡、改两笔、保存，库里就多出一张同名卡，反复几次一地垃圾且毫无提示。现在草稿旁落一份 **sidecar**（`cc-drafts/<key>.origin.json`）记住来源 id，保存时沿用；工坊侧刷新页面也不丢（宿主把 `originId` 一并回给前端，前端据此恢复「已载入 ID」）。
+
+**外加一条源码复核发现的（报告没抓到）**：`cc_patch_world` 清理旧自动条目时**只按名字兜底**（为兼容 0.3.x 无 `cc_auto` 标记的旧数据），于是**用户手工建的、恰好叫「日常」的条目会被静默删掉**。现在兜底同时要求内容确实是自动格式（`@@` 开头或带英文维度 key）。
+
+### 二、P1：返回体、校验与缺失的能力
+
+- **返回体瘦身**：顶层不再有 `next` / `hint` / `notice` / `warning` 副本（同一句「下一步」曾在一份返回里出现 4–6 次），只留 `workflow.next` + `workflow.hint` + `message` + `warnings[]`；patch 类默认只回 `changed` 字段名，要全量再传 `verbose: true`；`cc_get_card` 支持 `fields`，`cc_load_from_library` / `cc_get_library_entry` 支持 `includeDraft: false`。
+- **三态替代「Ok 与 Partial 同时为 true」**：`workflow.state = { character, world, lore, greetings }`，取值 `missing | partial | ok`，另给 `readyToValidate`。
+- **`cc_validate` 真的会挑毛病了**：新增 12 类 warnings（世界书没有名字、没有 constant 常驻条目、keys 只有维度名、keys 在 content 里找不到、非 constant 条目没有 keys、估算 token 超出 `token_budget`、`creator` / `mes_example` 为空……），并给出估算 token。
+- **改名 = 单一事实来源**（`cc_rename_in_library`、工坊的「重命名」、`cc_save_to_library` 的 `name`）：此前只改 `meta.name`，于是侧边栏显示新名、导出的卡里还是旧名，用户反复改名却不明白为什么不生效。现在两处一起写。
+- `cc_delete_from_library` 返回 `remaining`（并说明是否顺带解除了来源关联）；`meta.tagsTotal` 记下真实标签数（列表只展示 6 个，但侧栏的「+N」不再算错）。
+- 文档写明 `cc_patch_character` **传空字符串 = 清空该字段**（此前只有「不传 = 保持原值」这一半）。
+
+### 三、新增 5 个工具（它点名要的）
+
+| 工具 | 解决什么 |
+| --- | --- |
+| `cc_simulate_trigger` | **报告里最看重的缺口**：给一句话返回会被触发的条目 + 估算 token，写入时就能自查死条目，不用等用户聊两句才发现 |
+| `cc_new_card` | 干净起点（破坏性：必须先经用户同意再带 `confirm:true`，否则只返回提示、不改任何数据） |
+| `cc_patch_book_meta` | 改世界书顶层参数：`name` / `description` / `scan_depth` / `token_budget` / `recursive_scanning` —— 此前一个都改不了 |
+| `cc_lint_lorebook` | 世界书静态体检：空 keys、只有维度名、keys 与内容无交集、重复触发词、constant 数量、预算占用 |
+| `cc_preview_export` | 导出前干跑：体积、估算 token、字段清单（顺带回答「五维会不会一起导出」），并量化五维与世界书条目的重复字符数 |
+
+工具数 **14 → 19**；预设 persona（两份载体）同步收录新工具与新的第 4 步要求，并修掉其中过时的「导出 JSON」指引（0.4.1 已改成导出页）。
+
+### 四、验证与生效
+
+- 新增 `tests/tools-contract.test.mjs`（**50 项**）：真挂 `lib/agent.js`（隔离 `DSH_HOME`/`HOME`/`USERPROFILE`）逐个调用工具，钉住返回契约（顶层不许再有 `next/hint/notice/warning`）、三态状态机、跳步修正、校验终态、`loreKeys` 优先与维度名兜底、**手工同名条目不被误删**、`changed`/`verbose`/`fields`、5 个新工具、存库回环（`created → load → save` 必须是 `updated` 而非新建、`meta.tagsTotal`、改名同步 `data.name`、删除回 `remaining`），以及**两半 sidecar 互通**（工具半写的来源 id 宿主半读得到、路径算成同一个文件）。
+- `npm test` 10 个文件 380 项 → **11 个文件 430 项**，全绿。
+- **生效方式：宿主半 + 预设半都改了 → 需重启 dsh（桌面版重启应用）**；客户端半的改动在重启后自然重载。
+
 ## 0.4.1
 
 **三件事：① 导出入口归一（三处「导出」收成两处）；② 工作坊关闭按钮改成 ✕（悬停红底）；③ README 写明桌面版（DeepSeek Harness Desktop）支持。** 宿主半一行未动，运行时代码只改了 `lib/client.js`。

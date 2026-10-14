@@ -32,12 +32,14 @@
       必须走完强制工作流，不可偷懒跳过 5 维世界观和世界书：
       1) cc_get_card — 先看草稿，告诉用户还缺什么
       2) cc_patch_character — 补 name/nickname/description/personality/scenario/tags（至少 description/personality/scenario 非空，tags 同步胶囊风格标签）
-      3) cc_patch_world — 补五维 timeline/factions/geo/power/daily，至少填 3 项，autoLorebook=true 自动生成带 @@decorator 的基础条目
-      4) cc_add_lorebook_entries — 再补到至少 5 条，覆盖年表/势力/地理/力量/日常各 1，至少 1 条 constant，content 头部写 @@position/@@depth/@@activate 等，支持 CBS 占位符（双花括号的 char / random / roll 形式）
+      3) cc_patch_world — 补五维 timeline/factions/geo/power/daily，至少填 3 项，autoLorebook=true 自动生成带 @@decorator 的基础条目；**同时给 loreKeys**（每一维自报用户真会说的实体名，如 {geo:["旧校舍","广播室","天台"]}）—— 不给的话自动条目的 keys 只有维度名，真实对话永远命中不了
+      4) cc_add_lorebook_entries — 再补到至少 5 条，且**至少 1 条是你与用户共创的**（纯 autoLorebook 自动条目不算完成），覆盖年表/势力/地理/力量/日常各 1，至少 1 条 constant，content 头部写 @@position/@@depth/@@activate 等，支持 CBS 占位符（双花括号的 char / random / roll 形式）；写完用 cc_simulate_trigger 拿一句用户会说的话验一下命中
       5) cc_patch_greetings — 补 first_mes、alternate_greetings(≥2)、group_only_greetings(≥1 必填)、mes_example
-      6) cc_validate — 必须调且 valid=true 才算完成，否则按返回的 errors/warnings 继续补；通过后提醒用户在工坊点“导出 JSON”或“★ 保存到侧边栏”（落盘 ~/.dsh/cc-library）
+      6) cc_validate — 必须调且 valid=true 才算完成，否则按返回的 errors/warnings 继续补；通过后提醒用户在工坊左下角「校验导出」入口打开导出页选 JSON / PNG / CHARX，或点「★ 保存当前」落盘 ~/.dsh/cc-library
 
-      规则：每次对话只追问 1-2 个薄弱点，问完立刻调工具写入；用户说“随便/跳过”也要你合理推断补全，不能留空；严禁跳过 3/4 步直接做问候语；每调一次工具要简要总结“已写入 X，下一步 Y”，并让胶囊实时同步；结束前必须 cc_validate。
+      辅助工具（按需，不必每步都调）：cc_patch_book_meta（世界书命名 / scan_depth / token_budget）、cc_lint_lorebook（世界书静态体检）、cc_simulate_trigger（验触发词命中）、cc_preview_export（导出前干跑）、cc_new_card（重置草稿，**必须先经用户同意**再带 confirm:true）、cc_update_lorebook_entry / cc_delete_lorebook_entries（改删单条）、已存库 cc_list_library / cc_save_to_library / cc_load_from_library / cc_rename_in_library / cc_delete_from_library / cc_get_library_entry（载入后直接保存会更新原卡，不会新建重复卡）。
+
+      规则：每次对话只追问 1-2 个薄弱点，问完立刻调工具写入；用户说“随便/跳过”也要你合理推断补全，不能留空；严禁跳过 3/4 步直接做问候语；每调一次工具要简要总结“已写入 X，下一步 Y”，并让胶囊实时同步；结束前必须 cc_validate。工具返回里只有一份 workflow.next（下一步该做什么）与 workflow.hint（进度摘要），照它走即可；用户还没回答就别抢跑。
 
 - id: agent-instructions
   name: '@deepseek-ai/dsh-agent-instructions'
