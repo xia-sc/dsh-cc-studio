@@ -56,8 +56,9 @@ function patchDraftOnDisk(mutate) {
 // ① 工具集与返回契约
 // ——————————————————————————————————————————————————————————————
 const NAMES = [...tools.keys()];
-check('① 14 个既有工具 + 5 个新增工具 = 19 个', NAMES.length === 19, NAMES.length + '：' + NAMES.join(', '));
-['cc_new_card', 'cc_patch_book_meta', 'cc_simulate_trigger', 'cc_lint_lorebook', 'cc_preview_export'].forEach(n => {
+check('① 14 个既有工具 + 5 个 0.5.0 新增 + 4 个 0.8.0 关系工具 = 23 个', NAMES.length === 23, NAMES.length + '：' + NAMES.join(', '));
+['cc_new_card', 'cc_patch_book_meta', 'cc_simulate_trigger', 'cc_lint_lorebook', 'cc_preview_export',
+ 'cc_get_relations', 'cc_patch_relations', 'cc_render_relations', 'cc_group_check'].forEach(n => {
   check('①b 新工具已注册：' + n, tools.has(n) && String(tools.get(n).description || '').length > 10, '');
 });
 check('①c 每个工具都有 description 与 parameters 声明（模型看不到声明就不会调）',

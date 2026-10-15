@@ -14,7 +14,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 
 | 项目 | 值 |
 | --- | --- |
-| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.7.1` |
+| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.8.0` |
 | 兼容 | DSH `>=0.1.5-rc.1`（含**桌面版**）、Node `>=22`、**零运行依赖**；逐版本实测见 [兼容与权限](#兼容与权限) |
 | 落盘位置 | `<DSH_HOME>/cc-library/`（角色卡）、`<DSH_HOME>/cc-drafts/`（会话草稿）；`DSH_HOME` 默认 `~/.dsh`，旧位置仍读得到 |
 | 文档 | 用户文档＝本文件；改代码前必读 [AGENTS.md](./AGENTS.md)；完整历史 [CHANGELOG.md](./CHANGELOG.md) |
@@ -117,7 +117,7 @@ dsh plugin --profile web remove @xia-sc/dsh-cc-studio       # 卸载（同时移
 - **导入导出**：`⬆ 导入 JSON/PNG/CHARX` 自动识别容器；`⬇ JSON`、`⬇ PNG`（1×1 占位图）、`⬆ 写入 PNG`（写入你上传的任意 PNG，自动剥离旧 `ccv3/chara` 块并重算 CRC32）、`⬇ CHARX`（打包 `card.json`）。
 - **中英双语 + 深浅色**：完整 `zh / en` 词表，跟随 `设置 → 通用 → 语言` 实时切换；配色走 `var(--dsw-alias-*)`，主操作固定品牌紫 `#7c5cff`。
 
-### CC 模式（模型侧 19 个 Tool）
+### CC 模式（模型侧 23 个 Tool）
 
 **6 步工作流 + 共创约束**：每步前必须先问偏好，严禁无讨论就一次性填满；世界书的完成态是「**≥5 条且至少 1 条共创**」（纯自动条目不算完成）。每次返回只有一份 `workflow.next`（下一步）+ `workflow.state`（四项三态进度）+ `message`（给用户的一句话），另有 `build` 标明插件版本。
 
@@ -127,6 +127,7 @@ dsh plugin --profile web remove @xia-sc/dsh-cc-studio       # 卸载（同时移
 | 世界书质量 | `cc_simulate_trigger`（拿一句用户会说的话验命中）/ `cc_lint_lorebook`（静态体检，含**最坏情况单次触发量**）/ `cc_patch_book_meta`（命名 / `scan_depth` / `token_budget` / 递归扫描） |
 | 条目管理 | `cc_update_lorebook_entry` / `cc_delete_lorebook_entries` |
 | 导出与起点 | `cc_preview_export`（体积、估算 token、字段清单、重复内容量）/ `cc_new_card`（破坏性，须用户同意后带 `confirm:true`） |
+| 人物关系（0.8.0） | `cc_get_relations` / `cc_patch_relations` / `cc_render_relations` / `cc_group_check` |
 | 已存库 CRUD | `cc_list_library` / `cc_save_to_library` / `cc_load_from_library` / `cc_delete_from_library` / `cc_rename_in_library` / `cc_get_library_entry` |
 
 几条值得知道的约定：
@@ -136,6 +137,13 @@ dsh plugin --profile web remove @xia-sc/dsh-cc-studio       # 卸载（同时移
 - 写类工具支持 **`expectedRev` 乐观锁**；不传也会在返回里给 `revDrift` 与 `draftStatus.watchedRev`，多端同时改卡时不会静默覆盖。
 - 工具返回的 `build` 与 `package.json` 的 `version` 同步 —— 能一眼确认当前跑的是哪一版代码。
 
+### 群聊与人物关系（0.8.0）
+
+做一批「互相有关系的卡」时，CCv3 没有关系字段 —— 硬造会污染导出、别的客户端也不认。所以分成两层：
+
+- **插件层图谱是真源**：在工坊右侧「已存角色」里新建**分组**，把同一世界观的角色拉进去，再用分组旁的「关系」按钮打开**关系视图**维护关系 —— 三维 = **方向（A→B 与 B→A 可以不同）× 类型（师徒 / 恋慕 / 敌对…10 类）× 强度（1-5）**。节点有两类：有独立卡的角色，以及**卡内 NPC**（如「柳长老」，没有自己的卡）—— 所以同一张图谱既能服务多卡群聊，也能让单卡「立体」。数据落在 `<DSH_HOME>/cc-groups/`，**不写进卡的任何 CCv3 字段**。
+- **渲染让卡自包含**：「渲染到当前卡」会把「我的关系」写进 `description` 的固定标记区（`<!-- cc-relations:begin --> … <!-- cc-relations:end -->`），分享出去的卡别人拿到就能用；重复渲染是**替换**，不会越写越长。模型侧对应 `cc_render_relations`（支持 `dryRun` 预览）。
+- **跨卡体检**（关系视图的「体检」/ `cc_group_check`）会报：孤儿节点（卡已删）、悬空关系、重名节点、未渲染或已过期的关系段，以及**群聊每轮固定开销**（成员卡常驻条目之和 vs 预算）—— 群聊的开销是「乘法」：5 张卡各带一条常驻，每轮就是 5 份。
 ### 校验与导出
 
 - 宿主实时校验：`spec: chara_card_v3` / `spec_version: 3.0` / `group_only_greetings` 必填、主图标唯一、正则合法；`cc_validate` 另给逐项 errors 与 warnings（缺字段、keys 质量问题、预算等）。
@@ -163,8 +171,8 @@ dsh plugin --profile web remove @xia-sc/dsh-cc-studio       # 卸载（同时移
 ## 开发与测试
 
 ```bash
-npm test                                    # 11 个文件、464 项断言，全绿才算过
-node tests/tools-contract.test.mjs          # 只跑 CC 工具链契约（84 项）
+npm test                                    # 12 个文件、509 项断言，全绿才算过
+node tests/tools-contract.test.mjs          # 只跑 CC 工具链契约（88 项）
 ```
 
 - 改 `lib/client.js`：刷新页面即可；改 `lib/index.js` / 预设：**重启 dsh**。
@@ -174,7 +182,7 @@ node tests/tools-contract.test.mjs          # 只跑 CC 工具链契约（84 项
 
 完整历史见 [CHANGELOG.md](./CHANGELOG.md)。最近三版都是「另一个 LLM 以工具使用者身份跑回归」挖出来的问题：
 
-- `0.7.1` 修 **B1**：dsh 重启后第一次 `cc_get_card` 报 `value is not lossless JSON` —— DSH 对返回值做 lossless-JSON 校验，**任何嵌套 `undefined` 都会让整次调用失败**，而外部导入的卡（PNG / CHARX）可能整个缺 `spec_version` / `creation_date`。三层修法：加载即补齐（`normalizeCardShape`）、`creation_date` 兜底 `null`、返回前统一 `sanitizeJson()`。另加 `build` 版本标识与 `watchedRev`，`changed` 与 `rev` 改用同一套判据。
+- `0.8.0` **人物关系图谱与群聊分组**：CCv3 没有关系字段 → 插件层图谱（`<DSH_HOME>/cc-groups/`）做真源，三维（方向 × 类型 × 强度），节点分「有独立卡的角色」与「卡内 NPC」；`cc_render_relations` 把关系渲染进 `description` 的固定标记区让卡自包含（幂等、可 `dryRun`、空图谱 = 清空）。新增 4 个工具（19 → 23）与工坊侧的**分组选择器 + 关系视图**（`s.cur === 4`，不进左侧导航）。另修 `cc_save_to_library` 的 `action` 谎报（传库里不存在的 id 派生新卡时报 updated）与 `cc_render_relations` 漏赋值（`changed:true` 却没写进卡）。测试 464 → 509 项。**需重启 dsh（桌面版重启应用）**。- `0.7.1` 修 **B1**：dsh 重启后第一次 `cc_get_card` 报 `value is not lossless JSON` —— DSH 对返回值做 lossless-JSON 校验，**任何嵌套 `undefined` 都会让整次调用失败**，而外部导入的卡（PNG / CHARX）可能整个缺 `spec_version` / `creation_date`。三层修法：加载即补齐（`normalizeCardShape`）、`creation_date` 兜底 `null`、返回前统一 `sanitizeJson()`。另加 `build` 版本标识与 `watchedRev`，`changed` 与 `rev` 改用同一套判据。
 - `0.7.0` 修 **N2**：长五维 + autoLorebook 原文照搬会让**一句话**吃满整份世界书预算（实测 1139 token / 预算 1200），而调大 `token_budget` 还能把告警一并消掉 → `cc_lint_lorebook` 新增**最坏情况单次触发量**。另修：`creator` 此前**没有写入路径**（validate 却一直催）、主动重置不再被误报「内容可能已丢失」、不传 `expectedRev` 也会提示 `revDrift`、空改动不再消耗 `rev`。
 - `0.6.0` 修 **P0-6**：草稿被外部（工坊 / host 恢复）换掉时模型完全无感知，实测因此误伤过另一张卡 → 每个返回都带 `cardName` / `cardId` / `rev`，`getDraft()` 以盘为准重载，写类工具支持 `expectedRev` 乐观锁。
 - `0.5.0` 第一轮 LLM 测试的整轮修复：`loreKeys` 解决「自动条目是死条目」、世界书完成态改为「≥5 条且 ≥1 条共创」、`cc_validate` 有了终态、载入后保存不再产生重复卡，并新增 5 个工具（14 → 19）。
