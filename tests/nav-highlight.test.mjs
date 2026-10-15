@@ -111,10 +111,12 @@ function flatten(node, out) {
   (node.children || []).forEach((c) => flatten(c, out));
   return out;
 }
-const STEP_KEYS = ['step.world', 'step.char', 'step.lore'];
-// 0.4.1：导出不再是「第 4 步」—— 左侧导航与顶部胶囊都只剩写作三步，
-// 「校验导出」并进了左下角那枚按钮（文案仍是 step.export，所以它不再算导航项，见 export-entry.test.mjs）。
+// 0.9.0：左侧从「写作三步」改成**卡片结构导航**（总览 / 角色 / 世界观 / 世界书 / 开场与示例 /
+// 关系与分组 / 共享世界书）。测试改为**按 key 定位**，不再依赖顺序 —— 顺序以后还会调。
+const STEP_KEYS = ['step.overview', 'step.char', 'step.world', 'step.lore', 'step.greetings', 'step.rel', 'step.book'];
+const NAV_CUR = { 'step.overview': 5, 'step.char': 1, 'step.world': 0, 'step.lore': 2, 'step.greetings': 6, 'step.rel': 4, 'step.book': 7 };
 const navButtons = (tree) => flatten(tree).filter((n) => n.type === 'button' && STEP_KEYS.indexOf(n.children[0]) >= 0);
+const curIndex = (tree, cur) => navButtons(tree).findIndex((b) => NAV_CUR[b.children[0]] === cur);
 const stepChips = (tree) => flatten(tree).filter((n) => n.type === 'span' && typeof n.children[0] === 'string' && /^\d\. step\./.test(n.children[0]));
 
 // 「选中」的判据：有底色 + 有 inset 左竖条（不写死色值，换品牌色不该让测试红）
@@ -132,75 +134,77 @@ store.setPanel(true);
 run(render().effects);          // 建立 store 订阅（否则重渲染读到的永远是第一份快照）
 let tree = redraw();
 let btns = navButtons(tree);
+const iWorld = curIndex(tree, 0), iLore = curIndex(tree, 2);
 
-check('① 左侧步骤导航渲染出 3 项，顶部胶囊也渲染出 3 个（导出已不是第 4 步）',
-  btns.length === 3 && stepChips(tree).length === 3,
-  'nav=' + btns.length + ' chips=' + stepChips(tree).length);
-check('② 初始只有第 1 项是选中态（剩下的都是透明底）',
-  onlyIndex(btns, 0), JSON.stringify(activeFlags(btns)));
-check('②b 选中项带 aria-current="step"，其余不带（屏幕阅读器也知道当前步）',
-  btns[0].props['aria-current'] === 'step' && btns.slice(1).every((b) => b.props['aria-current'] == null),
+check('① 左侧卡片结构导航渲染出 7 项（总览/角色/世界观/世界书/开场与示例/关系与分组/共享世界书），顶部胶囊仍是 3 个',
+  btns.length === 7 && stepChips(tree).length === 3,
+  'nav=' + btns.length + ' chips=' + stepChips(tree).length + ' keys=' + btns.map((b) => b.children[0]).join(','));
+check('② 初始只有「世界观」一项是选中态（cur=0；剩下的都是透明底）',
+  iWorld >= 0 && onlyIndex(btns, iWorld), JSON.stringify(activeFlags(btns)));
+check('②b 选中项带 aria-current="step"，其余不带（屏幕阅读器也知道当前项）',
+  btns[iWorld].props['aria-current'] === 'step' && btns.filter((b, i) => i !== iWorld).every((b) => b.props['aria-current'] == null),
   btns.map((b) => String(b.props['aria-current'])).join(','));
 
-// —— 点第 3 项：选中态转移，且不许「多出第二个高亮」——
-btns[2].props.onClick({});
-check('③ 点击第 3 项后 cur 变成 2', store.getSnapshot().cur === 2, String(store.getSnapshot().cur));
+// —— 点「世界书」：选中态转移，且不许「多出第二个高亮」——
+btns[iLore].props.onClick({});
+check('③ 点击「世界书」后 cur 变成 2（它是卡片结构里的第 4 项，不再是「第 3 步」）', store.getSnapshot().cur === 2, String(store.getSnapshot().cur));
 btns = navButtons(redraw());
-check('③b 选中态整项转移到第 3 项（不是又亮一个）', onlyIndex(btns, 2), JSON.stringify(activeFlags(btns)));
-check('③c 旧项（第 1 项）回到透明底', btns[0].props.style.background === 'transparent', String(btns[0].props.style.background));
+check('③b 选中态整项转移（不是又亮一个）', onlyIndex(btns, iLore), JSON.stringify(activeFlags(btns)));
+check('③c 旧项（世界观）回到透明底', btns[iWorld].props.style.background === 'transparent', String(btns[iWorld].props.style.background));
 
 // —— 核心修复：鼠标点击不抢焦点 ——
+const other = iWorld === 0 ? 1 : 0;   // 任意一个「非选中」项
 let prevented = 0;
 btns.forEach((b) => b.props.onMouseDown({ preventDefault() { prevented++; } }));
-check('④ 3 个导航项都用 onMouseDown preventDefault 阻止鼠标抢焦点（旧项不会再留着焦点环）',
-  prevented === 3, String(prevented));
+check('④ 7 个导航项都用 onMouseDown preventDefault 阻止鼠标抢焦点（旧项不会再留着焦点环）',
+  prevented === 7, String(prevented));
 check('④b 导航项默认不画 outline（焦点环只由我们自己在键盘焦点时给）',
   btns.every((b) => b.props.style.outline === 'none'),
   btns.map((b) => String(b.props.style.outline)).join(','));
 
 // —— 键盘焦点：仍然要看得见 ——
-btns[1].props.onFocus({ currentTarget: { matches: (sel) => sel === ':focus-visible' } });
+btns[other].props.onFocus({ currentTarget: { matches: (sel) => sel === ':focus-visible' } });
 btns = navButtons(redraw());
 check('⑤ 键盘 Tab 进来仍有可见焦点环（可访问性不被这次修复牺牲）',
-  String(btns[1].props.style.outline || '').indexOf('2px solid') === 0, String(btns[1].props.style.outline));
-check('⑤b 焦点不等于选中：选中项依旧只有 1 个（还是第 3 项）',
-  onlyIndex(btns, 2), JSON.stringify(activeFlags(btns)));
-btns[1].props.onBlur();
+  String(btns[other].props.style.outline || '').indexOf('2px solid') === 0, String(btns[other].props.style.outline));
+check('⑤b 焦点不等于选中：选中项依旧只有 1 个（还是「世界书」）',
+  onlyIndex(btns, iLore), JSON.stringify(activeFlags(btns)));
+btns[other].props.onBlur();
 btns = navButtons(redraw());
-check('⑤c 失焦后焦点环消失', btns[1].props.style.outline === 'none', String(btns[1].props.style.outline));
+check('⑤c 失焦后焦点环消失', btns[other].props.style.outline === 'none', String(btns[other].props.style.outline));
 
 // —— 鼠标点出来的焦点（:focus-visible 不匹配）不许画环，否则又是第二个「高亮」——
-btns[0].props.onFocus({ currentTarget: { matches: () => false } });
+btns[other].props.onFocus({ currentTarget: { matches: () => false } });
 btns = navButtons(redraw());
 check('⑥ 鼠标式焦点不画环 → 左侧不会同时出现两处「像选中」的样式',
-  btns[0].props.style.outline === 'none' && onlyIndex(btns, 2),
-  String(btns[0].props.style.outline) + ' / ' + JSON.stringify(activeFlags(btns)));
+  btns[other].props.style.outline === 'none' && onlyIndex(btns, iLore),
+  String(btns[other].props.style.outline) + ' / ' + JSON.stringify(activeFlags(btns)));
 
 // —— 混合输入：键盘聚焦后改用鼠标（点顶部胶囊切步），旧项的光环必须收起 ——
-btns[0].props.onFocus({ currentTarget: { matches: (sel) => sel === ':focus-visible' } });
+btns[other].props.onFocus({ currentTarget: { matches: (sel) => sel === ':focus-visible' } });
 btns = navButtons(redraw());
-check('⑥b 键盘聚焦的环先亮着', String(btns[0].props.style.outline || '').indexOf('2px solid') === 0, String(btns[0].props.style.outline));
+check('⑥b 键盘聚焦的环先亮着', String(btns[other].props.style.outline || '').indexOf('2px solid') === 0, String(btns[other].props.style.outline));
 let root = redraw();
 check('⑥c 工坊根节点挂了「鼠标一操作就收起焦点环」的处理', typeof root.props.onMouseDown === 'function', typeof root.props.onMouseDown);
 root.props.onMouseDown({ preventDefault() {} });
 btns = navButtons(redraw());
-check('⑥d 鼠标操作后旧项的光环收起，左侧只剩当前步一处高亮',
-  btns[0].props.style.outline === 'none' && onlyIndex(btns, 2),
-  String(btns[0].props.style.outline) + ' / ' + JSON.stringify(activeFlags(btns)));
+check('⑥d 鼠标操作后旧项的光环收起，左侧只剩当前项一处高亮',
+  btns[other].props.style.outline === 'none' && onlyIndex(btns, iLore),
+  String(btns[other].props.style.outline) + ' / ' + JSON.stringify(activeFlags(btns)));
 
 // —— 悬停反馈 ——
-btns[0].props.onMouseEnter();
+btns[other].props.onMouseEnter();
 btns = navButtons(redraw());
-check('⑦ 鼠标悬停非选中项有底色反馈', btns[0].props.style.background === 'var(--dsw-alias-bg-layer-2)', String(btns[0].props.style.background));
-check('⑦b 悬停不会把选中态挪走（选中仍是第 3 项）', onlyIndex(btns, 2), JSON.stringify(activeFlags(btns)));
-btns[0].props.onMouseLeave();
+check('⑦ 鼠标悬停非选中项有底色反馈', btns[other].props.style.background === 'var(--dsw-alias-bg-layer-2)', String(btns[other].props.style.background));
+check('⑦b 悬停不会把选中态挪走（选中仍是「世界书」）', onlyIndex(btns, iLore), JSON.stringify(activeFlags(btns)));
+btns[other].props.onMouseLeave();
 btns = navButtons(redraw());
-check('⑦c 移开后底色回到透明', btns[0].props.style.background === 'transparent', String(btns[0].props.style.background));
+check('⑦c 移开后底色回到透明', btns[other].props.style.background === 'transparent', String(btns[other].props.style.background));
 
-btns[2].props.onMouseEnter();
+btns[iLore].props.onMouseEnter();
 btns = navButtons(redraw());
-check('⑦d 悬停选中项不会顶掉选中样式', onlyIndex(btns, 2), JSON.stringify(activeFlags(btns)));
-btns[2].props.onMouseLeave();
+check('⑦d 悬停选中项不会顶掉选中样式', onlyIndex(btns, iLore), JSON.stringify(activeFlags(btns)));
+btns[iLore].props.onMouseLeave();
 
 // —— 顶部胶囊同款：悬停有反馈、选中唯一 ——
 let chips = stepChips(redraw());

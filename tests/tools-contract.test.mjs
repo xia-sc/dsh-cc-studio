@@ -56,9 +56,13 @@ function patchDraftOnDisk(mutate) {
 // ① 工具集与返回契约
 // ——————————————————————————————————————————————————————————————
 const NAMES = [...tools.keys()];
-check('① 14 个既有工具 + 5 个 0.5.0 新增 + 4 个 0.8.0 关系工具 = 23 个', NAMES.length === 23, NAMES.length + '：' + NAMES.join(', '));
+check('① 14 个既有 + 5 个 0.5.0 + 4 个 0.8.0 关系 + 5 个 0.8.0 分组 + 4 个 0.9.0 共享世界书 = 32 个', NAMES.length === 32, NAMES.length + '：' + NAMES.join(', '));
 ['cc_new_card', 'cc_patch_book_meta', 'cc_simulate_trigger', 'cc_lint_lorebook', 'cc_preview_export',
- 'cc_get_relations', 'cc_patch_relations', 'cc_render_relations', 'cc_group_check'].forEach(n => {
+ 'cc_get_relations', 'cc_patch_relations', 'cc_render_relations', 'cc_group_check',
+ // 0.8.0 分组管理：LLM 侧的增删改查（此前模型改不了「哪张卡属于哪个组」）
+ 'cc_list_groups', 'cc_create_group', 'cc_rename_group', 'cc_delete_group', 'cc_set_card_group',
+ // 0.9.0 组级共享世界书：群聊卡世界书去重（一份设定整组共用，卡里只留私有条目）
+ 'cc_get_shared_book', 'cc_patch_shared_book', 'cc_promote_shared_entries', 'cc_apply_shared_book'].forEach(n => {
   check('①b 新工具已注册：' + n, tools.has(n) && String(tools.get(n).description || '').length > 10, '');
 });
 check('①c 每个工具都有 description 与 parameters 声明（模型看不到声明就不会调）',

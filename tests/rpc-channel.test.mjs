@@ -16,7 +16,7 @@
  * 运行：node tests/rpc-channel.test.mjs   （全绿退出码 0）
  */
 import { createServer } from 'node:http';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -149,6 +149,90 @@ async function post(path, body, { contentType = 'application/json', method = 'PO
   const r = await post('/dsh-cc-studio-rpc/ping', JSON.stringify({ type: 'client-request', rpcId: 'rid-5', method: 'validate', payload: {} }));
   check('method 与端点不一致 → 200 + gateway/bad-request', r.status === 200 && r.json.result.ok === false && r.json.result.error.code === 'gateway/bad-request',
     JSON.stringify(r.json && r.json.result));
+}
+
+// 5b) 0.8.0 分组端点：工坊侧（建组下拉 / 归组下拉 / 关系视图）走的就是这几条。
+//     这些端点在 0.8.0 的第二次迭代里改过实现（查重、归位统一到 assignCardToGroup），
+//     所以要在**真实 RPC 线**上钉一遍接线，而不只是调导出的纯函数。
+{
+  const rpc = async (method, args) => {
+    const r = await post('/dsh-cc-studio-rpc/' + method,
+      JSON.stringify({ type: 'client-request', rpcId: 'rid-' + method, method, payload: { args } }));
+    return (r.json && r.json.result) || {};
+  };
+  const card = { spec: 'chara_card_v3', spec_version: '3.0', data: { name: '分组探针', group_only_greetings: [] } };
+  const seeded = await host.saveLibraryEntry(card, {});
+  const g = await rpc('cc_createGroup', { name: 'RPC 组' });
+  const gid = (g.value && g.value.group && g.value.group.id) || '';
+  check('cc_createGroup → ok 且回组 id', g.ok === true && !!gid, JSON.stringify(g).slice(0, 200));
+
+  const dup = await rpc('cc_createGroup', { name: 'RPC 组' });
+  check('同名再建 → duplicate-name 失败帧 + details.existingGroupId（界面与模型同一条规则）',
+    dup.ok === false && dup.error.details.code === 'duplicate-name' && dup.error.details.existingGroupId === gid,
+    JSON.stringify(dup).slice(0, 240));
+
+  const set1 = await rpc('cc_setCardGroup', { cardId: seeded.id, groupId: gid });
+  check('cc_setCardGroup → ok、自动补节点并回 nodeId',
+    set1.ok === true && /^n\d+$/.test(String((set1.value || {}).nodeId || '')), JSON.stringify(set1).slice(0, 200));
+
+  const list = await rpc('cc_listGroups', {});
+  check('cc_listGroups → 该组 memberCount=1（成员由库条目 meta.groupId 派生）',
+    list.ok === true && list.value.groups.some((x) => x.id === gid && x.memberCount === 1),
+    JSON.stringify(list.value && list.value.groups).slice(0, 240));
+
+  const set2 = await rpc('cc_setCardGroup', { cardId: 'no-such-card', groupId: gid });
+  check('归位一个不存在的卡 → not-found 失败帧（不写坏任何文件）',
+    set2.ok === false && set2.error.details.code === 'not-found', JSON.stringify(set2).slice(0, 200));
+
+  const revBefore = host.normalizeGroup((await host.readGroupRaw(gid)).obj).rev;
+  const ren = await rpc('cc_renameGroup', { id: gid, name: 'RPC 组' });   // 改到同值
+  const revAfter = host.normalizeGroup((await host.readGroupRaw(gid)).obj).rev;
+  check('改名到同值：changed 为空且 rev 不变（空改动不消耗版本号，同 N4 家规）',
+    ren.ok === true && Array.isArray(ren.value.changed) && ren.value.changed.length === 0 && revAfter === revBefore,
+    JSON.stringify({ changed: ren.value && ren.value.changed, revBefore, revAfter }));
+
+  // cc_getGroup 的返回形状是**工坊关系视图的读取契约**：节点与边在 value.group 里面，
+  // 顶层只有 members / rev。客户端曾按工具半 cc_get_relations 的形状去读顶层 value.nodes/.edges
+  // → 界面永远显示「关系 · 0」。这条把形状钉死：改返回结构必须同步改 lib/client.js 关系视图那几行
+  // （行为侧由 tests/relations-view.test.mjs 盯着）。
+  const got = await rpc('cc_getGroup', { id: gid });
+  const v = got.value || {};
+  check('cc_getGroup：节点与边在 value.group 里（顶层只有 members / rev），members 是卡摘要',
+    got.ok === true && v.group && Array.isArray(v.group.nodes) && Array.isArray(v.group.edges)
+      && v.group.nodes.length === 1 && Array.isArray(v.members) && v.members.length === 1
+      && v.members[0].id === seeded.id && v.rev === v.group.rev,
+    JSON.stringify({ keys: Object.keys(v), nodes: v.group && v.group.nodes.length, members: v.members && v.members.length }));
+
+  // 0.9.0 组级共享世界书端点（工坊的共享书视图走这几条）
+  const patch = await rpc('cc_patchBook', { groupId: gid, name: '共享设定集', ops: [
+    { op: 'addEntry', entry: { keys: ['年表'], content: '@@position after_desc\n【共同设定】三千年前。', name: '年表' } },
+  ] });
+  check('cc_patchBook：建书 + 加条目，rev=1、回执 applied 分离',
+    patch.ok === true && patch.value.changed === true && patch.value.rev === 1 && patch.value.book.data.entries.length === 1,
+    JSON.stringify({ rev: patch.value && patch.value.rev, n: patch.value && patch.value.book.data.entries.length }));
+
+  const book = await rpc('cc_getBook', { groupId: gid });
+  check('cc_getBook：读回整本书（含 data.extensions.cc.rev 与成员卡摘要）',
+    book.ok === true && book.value.exists === true && book.value.book.spec === 'lorebook_v3'
+      && book.value.rev === 1 && book.value.cards.length === 1,
+    JSON.stringify({ exists: book.value && book.value.exists, rev: book.value && book.value.rev }));
+
+  const apply = await rpc('cc_applyBook', { groupId: gid, cardId: seeded.id, dryRun: true });
+  const probeRaw = JSON.parse(readFileSync(join(host.libDir(), seeded.id + '.json'), 'utf8'));
+  const probeEntries = (probeRaw.draft.data.character_book && probeRaw.draft.data.character_book.entries) || [];
+  check('cc_applyBook（dryRun）：预览会把共享条目补进这张卡，且没写盘',
+    apply.ok === true && apply.value.dryRun === true && apply.value.wouldAdd === 1 && probeEntries.length === 0,
+    JSON.stringify(apply.value));
+
+  const promote = await rpc('cc_promoteBook', { groupId: gid });
+  check('cc_promoteBook：默认 dryRun（只回候选与将删条数，不写盘）',
+    promote.ok === true && promote.value.dryRun === true && Array.isArray(promote.value.candidates),
+    JSON.stringify({ dryRun: promote.value && promote.value.dryRun, candidates: promote.value && promote.value.candidates.length }));
+
+  const del = await rpc('cc_deleteGroup', { id: gid });
+  check('cc_deleteGroup：删组时一并删掉组级共享世界书（bookDeleted）',
+    del.ok === true && del.value.bookDeleted === true && (await host.readBookRaw(gid)) === null,
+    JSON.stringify({ bookDeleted: del.value && del.value.bookDeleted }));
 }
 
 // 6) 外层信封非法
