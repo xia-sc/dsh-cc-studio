@@ -251,6 +251,17 @@ check('⑧ 4 个关系工具的返回体：无顶层 next/hint/notice/warning �
 check('⑧b cc_get_relations 在没入组时明确告知而不是猜（needGroup + groups 列表）',
   typeof (await call('cc_get_relations', { groupId: 'no-such-group' })).message === 'string', '');
 
+// ——————————————————————————————————————————————————————————————
+// ⑨ UI 源码守卫（0.8.1）：实机反馈「按钮点了没反应」的三个根因，别让它们回来
+// ——————————————————————————————————————————————————————————————
+const clientSrc = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
+check('⑨ 关系/分组的新交互不再依赖 window.prompt（内嵌 webview 会拦掉原生对话框 → 表现为「点了没反应」）',
+  clientSrc.indexOf('window.prompt(t("workshop.group.prompt")') < 0 && clientSrc.indexOf('window.prompt(t("workshop.rel.nodePrompt")') < 0, '');
+check('⑨b 打开面板时会拉分组列表（否则 groups 恒为空 → 卡片上的归组下拉只有「未分组」、新建的组也不出现）',
+  clientSrc.indexOf('store.refreshLibrary(); store.refreshGroups();') > 0, '');
+check('⑨c 「关系」按钮不再静默禁用（未选具体分组时给提示，而不是让用户以为坏了）',
+  clientSrc.indexOf('store.openRelations()') > 0, '');
+
 // —— 收尾：清掉临时落盘根 ——
 rmSync(tmpHome, { recursive: true, force: true });
 
