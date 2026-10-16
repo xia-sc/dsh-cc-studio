@@ -18,7 +18,7 @@ lib/group-layer.js  608 行 ── **卡组层**（0.10.0）：卡组作用域 /
 presets/cc.patch.yml     ── 补丁层 2：CC 预设的**声明行**（dsh ≥ 0.1.7-alpha.1 唯一认的形态）
 presets/cc/              ── CC 预设的目录模板（dsh ≤ 0.1.6-alpha.2，挂载时安装到 <DSH_HOME>/.agent-presets/cc）
 cordis.patch.yml         ── 补丁层 1：宿主组合补丁（insert 一个插件行）
-tests/*.test.mjs         ── 22 个测试文件、844 项断言；**不随包发布**
+tests/*.test.mjs         ── 22 个测试文件、852 项断言；**不随包发布**
 dist/*.zip               ── 历史发布包（按版本命名），不是构建产物，不要改
 .github/workflows/       ── CI：打 v* tag 自动发 npm（OIDC）+ 建 Release（正文抽自 CHANGELOG.md）
 .github/scripts/         ── release-notes.mjs：上面那个 Release 正文/标题的抽取脚本，可本地直接跑
@@ -223,7 +223,7 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
 ## 6. 本地验证
 
 ```bash
-npm test          # 22 个文件：57 + 79 + 51 + 62 + 18 + 23 + 20 + 31 + 14 + 97 + 69 + 20 + 67 + 36 + 52 + 6 + 24 + 25 + 22 + 18 + 16 + 37 = 844 项断言，全绿才算过
+npm test          # 22 个文件：57 + 79 + 51 + 62 + 18 + 23 + 20 + 31 + 14 + 97 + 69 + 20 + 75 + 36 + 52 + 6 + 24 + 25 + 22 + 18 + 16 + 37 = 852 项断言，全绿才算过
 ```
 
 测试只跑纯函数与源码级守卫（不启动 dsh、不写真实用户目录），所以**还需要手工验证**：

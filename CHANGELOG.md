@@ -61,18 +61,22 @@
 
 ### 顺手修的与记录在案的
 
+- **`workflow.metrics` 不再夹带条目正文（0.10.0 自己引入的回归，LLM 侧回归报告第四节抓到的）**：立层时把 `lorebookMetrics()` 的结果原样放进了 `workflowStatus().metrics`，而它的 `all` 字段是**条目的原始数组**（含 `content` 全文）—— `workflow` 会随**每一个**工具的返回出去，于是「四卡套」里一次 `cc_load_from_library({includeDraft:false})` 被它多带出约 **1800 token**，把省 token 的初衷整个抵消。现在返回的是 `metricsBrief()` 的**轻量投影**：`card` / `shared` / `total` 三段数字一个不少（`entries` / `tokens` / `constant` / `constantTokens` / `manual` / `hasDecorator`），条目正文一个不带。
+- **`cc_patch_world` 的 `autoLorebook` 默认值跟上共享书时代（同报告第三节）**：这个参数默认 `true` 是**单卡时代**的（那时「生成骨架条目」是净收益）。共享书上线后它变成净损失 —— 用户只想改五维里的一个字，整套骨架却被抄回卡里，正好抵消共享书的去重价值，还会立刻踩两条检查（卡内与书逐字重复 + 跨卡触发词冲突），而且新副本的 keys 只有维度名（等于把修好的「实体词 keys」又退回成死条目）。现在：**没显式传 `autoLorebook` 时，若本卡所属分组的共享书已覆盖这些维度，就不在卡内生成副本**，返回带 `autoLoreSkipped: true` + `autoLoreSkipReason: "shared-book-covers-dims"` + 一条说清「为什么没生成、怎么强制生成」的 warning，`message` 也改成「没有在卡内生成副本」。显式 `true` / `false` 一律照办。判据**取窄**（只看书里明确是维度条目的：名字是维度名，或 keys 命中维度名/英文维度名），书里只有非维度条目时照常生成。
 - **组体检的读盘从 `1+2N` 降到 `1+N`**：`listLibraryEntries()` 以前解析完整份卡 JSON 却只留 meta，于是体检要对每张卡再读一遍盘，而且拿不到条目（跨卡检查根本做不了）。现在 `readLibrarySnapshot()` 一次拿到 meta + draft，`listLibraryEntries()` / `libraryCardsFor()` / `bookCardsFor()` 都是它的视图。
 - **组文件缺失时不再提前返回**：旧 `sharedBookScopeFor` 从不看组文件，而新的 `groupScope` 一开始写了「组不存在就早退」，那会让「组没了、书还在」的卡突然看不到自己的书 —— 已改回读取成员与书（`ok:false` 只表示组本身不在）。
 - **`groupScope` 的书摘要带 `doc`**：书级参数（`description` / `scan_depth` / `token_budget`）与含 `enabled:false` 的全部条目只有完整文档上有，导出/编辑类调用点需要它。
 - **已知不可达**：`type-unknown` 这条检查永远不触发 —— `normalizeGroup()` 早把未知 `type` 归一到 `other`（`relTypeOf`），所以能走到 `runGroupChecks` 的边都是合法类型。测试里钉住这个事实（`tests/group-checks.test.mjs` ⑦），别再把它当成一条有效检查。
+- **记一笔（未改）**：`autoLoreAdded` 报的是「卡内 auto 条目的**总数**」而不是「本次新增数」—— LLM 侧读成「它重新生成了 5 条」。字段名有歧义，但它是 0.5.0 起的既有契约，改语义会动一批断言；下次动这个工具时顺手改名或补一个「本次新增」。
 
 ### 测试
 
 - 新增 4 个文件、109 项断言：`tests/group-scope.test.mjs`（24）、`tests/group-metrics.test.mjs`（25）、`tests/group-checks.test.mjs`（22）、`tests/group-consistency.test.mjs`（18）、`tests/group-layer-guard.test.mjs`（16 —— 耦合守卫：口径只有一份、读数工具不再自己读盘、检查项 code 只写在卡组层）。
 - `tests/relations-view.test.mjs` 加 4 项渲染断言（体检清单分组渲染、issue 存进 store、换组清空）。
+- `tests/shared-book.test.mjs` 加 8 项（⑬a–⑬h）：`workflow.metrics` 只带数字不带正文 + 整个返回不含条目正文；`autoLorebook` 默认值在有共享书时不生成、显式 true 仍生成、书里只有非维度条目时照常生成、显式 false 不动卡内条目。
 - **重构不变性的证据**：第 3 步（六个消费点改读新层）提交时，`git diff --stat -- tests/` 为空 —— 现有 784 项断言一字未改即全绿。
-- `npm test` 735 → **844 项**，17 → **22 个文件**。
-- **生效方式：宿主半、预设半、客户端半都改了 → 重启 dsh（桌面版重启应用）+ 刷新页面。** 只刷新页面看不到新的 `checks` 参数与 `byCheck` 字段；工具返回里的 `build` 应为 `0.10.0`。
+- `npm test` 735 → **852 项**，17 → **22 个文件**（LLM 侧回归的两个修复又补了 8 项）。
+- **生效方式：宿主半、预设半、客户端半都改了 → 重启 dsh（桌面版重启应用）+ 刷新页面。** 只刷新页面看不到新的 `checks` 参数、`byCheck` 字段与 `autoLorebook` 的新默认行为；工具返回里的 `build` 应为 `0.10.0`。
 
 ## 0.9.1
 

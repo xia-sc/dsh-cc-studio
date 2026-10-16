@@ -514,6 +514,69 @@ check('⑥k 删组时共享世界书一并删除（不留孤儿文件），成�
     && (await host.listLibraryEntries()).some(e => e.id === cardA),
   JSON.stringify({ bookDeleted: r.bookDeleted }));
 
+// ——————————————————————————————————————————————————————————————
+// ⑬ 0.10.0 LLM 侧回归（两个真问题）
+//   ① `workflow.metrics` 只带数字、**不带条目正文** —— `all` 数组会随每个工具的返回出去，
+//      实测一次 cc_load_from_library(includeDraft:false) 被它多带约 1800 token。
+//   ② `cc_patch_world` 的 `autoLorebook` 默认值是单卡时代的：共享书已覆盖这些维度时，
+//      用户只想改一个字，结果整套骨架被抄回卡里（抵消去重、还立刻踩两条检查）。
+// ——————————————————————————————————————————————————————————————
+{
+  const gP = 'grp-patchworld', cP = 'card-patchworld';
+  const DIM_ENTRY = { name: '地理', keys: ['地理', 'geography'], content: '共享地理：旧校舍分三层，地下有一扇门。' };
+  const NON_DIM_ENTRY = { name: '锁道', keys: ['锁道'], content: '锁天司以命数封裂 —— 这条不是维度条目。' };
+  await host.writeGroup({ id: gP, name: '默认值组', nodes: [], edges: [] });
+  await host.saveLibraryEntry({ spec: 'chara_card_v3', spec_version: '3.0',
+    data: { name: '默认值卡', description: '默认值测试用', character_book: { name: '默认值卡书', token_budget: 1200, entries: [] }, extensions: {} } },
+    { id: cP });
+  await host.assignCardToGroup(cP, gP);
+  await host.writeBook(gP, host.normalizeBook({ data: { name: '默认值组·共享设定',
+    entries: [DIM_ENTRY, NON_DIM_ENTRY] } }, gP));
+  await host.writeDraftOrigin('session-book-test', cP, '默认值卡');
+
+  // ① metrics 瘦身
+  let r = await call('cc_get_card', {});
+  const beforeLoreCount = (r.workflow && r.workflow.loreCount) || 0;
+  const metrics = (r.workflow && r.workflow.metrics) || null;
+  check('⑬a workflow.metrics 只带三段数字，**不带条目正文**（all 数组曾是每个返回里的 ~1800 token 暗税）',
+    !!metrics && metrics.card && metrics.shared && metrics.total
+      && metrics.all === undefined && metrics.card.entries === beforeLoreCount && metrics.shared.entries === 2,
+    JSON.stringify(metrics).slice(0, 140));
+  const probe = DIM_ENTRY.content.slice(0, 16);
+  check('⑬b 整个返回里不含共享书条目的正文（数字在、正文不在）',
+    JSON.stringify(r).indexOf(probe) < 0 && JSON.stringify(r).indexOf(NON_DIM_ENTRY.content.slice(0, 12)) < 0,
+    '探测串：' + probe);
+
+  // ② autoLorebook 默认值：组内共享书已覆盖 → 不再往卡内抄骨架
+  r = await call('cc_patch_world', { geo: '旧校舍分三层。' });
+  check('⑬c 不传 autoLorebook 且本组共享书覆盖这些维度 → **不生成**卡内副本，卡内条目数一动不动',
+    r.ok === true && r.autoLoreSkipped === true && r.autoLoreSkipReason === 'shared-book-covers-dims'
+      && r.autoLoreAdded === 0 && r.loreCount === beforeLoreCount,
+    JSON.stringify({ skipped: r.autoLoreSkipped, added: r.autoLoreAdded, loreCount: r.loreCount, before: beforeLoreCount }));
+  check('⑬d 而且当次就给一条 warning 说清「为什么没生成、怎么强制生成」',
+    Array.isArray(r.warnings) && r.warnings.some(w => w.indexOf('共享世界书') >= 0 && w.indexOf('autoLorebook:true') >= 0),
+    JSON.stringify((r.warnings || []).map(w => w.slice(0, 60))));
+  check('⑬e message 也说成「没有生成副本」，不再谎报「自动生成 N 条」',
+    r.message.indexOf('没有') >= 0 && r.message.indexOf('自动生成 0 条基础条目') < 0, String(r.message).slice(0, 80));
+
+  r = await call('cc_patch_world', { geo: '旧校舍分三层。', autoLorebook: true });
+  check('⑬f 显式 autoLorebook:true 仍然强制生成（显式的意愿优先于默认值）',
+    r.autoLoreSkipped === false && r.autoLoreAdded >= 1,
+    JSON.stringify({ skipped: r.autoLoreSkipped, added: r.autoLoreAdded }));
+
+  // 判据取窄：书里只有「非维度条目」时不该跳过（否则会把「有书就不生成」当成规则）
+  await host.writeBook(gP, host.normalizeBook({ data: { name: '默认值组·共享设定', entries: [NON_DIM_ENTRY] } }, gP));
+  r = await call('cc_patch_world', { geo: '旧校舍分三层。' });
+  const beforeFalse = r.loreCount;
+  check('⑬g 反例：共享书里只有非维度条目 → 默认**照常生成**（判据只看「书里明确是维度条目」的那些）',
+    r.autoLoreSkipped === false && r.autoLoreAdded >= 1,
+    JSON.stringify({ skipped: r.autoLoreSkipped, added: r.autoLoreAdded, book: '只有锁道' }));
+  r = await call('cc_patch_world', { geo: '旧校舍分三层。', autoLorebook: false });
+  check('⑬h 显式 autoLorebook:false 仍是不生成（老行为不变：卡内条目数不动）',
+    r.autoLoreSkipped === false && r.loreCount === beforeFalse,
+    JSON.stringify({ skipped: r.autoLoreSkipped, loreCount: r.loreCount, before: beforeFalse }));
+}
+
 // —— 收尾：清掉临时落盘根 ——
 rmSync(tmpHome, { recursive: true, force: true });
 
