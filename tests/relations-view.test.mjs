@@ -248,6 +248,17 @@ const BOOK_FIXTURE = {
   check('⑪ 总览视图：四条进度行渲染出来，并带三态点（✓/◐/○）与计数',
     rows.length >= 4 && all5.some((x) => ['✓', '◐', '○'].indexOf(x) >= 0) && all5.indexOf('step.overview.desc') >= 0,
     JSON.stringify({ rows: rows.length, dots: all5.filter((x) => ['✓', '◐', '○'].indexOf(x) >= 0) }));
+  // ⚠️ 0.8.2 实机事故：导出页读了 `bk.book.entries`（真实形状是 `bk.book.data.entries`）→ 渲染期
+  // TypeError → 工坊闪退、dsh 卡死。所以把**所有视图**在「已载入卡 + 当前组有共享书」的状态下各渲染
+  // 一遍：任何视图在渲染期抛错都算失败（这类崩溃不是「某个页面没显示」，是整个工坊挂掉）。
+  const viewRuns = [0, 1, 2, 3, 4, 5, 6, 7].map((cur) => {
+    store.setCur(cur);
+    try { redraw(); return { cur: cur, ok: true }; }
+    catch (e) { return { cur: cur, ok: false, err: String((e && e.message) || e) }; }
+  });
+  check('⑬ 8 个视图在「已载入卡 + 有共享书」时都能渲染（渲染期抛错会让整个工坊闪退甚至卡死 dsh）',
+    viewRuns.every((v) => v.ok),
+    viewRuns.filter((v) => !v.ok).map((v) => 'cur=' + v.cur + ': ' + v.err).join(' | '));
   fakeCtx.connection.rpc.call = orig;
 }
 // 实机反馈：右侧载入另一张卡之后，「人物关系」还停在上张卡的组里 —— 必须再点一次那个组的

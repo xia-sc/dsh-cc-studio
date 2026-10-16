@@ -14,7 +14,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 
 | 项目 | 值 |
 | --- | --- |
-| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.8.2` |
+| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.8.3` |
 | 兼容 | DSH `>=0.4.5-rc.4`（含**桌面版**）、Node `>=22`、**零运行依赖**；逐版本实测见 [兼容与权限](#兼容与权限) |
 | 落盘位置 | `<DSH_HOME>/cc-library/`（角色卡）、`<DSH_HOME>/cc-drafts/`（会话草稿）；`DSH_HOME` 默认 `~/.dsh`，旧位置仍读得到 |
 | 文档 | 用户文档＝本文件；改代码前必读 [AGENTS.md](./AGENTS.md)；完整历史 [CHANGELOG.md](./CHANGELOG.md) |
@@ -42,7 +42,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
    dsh --profile <profile> --dump-config
    期望在 `# == @xia-sc/dsh-cc-studio` 那一层下看到两行：`id: dsh-cc-studio`（宿主行）与 `id: preset-cc`（CC 预设行）。
 4. 告诉用户重启：宿主行只在启动时组合 —— CLI 重启 `dsh web`，桌面版退出并重新打开应用。
-5. 重启后可选自检：在「CC 模式」会话里调任意一个 cc_* 工具，返回里带 "build": "0.8.2" 即说明新代码已加载
+5. 重启后可选自检：在「CC 模式」会话里调任意一个 cc_* 工具，返回里带 "build": "0.8.3" 即说明新代码已加载
    （这也是判断「改了但没重启」的唯一可靠依据）。
 6. 不要做的事：
    - 不要手工把 presets/ 拷进 ~/.dsh/.agent-presets/（dsh >= 0.4.7-alpha.4 已不读该目录，拷了也不生效）；
@@ -58,9 +58,9 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 ```bash
 # 从 npm 安装（推荐）
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.8.2    # 锁定版本
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.8.3    # 锁定版本
 
-# 从 GitHub 源安装（可加 #v0.8.2 / #master 指定 tag / 分支）
+# 从 GitHub 源安装（可加 #v0.8.3 / #master 指定 tag / 分支）
 dsh plugin --profile web add github:xia-sc/dsh-cc-studio
 
 # 从本地仓库安装（开发 / 调试）：装出来是 link:，改 lib/*.js 重启即生效
