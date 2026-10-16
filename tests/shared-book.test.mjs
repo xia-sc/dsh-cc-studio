@@ -197,6 +197,47 @@ check('⑥f 提升后：书里有 1 条（带全文）、卡片间已无重复�
     && r.book.entries[0].content.indexOf('三千年前') >= 0 && r.book.entries[0].keys[0] === '年表',
   JSON.stringify({ entries: r.book.entries.length, dup: r.duplicates.length }));
 
+// ——————————————————————————————————————————————————————————————
+// ⑦ 度量口径：四个「读」类工具必须把共享书算进去（LLM 侧报告的核心）
+//    共享书改变了数据的**位置**，度量却还按「卡内就是全部」算 —— simulate 会把「会命中」报成
+//    「不会命中」（实测低估约 3 倍）、lint 的最坏情况漏掉共享书的 constant、group_check 的群聊
+//    固定开销只算一半、preview_export 让用户以为「世界书就这么多」。此处的场景正是报告里的那一个：
+//    卡里只剩私有条目、共享书里躺着「年表」。
+// ——————————————————————————————————————————————————————————————
+r = await call('cc_simulate_trigger', { text: '年表上写了什么' });
+check('⑦ cc_simulate_trigger 把共享书一起模拟，并在命中里标注来源（卡内 / 共享书）',
+  r.ok === true && r.results[0].hits.some(h => h.source === 'shared')
+    && r.results[0].sharedTokens > 0 && r.sharedBook && r.sharedBook.entries === 1,
+  JSON.stringify({ hits: r.results[0].hits.map(h => h.name + '@' + h.source), split: r.tokenSplit }));
+
+r = await call('cc_lint_lorebook', {});
+check('⑦b cc_lint_lorebook：tokenSplit / entriesSplit 拆成 卡内 / 共享 / 合计，总量把共享书算进去',
+  r.tokenSplit && r.tokenSplit.shared > 0 && r.tokenSplit.total === r.tokenSplit.card + r.tokenSplit.shared
+    && r.entriesSplit.shared === 1 && r.lorebookTokens === r.tokenSplit.total && r.worstCase.sharedEntries === 1,
+  JSON.stringify({ split: r.tokenSplit, entriesSplit: r.entriesSplit }));
+
+r = await call('cc_group_check', {});
+check('⑦c cc_group_check：群聊每轮固定开销拆成 {card, shared, total}（共享书的 constant 同样每轮插入）',
+  r.ok === true && r.stats.constantTokens && typeof r.stats.constantTokens === 'object'
+    && r.stats.constantTokens.total === r.stats.constantTokens.card + r.stats.constantTokens.shared,
+  JSON.stringify(r.stats && r.stats.constantTokens));
+
+r = await call('cc_preview_export', {});
+check('⑦d cc_preview_export：明说「本卡所属组另有共享世界书 N 条 / 约 M token」，并给出叠加后的合计',
+  r.lorebookSplit && r.lorebookSplit.shared > 0 && r.sharedBook && r.sharedBook.entries === 1
+    && r.lorebookSplit.total === r.lorebookSplit.card + r.lorebookSplit.shared
+    && r.message.indexOf('共享世界书') >= 0,
+  r.sharedBook ? JSON.stringify(r.lorebookSplit) : 'no sharedBook');
+
+const gRaw = JSON.parse(readFileSync(join(host.bookDir(), gid + '.json'), 'utf8'));
+check('⑦e 提升时新建的共享书带默认书名 `<组名>·共享设定`（不是一本"匿名书"）',
+  gRaw.data.name === '共享书测试组·共享设定', JSON.stringify(gRaw.data.name));
+
+const lastPromote = (gRaw.data.extensions && gRaw.data.extensions.cc) ? gRaw.data.extensions.cc.lastPromote : null;
+check('⑦f 提升的收益留存进 extensions.cc.lastPromote（去重完再查也看得到省了多少）',
+  !!lastPromote && lastPromote.savedChars > 0 && lastPromote.removed === 2,
+  JSON.stringify(lastPromote));
+
 r = await call('cc_apply_shared_book', { cardId: cardA, dryRun: true });
 check('⑥g 回填预览：这张卡会补回 1 条', r.ok === true && r.dryRun === true && r.wouldAdd === 1, JSON.stringify(r));
 r = await call('cc_apply_shared_book', { cardId: cardA });
@@ -211,8 +252,261 @@ check('⑥i cc_patch_shared_book：加条目 + 改书名，rev 递增、回执 a
 
 r = await call('cc_patch_shared_book', { expectedBookRev: 999, ops: [{ op: 'addEntry', entry: { keys: ['x'], content: '不该写进去' } }] });
 check('⑥j 乐观锁：expectedBookRev 不符 → 拒绝且零副作用',
-  r.ok === false && r.staleRev === true && r.actualBookRev === 2 && (await host.readBookRaw(gid)).obj.data.entries.length === 2,
-  JSON.stringify({ stale: r.staleRev, actual: r.actualBookRev }));
+  r.ok === false && r.staleBookRev === true && r.actualBookRev === 2 && (await host.readBookRaw(gid)).obj.data.entries.length === 2,
+  JSON.stringify({ stale: r.staleBookRev, actual: r.actualBookRev }));
+
+// ——————————————————————————————————————————————————————————————
+// ⑧ 提升之后的**草稿同步**（用户报告的第 1、2 条）
+//    提升改的是**库里的卡**，而模型正在编辑的是**草稿** —— 两个副本。库里删干净了、草稿里那份
+//    还在，模型接着 cc_save_to_library 就会把重复**原样写回卡里**：去重白做，且全程零提示。
+//    规则：① 来源卡正是这次被删过条目的卡 → 顺手同步删掉；② 不适用/内容被改过 → 不猜不动，
+//    退回一条明确的「保存前先 cc_load_from_library 重新载入」警告。
+// ——————————————————————————————————————————————————————————————
+const SHARED_TEXT = '@@position after_desc\n【共同设定】三千年前。';
+const ddupes = agent.draftBookDupes(
+  [{ name: '逐字同', content: '甲 乙' }, { name: '签名同但内容变了', content: '甲\n乙' }, { name: '无关', content: '丙' }],
+  [{ name: '逐字同', content: '甲 乙' }, { name: '签名同但内容变了', content: '甲 乙' }]);
+check('⑧a draftBookDupes：只认**内容逐字相符**的重复（签名相同但改过内容的一律不动 —— 哈希碰撞不能变成删数据）',
+  ddupes.dupes.length === 1 && ddupes.dupes[0].name === '逐字同' && ddupes.kept.length === 2
+    && ddupes.kept.some(e => e.name === '签名同但内容变了'),
+  JSON.stringify({ dupes: ddupes.dupes.map(e => e.name), kept: ddupes.kept.map(e => e.name) }));
+
+await call('cc_new_card', { confirm: true });
+await call('cc_patch_character', { name: '丙角色' });
+await call('cc_add_lorebook_entries', { entries: [
+  { name: '共用设定', keys: ['共用'], content: SHARED_TEXT },
+  { name: '丙私有', keys: ['丙'], content: '丙自己的条目。' },
+] });
+r = await call('cc_save_to_library', {});
+const cardC = r.id;
+await call('cc_new_card', { confirm: true });
+await call('cc_patch_character', { name: '丁角色' });
+await call('cc_add_lorebook_entries', { entries: [
+  { name: '共用设定', keys: ['共用'], content: SHARED_TEXT },
+  { name: '丁私有', keys: ['丁'], content: '丁自己的条目。' },
+] });
+r = await call('cc_save_to_library', {});
+const cardD = r.id;
+r = await call('cc_create_group', { name: '草稿同步测试组' });
+const g2 = r.group.id;
+await call('cc_set_card_group', { cardId: cardC, groupId: g2 });
+await call('cc_set_card_group', { cardId: cardD, groupId: g2 });
+
+await call('cc_load_from_library', { id: cardC });   // 现在**草稿**里也有「共用设定」（库里那张卡马上会被删掉）
+const revBefore = (await call('cc_get_card', { fields: ['name'] })).draftStatus.rev;
+r = await call('cc_promote_shared_entries', { groupId: g2, apply: true });
+check('⑧b 来源卡正是被提升的卡 → 库里删的同时**草稿也同步删掉**',
+  r.ok === true && r.removedTotal === 2 && r.draftSync.synced === true && r.draftSync.removed === 1
+    && r.draftSync.applicable === true && r.draftSync.cardId === cardC,
+  JSON.stringify(r.draftSync));
+check('⑧c 同步走的是同一套落盘（rev 递增），message 里明说「已同步」、且不再发警告',
+  r.draftStatus.rev > revBefore && r.message.indexOf('已同步删掉 1 条') >= 0 && !r.warnings,
+  JSON.stringify({ before: revBefore, after: r.draftStatus.rev, warnings: r.warnings || null }));
+
+let draftNow = (await call('cc_get_card', { fields: ['character_book'] })).draft;
+check('⑧d 草稿里只剩私有条目（那条共享条目在草稿里也没了）',
+  draftNow.data.character_book.entries.length === 1 && draftNow.data.character_book.entries[0].name === '丙私有',
+  JSON.stringify(draftNow.data.character_book.entries.map(e => e.name)));
+
+await call('cc_save_to_library', {});
+const rawC = JSON.parse(readFileSync(join(host.libDir(), cardC + '.json'), 'utf8'));
+check('⑧e 闭环：同步之后再保存，**重复不会复活**（库里仍是 1 条 —— 这正是同步要防的那件事）',
+  rawC.draft.data.character_book.entries.length === 1 && rawC.draft.data.character_book.entries[0].name === '丙私有'
+    && rawC.meta.loreCount === 1,
+  JSON.stringify(rawC.draft.data.character_book.entries.map(e => e.name)));
+
+// 反例：草稿的来源卡这次**没被删过条目**（库里那张卡已无重复），但草稿里又手工加回了同样内容
+await call('cc_load_from_library', { id: cardD });
+await call('cc_add_lorebook_entries', { entries: [{ name: '共用设定', keys: ['共用'], content: SHARED_TEXT }] });
+r = await call('cc_promote_shared_entries', { groupId: g2, apply: true });
+check('⑧f 来源卡不适用时不猜、不动手：草稿原样保留，但**明确警告**「这次只改了库里的卡」',
+  r.ok === true && r.draftSync.applicable === false && r.draftSync.synced === false
+    && r.draftSync.remaining === 1 && Array.isArray(r.warnings)
+    && r.warnings.some(w => w.indexOf('cc_load_from_library') >= 0 && w.indexOf('库里的卡') >= 0)
+    && r.message.indexOf('只改了库里的卡') >= 0,
+  JSON.stringify({ sync: r.draftSync, warnings: r.warnings || [] }));
+
+draftNow = (await call('cc_get_card', { fields: ['character_book'] })).draft;
+check('⑧g 警告分支下草稿一个字节都没动（2 条仍在 —— 不适用 ≠ 可以乱删）',
+  draftNow.data.character_book.entries.length === 2,
+  JSON.stringify(draftNow.data.character_book.entries.map(e => e.name)));
+
+// ——————————————————————————————————————————————————————————————
+// ⑨ P0（第二轮报告）：世界书口径 —— 「按最佳实践去重」的卡不许再被判不合格
+//    共享书把一部分设定挪到**组**上以后，「≥5 条且至少 1 条共创」这个**收尾判定**却还在只数卡内：
+//    用户照推荐做法去重（卡里只留私密条目），`cc_validate` 反而必然失败、`workflow.state.lore`
+//    永远 partial —— 只剩两条路（忍着失败 / 把冗余抄回卡里，后者等于取消共享书）。现在统一成合计口径。
+// ——————————————————————————————————————————————————————————————
+await call('cc_new_card', { confirm: true });
+await call('cc_patch_character', { name: '口径角色', description: '口径测试用', personality: '冷静', scenario: '在测试里' });
+await call('cc_patch_world', { autoLorebook: false, timeline: '很久以前的一场大灾', factions: '两个对立的势力', geo: '一座沿海的城' });
+await call('cc_add_lorebook_entries', { entries: [
+  { name: '私有甲', keys: ['甲'], content: '@@position after_desc\n甲的私设。' },
+  { name: '私有乙', keys: ['乙'], content: '乙的私设。', constant: true },
+  { name: '私有丙', keys: ['丙'], content: '丙的私设。' },
+] });
+await call('cc_patch_greetings', { first_mes: '开场白。', alternate_greetings: ['备选一。', '备选二。'], group_only_greetings: ['群聊开场。'] });
+r = await call('cc_save_to_library', {});
+const cardE = r.id;
+
+r = await call('cc_validate', {});
+check('⑨a 基准（还没进组）：卡内 3 条 → 仍判不合格，且错误信息给出「卡内 + 共享书 = 合计」三段',
+  r.valid === false && r.loreTotal === 3 && r.sharedLoreCount === 0
+    && r.errors.some(e => e.indexOf('卡内 3 条 + 共享书 0 条 = 合计 3 条') >= 0),
+  JSON.stringify({ valid: r.valid, errors: r.errors }));
+
+r = await call('cc_create_group', { name: '口径测试组' });
+const g3 = r.group.id;
+await call('cc_set_card_group', { cardId: cardE, groupId: g3 });
+r = await call('cc_patch_shared_book', { groupId: g3, ops: [
+  { op: 'addEntry', entry: { name: '年表', keys: ['年表'], content: '@@position after_desc\n共享年表。' } },
+  { op: 'addEntry', entry: { name: '势力', keys: ['势力'], content: '共享势力。' } },
+  { op: 'addEntry', entry: { name: '地理', keys: ['地理'], content: '共享地理。' } },
+  { op: 'addEntry', entry: { name: '力量', keys: ['力量'], content: '共享力量。' } },
+  { op: 'addEntry', entry: { name: '日常', keys: ['日常'], content: '共享日常。' } },
+] });
+check('⑨b 新建共享书的名字默认带上组名（报告 4.2：多个组不再都叫「共享设定」）',
+  r.ok === true && r.book.name === '口径测试组·共享设定' && r.book.entries === 5,
+  JSON.stringify({ name: r.book.name, entries: r.book.entries }));
+
+await call('cc_load_from_library', { id: cardE });
+r = await call('cc_validate', {});
+check('⑨c 卡内 3 条 + 共享书 5 条 → **校验通过**，口径与 cc_lint_lorebook 一致（state.lore=ok、三段 token 都在）',
+  r.valid === true && r.loreCount === 3 && r.sharedLoreCount === 5 && r.loreTotal === 8
+    && r.workflow.state.lore === 'ok' && r.lorebookSplit.shared > 0
+    && r.lorebookSplit.total === r.lorebookSplit.card + r.lorebookSplit.shared,
+  JSON.stringify({ valid: r.valid, lore: r.workflow.state.lore, split: r.lorebookSplit }));
+check('⑨d message 分段显示「卡内 3 + 共享书 5」，并提醒「共享书不跟着卡走」',
+  r.message.indexOf('卡内 3 + 共享书 5') >= 0
+    && r.warnings.some(w => w.indexOf('共享书不会跟着卡走') >= 0),
+  JSON.stringify({ message: r.message.slice(0, 100) }));
+
+r = await call('cc_get_card', {});
+check('⑨e cc_get_card 的 workflow 同一口径（state.lore=ok、loreTotal / sharedLoreCount 都在）',
+  r.workflow.state.lore === 'ok' && r.workflow.loreTotal === 8 && r.workflow.sharedLoreCount === 5,
+  JSON.stringify({ lore: r.workflow.state.lore, total: r.workflow.loreTotal }));
+
+// —— 第三轮报告：`constant` / `@@decorator` 这两条「整本世界书」的存在性检查也必须合计口径 ——
+// 只数卡内时，卡里没 constant、共享书里有的卡每次都收到一条无意义的提醒（实测 4 张卡里 3 张如此）。
+// 这里把卡内改造成「3 条、全无 @@、无 constant」，共享书第一条则是 constant + 带 @@。
+r = await call('cc_get_shared_book', { groupId: g3, includeContent: true });
+await call('cc_patch_shared_book', { groupId: g3, ops: [{ op: 'updateEntry', contentKey: r.book.entries[0].contentKey,
+  patch: { constant: true, content: '@@position after_desc\n共享年表（常驻）。' } }] });
+await call('cc_delete_lorebook_entries', { names: ['私有甲', '私有乙'] });
+await call('cc_add_lorebook_entries', { entries: [
+  { name: '私有甲新', keys: ['甲'], content: '甲的私设（不写 decorator）。' },
+  { name: '私有乙新', keys: ['乙'], content: '乙的私设（不写 decorator）。' },
+] });
+r = await call('cc_validate', {});
+check('⑨f constant 检查与 cc_lint_lorebook 同一口径：卡内 0 条、共享书 1 条 → 不再误报',
+  r.valid === true && r.constantEntries.card === 0 && r.constantEntries.shared === 1 && r.constantEntries.total === 1
+    && !r.warnings.some(w => w.indexOf('没有任何 constant') >= 0),
+  JSON.stringify({ constant: r.constantEntries }));
+check('⑨g @@decorator 检查同样看合计：卡内 3 条都没写 @@，但共享书里有 → 不该报',
+  !r.warnings.some(w => w.indexOf('@@decorator') >= 0),
+  JSON.stringify(r.warnings.filter(w => w.indexOf('@@') >= 0)));
+
+// 第四轮报告：同一个检查点在 `cc_lint_lorebook` 里漏改了 —— 同一份返回里
+// `constantEntries: 1`（算上共享书）与「没有 constant 常驻条目」（只数卡内）并列出现。
+const validateNow = r;
+r = await call('cc_lint_lorebook', {});
+check('⑨h cc_lint_lorebook 的存在性检查也用合计口径（第四轮报告：计算改了、判断没换变量）',
+  r.constantEntries === 1 && r.entriesSplit.card === 3 && r.entriesSplit.shared === 5
+    && !r.issues.some(i => String(i.message).indexOf('没有 constant 常驻条目') >= 0)
+    && !r.issues.some(i => String(i.message).indexOf('@@decorator') >= 0),
+  JSON.stringify({ constant: r.constantEntries, split: r.entriesSplit, issues: r.issues.map(i => i.message) }));
+check('⑨i lint 与 validate 在 constant 口径上完全一致（同一个状态，两个工具同一个结论 —— 收口到 lorebookMetrics 的意义）',
+  validateNow.constantEntries.total === 1 && r.constantEntries === validateNow.constantEntries.total,
+  JSON.stringify({ lint: r.constantEntries, validate: validateNow.constantEntries }));
+
+// ——————————————————————————————————————————————————————————————
+// ⑩ P1（第二轮报告）：回填进卡的副本 —— 「卡 ↔ 共享书」重复必须先**看得见**，再能清掉
+//    `cc_apply_shared_book` 是给「客户端不支持全局世界书」的兜底；一旦用户改用支持全局书的客户端，
+//    卡里那几份会和共享书**双重插入**（token 翻倍），而此前没有任何工具会告诉他这件事。
+// ——————————————————————————————————————————————————————————————
+r = await call('cc_apply_shared_book', { groupId: g3, cardId: cardE });
+check('⑩a 回填：共享书 5 条并进库里的卡（卡内 3 → 8 条）', r.ok === true && r.added === 5 && r.loreCount === 8, JSON.stringify(r));
+
+r = await call('cc_get_shared_book', { groupId: g3 });
+check('⑩b 检测看得见了：bookDuplicates 报「卡 ↔ 共享书」逐字重复（kind=card-vs-book），且 message 说清性质',
+  r.bookDuplicates.length === 5 && r.bookDuplicates.every(d => d.kind === 'card-vs-book')
+    && r.duplicateStats.bookDuplicatedEntries === 5 && r.duplicateStats.bookSavedChars > 0
+    && r.duplicates.length === 0 && r.message.indexOf('逐字重复') >= 0,
+  JSON.stringify({ n: r.bookDuplicates.length, stats: r.duplicateStats }));
+
+r = await call('cc_promote_shared_entries', { groupId: g3 });
+check('⑩c 提升预览把这类也算候选，但如实报成「清理」而不是「提升」',
+  r.ok === true && r.dryRun === true && r.wouldClean === 5 && r.wouldPromote === 0 && r.removedTotal === 5,
+  JSON.stringify({ wouldPromote: r.wouldPromote, wouldClean: r.wouldClean, removed: r.removedTotal }));
+
+r = await call('cc_promote_shared_entries', { groupId: g3, apply: true });
+check('⑩d apply：清掉卡里 5 份副本，书条数**不变**（书里早就有了，不会重复加）',
+  r.ok === true && r.cleaned === 5 && r.promoted === 0 && r.removedTotal === 5 && r.bookEntries === 5,
+  JSON.stringify({ cleaned: r.cleaned, promoted: r.promoted, bookEntries: r.bookEntries }));
+
+const rawE = JSON.parse(readFileSync(join(host.libDir(), cardE + '.json'), 'utf8'));
+check('⑩e 卡里真的只剩私有的 3 条（往返干净）',
+  rawE.draft.data.character_book.entries.length === 3 && rawE.meta.loreCount === 3,
+  JSON.stringify(rawE.draft.data.character_book.entries.map(e => e.name)));
+
+r = await call('cc_get_shared_book', { groupId: g3 });
+check('⑩f 清完再查：bookDuplicates 归零（不会再静默双份插入）',
+  r.bookDuplicates.length === 0 && r.duplicateStats.bookDuplicatedEntries === 0, JSON.stringify(r.duplicateStats));
+
+// ——————————————————————————————————————————————————————————————
+// ⑫ 第五轮报告：共享书**自己**的逐条质量检查 —— 这把尺子必须两端都量
+//    上一版把「共享书条目的质量走 cc_get_shared_book 那条线」写成了事实，可那条线上只有重复检测：
+//    往书里塞一条同时踩三类的坏条目，`cc_get_shared_book` 与 `cc_lint_lorebook` 都不出声（那格是空的）。
+//    共享书多卡共用、又没有「卡」这个载体，**比卡内更需要主动报**。
+// ——————————————————————————————————————————————————————————————
+r = await call('cc_patch_shared_book', { groupId: g3, ops: [{ op: 'addEntry', entry: {
+  name: '质量检查测试条目', keys: ['年表', '苹果香蕉'], content: '@@depth 1\n这段正文什么都没提。' } }] });
+const badKey = r.applied.length ? r.applied[0].key : '';
+check('⑫a 坏条目入书（keys 同时踩：维度名 + 与既有条目冲突 + 正文不含任何 key）',
+  r.ok === true && r.applied.length === 1 && !!badKey, JSON.stringify(r.applied));
+
+r = await call('cc_get_shared_book', { groupId: g3 });
+const codes = (r.lint && Array.isArray(r.lint.issues)) ? r.lint.issues.map(i => i.code) : [];
+check('⑫b cc_get_shared_book 报**这本书自己的**质量问题（带 code / contentKeys / source，可直接定位改）',
+  !!r.lint && r.lint.issues.length >= 1 && r.lint.errorCount >= 1
+    && codes.indexOf('dim-only-keys') >= 0 && codes.indexOf('key-not-in-content') >= 0 && codes.indexOf('duplicate-keys') >= 0
+    && r.lint.issues.some(i => i.contentKeys.indexOf(badKey) >= 0)
+    && r.lint.issues.every(i => i.source === 'shared')
+    && r.message.indexOf('这本书自身有') >= 0,
+  JSON.stringify({ codes: codes, lint: r.lint.issues.map(i => i.code + '@' + i.source) }));
+
+r = await call('cc_lint_lorebook', {});
+check('⑫c cc_lint_lorebook 也报同一条，且每条 issue 标了 source（卡内问题与共享书问题分得开）',
+  r.issues.some(i => i.source === 'shared' && i.code === 'key-not-in-content')
+    // 卡内那 3 条自身没有逐条质量问题 → 不该被这条牵连（`book-unnamed` 之类是另一回事，允许存在）
+    && !r.issues.some(i => i.source === 'card' && ['no-keys', 'dim-only-keys', 'key-not-in-content', 'duplicate-keys'].indexOf(i.code) >= 0)
+    && r.issues.every(i => !!i.code && !!i.source)
+    && r.errorCount >= 1,
+  JSON.stringify(r.issues.map(i => i.code + '@' + i.source)));
+
+r = await call('cc_validate', {});
+check('⑫d 边界（有意）：cc_validate 是「这张卡」的收尾判定，不列逐条质量清单 —— 共享书的整改清单归 lint / get_shared_book',
+  r.valid === true && !r.warnings.some(w => String(w).indexOf('keys 只有维度名') >= 0 || String(w).indexOf('keys 在自身 content') >= 0),
+  JSON.stringify(r.warnings));
+
+await call('cc_patch_shared_book', { groupId: g3, ops: [{ op: 'removeEntry', contentKey: badKey }] });
+r = await call('cc_get_shared_book', { groupId: g3 });
+check('⑫e 清掉坏条目后：与它相关那条消失，而「keys 只有维度名」仍在（那 5 条的 keys 本就只有维度名 —— 这正是新检查的价值）',
+  r.lint.issues.every(i => i.code !== 'key-not-in-content') && r.lint.issues.some(i => i.code === 'dim-only-keys'),
+  JSON.stringify(r.lint.issues.map(i => i.code + '@' + i.source)));
+
+// ——————————————————————————————————————————————————————————————
+// ⑪ 轻项（第二轮报告 4.1）：删组盘点要提共享世界书 —— 那是「会被删掉且不可恢复」的东西
+// ——————————————————————————————————————————————————————————————
+r = await call('cc_delete_group', { groupId: g3 });
+check('⑪ 盘点（不带 confirm）把共享世界书也算进破坏性提示里',
+  r.ok === false && r.needConfirm === true && r.hasBook === true && r.bookEntries === 5
+    && r.message.indexOf('共享世界书 5 条') >= 0 && r.message.indexOf('也会一并删除') >= 0,
+  JSON.stringify({ entries: r.bookEntries, msg: r.message.slice(0, 130) }));
+
+r = await call('cc_delete_group', { groupId: g3, confirm: true });
+check('⑪b 带 confirm 真删：共享书一并删除（不留孤儿文件）',
+  r.ok === true && r.bookDeleted === true && (await host.readBookRaw(g3)) === null, '');
 
 r = await call('cc_delete_group', { groupId: gid, confirm: true });
 check('⑥k 删组时共享世界书一并删除（不留孤儿文件），成员卡本身还在',

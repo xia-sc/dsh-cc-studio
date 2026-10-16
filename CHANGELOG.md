@@ -2,6 +2,94 @@
 
 `dsh-cc-studio` 的版本变更记录，倒序排列（最新在上）。README 只保留最近几条，完整历史在本文件。
 
+## 0.9.0
+
+**「共享世界书」这一整段迭代的收口版：把「写进去了」补成「处处自洽」。**
+
+0.8.2 上线了组级共享世界书（一组一书、成员卡只留私密条目），但 LLM 侧随后跑了五轮回归 —— 报告的核心是一句话：**内容从「卡里」挪到了「组上」，而所有读数、判定与质量检查还按「卡里」算**。这五轮把每一处口径逐个补平：
+
+| 轮次 | 问题 | 现在 |
+| --- | --- | --- |
+| 一 | 四个读数工具（`simulate` / `lint` / `group_check` / `preview_export`）漏算共享书，`simulate` 把「会命中」报成「不会命中」（实测低估约 3 倍） | 全部拆成「**卡内 / 共享书 / 合计**」三段 |
+| 一 | 提升去重改的是**库里的卡**，模型/界面手里的**草稿**没变 —— 下一次保存把重复原样写回 | 提升后**自动同步草稿**，不适用时给明确警告 |
+| 二 | `cc_validate` 是第五个漏网的：按最佳实践去重后的卡（卡内 3 条）**必然判不合格** | 收尾判定走合计口径；卡内不足时提醒「共享书不会跟着卡走」 |
+| 二 | 重复检测只认「卡 ↔ 卡」：`cc_apply_shared_book` 回填进卡的副本谁也看不见 | 新增 `bookDuplicates`（`kind:"card-vs-book"`）与 `wouldPromote` / `wouldClean` / `cleaned` |
+| 三、四 | `constant` 检查口径没跟上 —— 同一份返回里「有 1 条」与「没有」并列 | 抽 `lorebookMetrics` 一处实现；`cc_lint_lorebook` 漏改的那处一并修好 |
+| 五 | 「共享书条目的质量走 `cc_get_shared_book`」是**上一版写错的边界**，那条线上根本没有质量检查 | 抽 `auditLoreEntries`：逐条质量检查**两端都量**，issue 带 `code` / `contentKeys` / `source` |
+
+下面是每一轮的**现象 → 根因 → 修法 → 生效方式**（小节标题沿用当时的内部迭代编号）。
+
+### 一、度量层：共享书改变了数据的位置，度量必须跟上
+
+LLM 侧那份《组级共享世界书测试报告》核对**属实**：**写入侧 8 个能力一次通过**（增删改查 / CAS / dryRun / 逐卡明细 / 内容签名），问题完整地集中在一处 —— **四个「读」类工具都还按「卡内 `character_book` 就是全部」算**，而共享书恰恰把内容挪到了**组**上。
+
+- **`cc_simulate_trigger` 触发模拟失真**（最危险）：卡里只剩私有条目时，只存在于共享书的实体词（「年表」「地底」「祟」…）会被报成**不命中** —— 把「会命中」判成「不会命中」，实测低估约 3 倍。现在模拟**把该组的共享书一起算**，每条命中带 `source: "card" | "shared"`，并给 `tokenSplit` 与 `sharedBook` 摘要。
+- **`cc_lint_lorebook`**：总量与 `worstCase` 都并上共享书，新增 `tokenSplit` / `entriesSplit`（卡内 / 共享 / 合计）与 `worstCase.sharedEntries`；共享书没名字时也会提醒（它要作为 `lorebook_v3` 文件发出去）。
+- **`cc_group_check`**：`stats.constantTokens` 从数字改为 `{card, shared, total}` —— 共享书里的 constant 条目在群聊里**同样每轮插入**，此前只算成员卡会低报一半。两半同构，宿主端点也把**该组**（而非当前卡所在组）的书端给体检。
+- **`cc_preview_export`**：新增 `lorebookSplit` 与 `sharedBook`，message 里明说「本卡所属组另有共享世界书 N 条 / 约 M token —— 客户端实际加载时两者叠加」，不再让用户以为「卡的世界书就这么多」。
+- **共享书默认书名**：`cc_promote_shared_entries` 新建书时用 `<组名>·共享设定`，不再是一本匿名书。
+- **`staleRev` 三层歧义**：图谱层改名 **`staleGroupRev`**、共享书层改名 **`staleBookRev`**；`staleRev` 只留给草稿层（`expectedRev`）—— 三层的失败标记不再同名。
+- **提升收益留存**：`promote` 把「这次省了多少字符」写进 `extensions.cc.lastPromote`，`cc_get_shared_book` 一直能回显（此前去重完 `savedChars` 归零，收益就查不到了）。
+
+- `tests/shared-book.test.mjs` 32 → **38 项**（+6：simulate 命中来源 / lint 分段 / group_check 分段 / preview 提示 / 默认书名 / 收益留存）；两处 CAS 断言改用分层后的新字段。
+- `npm test` 605 → **611 项**，14 个文件全绿。
+- **生效方式：宿主端与客户端都改了 → 重启 dsh + 刷新页面。**
+
+### 二、提升之后：草稿里的旧副本必须一起删
+
+核对报告时**顺手发现一条报告没提的隐患**，已验证属实并修复：`cc_promote_shared_entries`（以及工坊里那枚「提升到共享书」）改的是**库里的卡**，而模型 / 界面手里那份**草稿**是另一个副本。提升删掉了库卡里的重复条目，草稿里那几条还在 —— 接着 `cc_save_to_library`（或界面点「保存当前」）就会把重复**原样写回卡里**：刚做完的去重白做，且全程零提示（测试里直接能看到「simulate 同时命中 `年表@card` 与 `年表@shared`」就是这个状态）。
+
+**修法（两条，模型侧与界面侧同一套判据）**：
+
+- **同步草稿**：提升后若「这次真的被删过条目」的卡**正是草稿的来源卡**（工具侧认 `cc-drafts/<key>.origin.json`，界面侧认 `currentLibraryId`），就把草稿里那几条**一起删掉**，并走各自原本的落盘路（工具侧 `setDraft`，rev 递增；界面侧 `cc_setDraft`）。判据与库里那一次**完全相同**：内容已进共享书、且**逐字相符** —— 内容签名只用来筛，哈希碰撞绝不变成删数据；界面里被用户改过内容的那几条一律不碰。
+- **兜底警告**：来源卡不适用（草稿是另一张卡 / 没入库）或那几条内容被改过时**不猜、不动手**，在 `cc_promote_shared_entries` 的返回里给出 `draftSync` 明细与 `warnings`，明说「这次只改了**库里的卡**，你正在编辑的那份草稿没被改动，里面仍有 N 条与共享书逐字重复 —— 保存前先 `cc_load_from_library` 重新载入，否则重复会被原样写回卡里」。
+- 并发安全：读草稿与写草稿之间**没有任何 await**（不会被别人的写入夹在中间），且 `getDraft()` 本身先按盘上 rev 重载 —— 不覆盖别人的写入。
+
+- `tests/shared-book.test.mjs` 38 → **45 项**（纯函数「逐字相符才删」/ 来源卡命中即同步 / rev 递增与 message 措辞 / **闭环：同步之后保存，重复不复活** / 不适用时不动手但明确警告 / 警告分支下草稿零改动）；新增 `tests/promote-draft-sync.test.mjs` **6 项**（界面侧：提升后草稿同步并落盘、被删的是别人那张卡时不越界、共享书没读到时不猜着删、dryRun 不写盘）。
+- `npm test` 611 → **624 项**，**15 个文件**全绿。
+- **生效方式：宿主端与客户端都改了 → 重启 dsh + 刷新页面。**
+
+### 三、收尾判定与重复检测（第二轮回归）
+
+LLM 侧第二轮回归报告核对**属实**：上一轮那 6 项修复全部确认（`simulate` 来源标注、`lint` 三段、`group_check` 拆段、`preview_export` 提示、三层 stale 锁改名、默认书名），新发现 **1 个 P0 + 1 个 P1 + 2 个轻项**，本轮全部修掉。
+
+**🔴 P0：`cc_validate` / `workflow.state` 还在按「卡内就是全部」算 —— 按最佳实践去重的卡必然被判不合格。**
+
+- **现象**：把重复条目提升进共享书、卡里只留私密条目之后，`cc_validate` 报「世界书未齐：需至少 5 条（当前 3 条）」、`workflow.state.lore` 永远 `partial`；而**同一张卡**在 `cc_lint_lorebook` 里是 `entries: 8`。同一版本内两个工具口径打架，而「不合格」的那个偏偏是收尾判定 —— 用户完全照推荐做法做、系统判他不合格，只剩两条路：忍着校验失败，或把冗余抄回卡里（后者等于把共享书的意义取消掉）。
+- **修法**：达标判定（`state.lore` / `readyToValidate` / `cc_validate` 的 errors）统一改成**合计口径**（卡内 + 该组共享书），并把两个数分开报：`loreCount` / `manualLoreCount`（卡内）、`sharedLoreCount` / `sharedManualCount`（共享书）、`loreTotal` / `manualLoreTotal`（合计）；`cc_validate` 的 message、错误信息、hint 都分段显示（「世界书 8 条 = 卡内 3 + 共享书 5」），并新增 `lorebookSplit` 与 `sharedBook`。**写类工具的文案仍按「卡内」说** —— 它们的语境是「你刚加了几条」，改成合计反而误导。
+- 新增 `workflowFor(ctx, exec, draft)`：**判定完成度**一律走它（`workflowStatus(draft, shared)` 保持纯函数；拿不到共享书时与旧行为逐字一致），全仓 13 处调用点已统一。
+- 卡内不足 5 条、靠共享书补足时**不阻塞**，改发一条 warning：共享书**不会跟着卡走**，导出时请把它一并交给客户端（导出页可单独导出这本 `lorebook_v3`；不支持全局书的客户端可勾选「并入本卡」）。
+
+**🟠 P1：重复检测只认「卡 ↔ 卡」，不认「卡 ↔ 共享书」。**
+
+- **现象**：`cc_apply_shared_book`（给不支持全局世界书的客户端做的兜底）回填之后，卡里躺着 5 条与共享书逐字相同的副本 —— 而 `cc_get_shared_book` 说「卡片间已无重复条目」、`cc_promote_shared_entries` 说「没有可提升的重复条目」。用户一旦改用支持全局书的客户端，这 5 条会和共享书**双重插入**（token 翻倍），**没有任何工具会告诉他这件事**。
+- **修法**：`scanSharedEntries(cards, bookEntries)` 增加第二类候选 `bookDupes`（`kind: "card-vs-book"`，判据同样是**逐字相符**、签名只用来筛）；`cc_get_shared_book` 回 `bookDuplicates` 与 `duplicateStats.bookDuplicatedEntries` / `bookSavedChars`，message 里说清「书里已经有了，只需清掉卡里那几份」；`cc_promote_shared_entries` 把这类也算候选，但如实拆成 `wouldPromote`（真提升进书）与 **`wouldClean`**（书里早有、只清卡内副本），apply 后回 `cleaned` 并写进 `lastPromote`。宿主半的 `cc_getBook` / `cc_promoteBook` 端点同构改（界面因此也看得见这类重复）。
+
+**★☆☆ 两个轻项**：① 删组盘点（工具**与界面**）现在会说「本组另有共享世界书 N 条（书名），也会一并删除且不可恢复」—— 那是用户可能整理了许久的东西，不能不在破坏性提示里；界面删组的确认框顺带从复用的「确定删除该角色？」换成专用文案。② 新建共享书的默认名统一成 `<组名>·共享设定`（工具半 `patchSharedBook` / `promoteSharedBook` 与宿主半 `cc_patchBook` / `cc_promoteBook` 四条建书路径都走同一个 `newBookFor`，两半同构）。
+
+**🟡 补充（第三轮回归的唯一新发现）：`cc_validate` 的 constant / `@@decorator` 检查没跟上口径。**
+
+- **现象**：云中君校验通过、却收到「世界书建议至少 1 条 constant 常驻条目」——**误报**：卡内 3 条确实没有，但共享书里的「力量体系」就是 constant。同一版本内 `cc_lint_lorebook` 报 `constantEntries: 2`（含共享书），`cc_validate` 却说不存在；反证也在 —— 谢无咎不报这条，因为他卡内自己有一条。
+- **修法**：这两条是**存在性**检查（整本世界书有没有 constant / 有没有 `@@decorator`），统一改成合计口径。`workflowStatus` 新增 `constantEntries: {card, shared, total}`（与 `cc_lint_lorebook` 同名同形）与 `sharedHasDecorator`，`cc_validate` 返回体也带 `constantEntries`。
+- **范围刻意收窄**：逐条质量检查（死 keys / 只有维度名的 keys / keys 与正文无交集）**仍只看卡内** —— 列条目名是 `cc_lint_lorebook` 的职责（它本来就覆盖共享书），在 validate 里再列一遍只会让模型想去改错地方。
+
+**🟡 补充（第四轮回归）：同一个 constant 检查点在 `cc_lint_lorebook` 里漏改了 —— 顺手按报告建议收口成一处实现。**
+
+- **现象**：同一张卡（卡内 0 条 constant / 共享书 1 条），`cc_validate` 已经不误报了，而 `cc_lint_lorebook` 的**同一份返回里** `constantEntries: 1` 与「没有 constant 常驻条目」**并列出现** —— 计算改对了、判断没跟着换变量。它比上一条更值得修：这是**体检结论**（`warningCount: 1`、message 直接写「体检发现 1 个问题」），而本套 4 张卡里有 3 张会长期背着这条误报。
+- **修法**：lint 的**存在性**检查（有没有 constant / 有没有 `@@decorator`）改用合计口径；同时按报告建议**收口** —— 新增纯函数 `lorebookMetrics(cardEntries, sharedEntries)`，一处给出「卡内 / 共享 / 合计」的 `entries` / `tokens` / `constant` / `constantTokens` / `manual` / `hasDecorator`，`cc_validate` 的 `constantEntries` 与 `cc_lint_lorebook` 的总量、constant 都改从它取（同 `outgoingEdgesOf()` 之于渲染与计数）。收口的直接理由是形态本身：这个语义此前散落在 `simulate` / `lint` / `group_check` / `preview_export` / `validate` 五处，于是连着两轮各漏改一处（先漏 `validate`、再漏 `lint`）。
+- **边界写进注释**：**逐条质量**检查（死 keys / 只有维度名的 keys / keys 与正文无交集 / 触发词冲突）在两个工具里都**只覆盖卡内**，这是**有意**的 —— lint 的整改清单面向「你正在编辑的这张卡」，`cc_validate` 是卡的收尾判定，共享书条目的质量走 `cc_get_shared_book` 那条线。
+
+**🟡 补充（第五轮回归）：共享书**自己**的逐条质量检查 —— 上一版写下的那条「边界」是判断失误，已补上。**
+
+- **上一版那条边界是错的**：为了让「逐条质量检查只覆盖卡内」显得是有意为之，我写了「共享书条目的质量走 `cc_get_shared_book` 那条线」—— 可那条线上**根本没有这个能力**（只有重复检测）。报告实测：往共享书塞一条同时踩三类的坏条目（维度名 key + 触发词冲突 + 正文不含任何 key），`cc_get_shared_book` 与 `cc_lint_lorebook` **都不出声**。那格是空的，不是有意留空。
+- **为什么共享书比卡内更需要主动报**：它多卡共用（一条死 key 在**所有**成员卡上都不生效、一条维度名 key 在每张卡上白吃 token），又**没有「卡」这个载体**（用户不会顺手翻到它）；而 `cc_lint_lorebook` 当时已经在报「含该组共享世界书 N 条」—— 那句「体检通过」会被读成「全部都没问题」。
+- **修法（一把尺子，两端都量）**：抽纯函数 `auditLoreEntries(groups)` —— 四类逐条检查（死 keys / 只有维度名 / keys 与正文无交集 / 触发词冲突），其中触发词冲突**跨来源一起算**（同一个词同时命中卡内与共享书的两条，是真实存在的叠加）。`cc_lint_lorebook` 对**卡内 + 共享书**各跑一遍，每条 issue 带 `code` / `contentKeys` / **`source`**（`card` / `shared` / `mixed`）；`cc_get_shared_book` 新增 **`lint` 段**报「**这本书**自己的问题」（带 `contentKeys`，可直接 `cc_patch_shared_book` 改）。lint 自己那几条 issue（constant / decorator / 预算 / 最坏情况 / 无名书）也一并补上 `code` 与 `source` —— 所有 issue 现在形状一致。
+- **边界更正（这才是真正的分工）**：`cc_validate` **只查卡内** —— 它是「这张卡」的收尾判定，列条目名不属于它；逐条质量检查归 `cc_lint_lorebook`（世界书全量，标来源）与 `cc_get_shared_book`（书自己）。三处口径不同是分工，不是漏改，这条已写进三处代码注释。
+
+- `tests/shared-book.test.mjs` 45 → **67 项**（⑨ 口径对照：入组前 3 条判不合格 → 共享书补足后**校验通过**、message 与 warning 分段；⑨f–⑨i constant 与 `@@decorator` 检查走合计、lint 不再误报、lint 与 validate 同结论；⑩ 回填 → 看得见 → 清理 → **书条数不变**；⑪ 删组盘点；**⑫ 坏条目入书后 `get_shared_book` 的 `lint` 报出三类并带 contentKeys、`lint` 同步报出且标 `source: shared`、`validate` 不列这份清单、清掉后归零**）；`tests/relations-view.test.mjs` 15 → **16 项**（⑩b 界面也渲染出「与共享书重复」）。
+- `npm test` 624 → **647 项**，15 个文件全绿。
+- **生效方式：宿主端与客户端都改了 → 重启 dsh + 刷新页面。**
+
 ## 0.8.3
 
 **紧急修复：只要当前分组有共享世界书，一进「校验导出」页面整个工坊就闪退、dsh 卡死。**

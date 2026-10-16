@@ -14,7 +14,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 
 | 项目 | 值 |
 | --- | --- |
-| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.8.3` |
+| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.9.0` |
 | 兼容 | DSH `>=0.4.5-rc.4`（含**桌面版**）、Node `>=22`、**零运行依赖**；逐版本实测见 [兼容与权限](#兼容与权限) |
 | 落盘位置 | `<DSH_HOME>/cc-library/`（角色卡）、`<DSH_HOME>/cc-drafts/`（会话草稿）；`DSH_HOME` 默认 `~/.dsh`，旧位置仍读得到 |
 | 文档 | 用户文档＝本文件；改代码前必读 [AGENTS.md](./AGENTS.md)；完整历史 [CHANGELOG.md](./CHANGELOG.md) |
@@ -42,7 +42,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
    dsh --profile <profile> --dump-config
    期望在 `# == @xia-sc/dsh-cc-studio` 那一层下看到两行：`id: dsh-cc-studio`（宿主行）与 `id: preset-cc`（CC 预设行）。
 4. 告诉用户重启：宿主行只在启动时组合 —— CLI 重启 `dsh web`，桌面版退出并重新打开应用。
-5. 重启后可选自检：在「CC 模式」会话里调任意一个 cc_* 工具，返回里带 "build": "0.8.3" 即说明新代码已加载
+5. 重启后可选自检：在「CC 模式」会话里调任意一个 cc_* 工具，返回里带 "build": "0.9.0" 即说明新代码已加载
    （这也是判断「改了但没重启」的唯一可靠依据）。
 6. 不要做的事：
    - 不要手工把 presets/ 拷进 ~/.dsh/.agent-presets/（dsh >= 0.4.7-alpha.4 已不读该目录，拷了也不生效）；
@@ -58,9 +58,9 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 ```bash
 # 从 npm 安装（推荐）
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.8.3    # 锁定版本
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.9.0    # 锁定版本
 
-# 从 GitHub 源安装（可加 #v0.8.3 / #master 指定 tag / 分支）
+# 从 GitHub 源安装（可加 #v0.9.0 / #master 指定 tag / 分支）
 dsh plugin --profile web add github:xia-sc/dsh-cc-studio
 
 # 从本地仓库安装（开发 / 调试）：装出来是 link:，改 lib/*.js 重启即生效
@@ -183,7 +183,9 @@ node tests/tools-contract.test.mjs          # 只跑 CC 工具链契约（97 项
 
 ## 更新日志
 
-完整历史见 [CHANGELOG.md](./CHANGELOG.md)。最近三版都是「另一个 LLM 以工具使用者身份跑回归」挖出来的问题：
+完整历史见 [CHANGELOG.md](./CHANGELOG.md)。最近几版大多是「另一个 LLM 以工具使用者身份跑回归」挖出来的问题：
+
+- `0.9.0` **「共享世界书」的收口版**：0.8.2 把世界设定从「每张卡一份」挪到了「组上一本」，但**所有读数、判定与质量检查还按「卡里」算** —— 五轮 LLM 侧回归把它逐个补平：四个读数工具（`simulate` / `lint` / `group_check` / `preview_export`）全部拆成「**卡内 / 共享书 / 合计**」三段（`simulate` 此前会把「会命中」报成「不会命中」，实测低估约 3 倍）；**提升去重后自动同步草稿**（否则下一次保存会把重复原样写回卡里）；`cc_validate` 的「世界书 ≥5 条」改走合计口径（按最佳实践去重过的卡此前**必然判不合格**）；重复检测补上「**卡 ↔ 共享书**」一类（`bookDuplicates` / `wouldClean`）；`constant` 与 `@@decorator` 的存在性检查两端统一；**共享书自己的逐条质量检查**补上（此前「共享书质量走 `cc_get_shared_book`」只是一句没实现的说明 —— 那条线上只有重复检测）。口径与质量各收口成一个纯函数（`lorebookMetrics` / `auditLoreEntries`），以后改口径只动一处。测试 604 → 647 项（15 个文件）。
 
 - `0.8.2` **群聊卡这一整段迭代的正式发版**：关系图谱（`<DSH_HOME>/cc-groups/`，三维 = 方向 × 类型 × 强度；节点分「有独立卡的角色」与「卡内 NPC」）+ `cc_render_relations` 把关系渲染进 `description` 的固定标记区让卡自包含（幂等、可 `dryRun`、空图谱 = 清空）；随后补齐**模型侧的分组增删改查**（`cc_list_groups` / `cc_create_group` / `cc_rename_group` / `cc_delete_group` / `cc_set_card_group`）、新增**组级共享世界书**（`<DSH_HOME>/cc-books/`，一组一本、文件本身就是 CCv3 官方 `lorebook_v3` JSON，`cc_promote_shared_entries` 一键把成员卡里逐字重复的条目提升进去并从各卡删除），并把工坊左侧改成**卡片结构导航**（总览 / 角色 / 世界观 / 世界书 / 开场与示例 / 关系与分组 / 共享世界书，每项带三态进度徽章）。工具 19 → 32。修的既有问题：**B4** 工具半保存一次就把卡踢出分组（两半 `makeLibraryEntryMeta` 漂移）、**B5** `mutual` 对等边完全不渲染、**关系视图「关系 · 0」与导航 0 条**（客户端读错宿主返回形状 —— 边在 `group` 里）、**换卡后关系视图不换组**。测试 509 → 604 项（14 个文件）。**需重启 dsh（桌面版重启应用）→ 刷新页面**。
 - `0.7.1` 修 **B4**：dsh 重启后第一次 `cc_get_card` 报 `value is not lossless JSON` —— DSH 对返回值做 lossless-JSON 校验，**任何嵌套 `undefined` 都会让整次调用失败**，而外部导入的卡（PNG / CHARX）可能整个缺 `spec_version` / `creation_date`。三层修法：加载即补齐（`normalizeCardShape`）、`creation_date` 兜底 `null`、返回前统一 `sanitizeJson()`。另加 `build` 版本标识与 `watchedRev`，`changed` 与 `rev` 改用同一套判据。

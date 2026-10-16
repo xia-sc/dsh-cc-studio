@@ -253,8 +253,8 @@ const revNow = (await call('cc_get_relations', {})).group.rev;
 r = await call('cc_patch_relations', { expectedGroupRev: 999, ops: [{ op: 'addNode', kind: 'npc', name: '不该出现' }] });
 const afterCas = (await call('cc_get_relations', {})).nodes.map(n => n.name);
 check('⑥ expectedRev 不符 → staleRev 拒绝，且图谱没有任何变化（零副作用）',
-  r.ok === false && r.staleRev === true && afterCas.indexOf('不该出现') < 0,
-  JSON.stringify({ ok: r.ok, staleRev: r.staleRev }));
+  r.ok === false && r.staleGroupRev === true && afterCas.indexOf('不该出现') < 0,
+  JSON.stringify({ ok: r.ok, staleGroupRev: r.staleGroupRev }));
 r = await call('cc_patch_relations', { expectedGroupRev: revNow, ops: [{ op: 'addNode', kind: 'npc', name: '该出现' }] });
 check('⑥b expectedRev 相符 → 正常写入', r.ok === true && r.applied.length === 1,
   JSON.stringify({ ok: r.ok, staleRev: r.staleRev, expectedRev: r.expectedRev, actualRev: r.actualRev, group: r.group, error: r.error, needGroup: r.needGroup, groups: r.groups }));

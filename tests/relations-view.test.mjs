@@ -215,7 +215,8 @@ const BOOK_FIXTURE = {
   cards: [{ id: 'c1', name: '谢无咎', entries: 3 }],
   scan: {
     candidates: [{ signature: 'sig-yb', name: '年表', cardNames: ['谢无咎', '云中君'], cards: 2, chars: 120, savedChars: 120, nameMismatch: false, keysMismatch: false, preview: '【三千年前】天门开。' }],
-    stats: { cards: 4, totalEntries: 20, duplicatedEntries: 8, savedChars: 4500 },
+    bookDupes: [{ kind: 'card-vs-book', signature: 'sig-sf', name: '势力', cardNames: ['谢无咎'], cards: 1, chars: 90, savedChars: 90, preview: '锁天司四职。' }],
+    stats: { cards: 4, totalEntries: 20, duplicatedEntries: 8, savedChars: 4500, bookDuplicatedEntries: 1, bookDupeCount: 1, bookSavedChars: 90 },
   },
 };
 {
@@ -241,6 +242,10 @@ const BOOK_FIXTURE = {
   check('⑩ 重复条目区渲染出候选与「可省 N 字符」（那正是要去重的东西）',
     all7.indexOf('book.dupTitle') >= 0 && all7.indexOf('book.dupItem') >= 0 && joined7.indexOf('年表') >= 0,
     '');
+  // 第二轮报告 P1：第二类重复（卡内条目与共享书逐字相同 —— `cc_apply_shared_book` 回填的副本）也要在界面上说出来
+  check('⑩b 「卡 ↔ 共享书」那一类重复也渲染出来（回填过的卡会静默双份插入）',
+    all7.indexOf('book.dupBook') >= 0,
+    JSON.stringify(all7.filter((x) => String(x).indexOf('book.dup') === 0)));
   // 总览：四条进度行 + 三态点（写作全交给 LLM 之后，这是工坊的主入口）
   store.setCur(5);
   const all5 = texts(redraw());
