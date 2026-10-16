@@ -38,7 +38,7 @@
     "presets"
   ],
   "scripts": {
-    "test": "node tests/rpc-channel.test.mjs && node tests/preset-install.test.mjs && node tests/cc-detection.test.mjs && node tests/client-greetings.test.mjs && node tests/draft-slot-sync.test.mjs && node tests/nav-highlight.test.mjs && node tests/clear-card.test.mjs && node tests/export-entry.test.mjs && node tests/close-button.test.mjs && node tests/tools-contract.test.mjs && node tests/relations.test.mjs && node tests/relations-view.test.mjs && node tests/shared-book.test.mjs && node tests/shared-book-st-export.test.mjs && node tests/st-compat.test.mjs && node tests/promote-draft-sync.test.mjs && node tests/group-scope.test.mjs && node tests/group-metrics.test.mjs && node tests/group-checks.test.mjs && node tests/data-root.test.mjs",
+    "test": "node tests/rpc-channel.test.mjs && node tests/preset-install.test.mjs && node tests/cc-detection.test.mjs && node tests/client-greetings.test.mjs && node tests/draft-slot-sync.test.mjs && node tests/nav-highlight.test.mjs && node tests/clear-card.test.mjs && node tests/export-entry.test.mjs && node tests/close-button.test.mjs && node tests/tools-contract.test.mjs && node tests/relations.test.mjs && node tests/relations-view.test.mjs && node tests/shared-book.test.mjs && node tests/shared-book-st-export.test.mjs && node tests/st-compat.test.mjs && node tests/promote-draft-sync.test.mjs && node tests/group-scope.test.mjs && node tests/group-metrics.test.mjs && node tests/group-checks.test.mjs && node tests/group-consistency.test.mjs && node tests/data-root.test.mjs",
     "prepublishOnly": "npm test"
   },
   "dsh": {

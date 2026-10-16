@@ -290,6 +290,51 @@ const BOOK_FIXTURE = {
   fakeCtx.connection.rpc.call = orig;
 }
 
+// —— 0.10.0 体检清单：按 error / warn 分组渲染，每条挂一个「检查类别」——
+// 旧行为是把 issues 拼成一行 lastMsg；加上跨卡一致性检查后一次可能十来条，一行糊成一片。
+// 这里同样只喂**宿主真实会返回的形状**（跟拍宿主 cc_groupCheck 的返回）。
+{
+  const orig = fakeCtx.connection.rpc.call;
+  const CHECK_FIXTURE = {
+    groupId: GID, rev: 7, name: '锁天司',
+    issues: [
+      { check: 'structure', level: 'error', code: 'duplicate-name', message: '1 组名字/别名落在多个节点上（渲染会指向同一个人）：甲', refs: [] },
+      { check: 'cross-card', level: 'warn', code: 'cross-card-duplicate-keys', message: '1 个触发词被多张卡/共享书共用（群聊时一句话会同时把它们带进上下文）：锁道', refs: ['锁道'] },
+      { check: 'lore-quality', level: 'warn', code: 'no-keys', message: '1 条非 constant 条目没有 keys（永远触发不了）', refs: [] },
+    ],
+    stats: { nodes: 6, edges: 6, members: 4, constantTokens: { card: 0, shared: 0, total: 0 }, minBudget: 1200 },
+    checks: ['structure', 'relations', 'budget', 'lore-quality', 'cross-card'],
+    byCheck: { structure: 1, relations: 0, budget: 0, 'lore-quality': 1, 'cross-card': 1 },
+    errorCount: 1, warningCount: 2,
+  };
+  fakeCtx.connection.rpc.call = (ch, ep, pl) => {
+    if (ep === 'cc_groupCheck') return Promise.resolve({ ok: true, value: CHECK_FIXTURE });
+    if (ep === 'cc_getGroup') return Promise.resolve({ ok: true, value: FIXTURE });
+    return orig(ch, ep, pl);
+  };
+  store.setCurrentGroupId(GID);
+  store.setCur(4);
+  await store.loadGroup(GID);
+  await store.checkGroupNow();
+  const tree = redraw();
+  const all = texts(tree);
+  const joined = all.join(' | ');
+  check('⑭ 体检清单渲染：分组标题用 workshop.rel.checkStats（旧的一行拼接装不下十几个问题）',
+    all.indexOf('workshop.rel.checkStats') >= 0 && all.indexOf('workshop.rel.checkResult') >= 0,
+    JSON.stringify(all.filter((x) => String(x).indexOf('workshop.rel.check') === 0)));
+  check('⑭b 每条 issue 的 message 与「检查类别」都渲染出来（类别挂在 badge 上，用户能看出是哪一类问题）',
+    joined.indexOf('1 组名字/别名落在多个节点上') >= 0 && joined.indexOf('锁道') >= 0
+      && all.indexOf('structure') >= 0 && all.indexOf('cross-card') >= 0 && all.indexOf('lore-quality') >= 0,
+    JSON.stringify(all.filter((x) => ['structure', 'cross-card', 'lore-quality'].indexOf(x) >= 0)));
+  check('⑭c issues / byCheck 存进 store —— 界面只显示宿主返回的清单，客户端不自己统计',
+    (() => { const s = store.getSnapshot(); return Array.isArray(s.relIssues) && s.relIssues.length === 3 && s.relByCheck['cross-card'] === 1; })(),
+    JSON.stringify(store.getSnapshot().relByCheck));
+  fakeCtx.connection.rpc.call = orig;
+  await store.loadGroup(GID);
+  check('⑭d 重新载入分组后清单清空（上一次的体检结果不许跟着新组显示）',
+    texts(redraw()).indexOf('workshop.rel.checkStats') < 0 && store.getSnapshot().relIssues === null, '');
+}
+
 const failed = results.filter((r) => !r.pass);
 for (const r of results) console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.name}  ${r.detail === undefined || r.detail === '' ? '' : '— ' + String(r.detail).slice(0, 160)}`);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);
