@@ -14,7 +14,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 
 | 项目 | 值 |
 | --- | --- |
-| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.9.0` |
+| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.9.1` |
 | 兼容 | DSH `>=0.4.5-rc.4`（含**桌面版**）、Node `>=22`、**零运行依赖**；逐版本实测见 [兼容与权限](#兼容与权限) |
 | 落盘位置 | `<DSH_HOME>/cc-library/`（角色卡）、`<DSH_HOME>/cc-drafts/`（会话草稿）；`DSH_HOME` 默认 `~/.dsh`，旧位置仍读得到 |
 | 文档 | 用户文档＝本文件；改代码前必读 [AGENTS.md](./AGENTS.md)；完整历史 [CHANGELOG.md](./CHANGELOG.md) |
@@ -42,7 +42,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
    dsh --profile <profile> --dump-config
    期望在 `# == @xia-sc/dsh-cc-studio` 那一层下看到两行：`id: dsh-cc-studio`（宿主行）与 `id: preset-cc`（CC 预设行）。
 4. 告诉用户重启：宿主行只在启动时组合 —— CLI 重启 `dsh web`，桌面版退出并重新打开应用。
-5. 重启后可选自检：在「CC 模式」会话里调任意一个 cc_* 工具，返回里带 "build": "0.9.0" 即说明新代码已加载
+5. 重启后可选自检：在「CC 模式」会话里调任意一个 cc_* 工具，返回里带 "build": "0.9.1" 即说明新代码已加载
    （这也是判断「改了但没重启」的唯一可靠依据）。
 6. 不要做的事：
    - 不要手工把 presets/ 拷进 ~/.dsh/.agent-presets/（dsh >= 0.4.7-alpha.4 已不读该目录，拷了也不生效）；
@@ -58,9 +58,9 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 ```bash
 # 从 npm 安装（推荐）
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.9.0    # 锁定版本
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.9.1    # 锁定版本
 
-# 从 GitHub 源安装（可加 #v0.9.0 / #master 指定 tag / 分支）
+# 从 GitHub 源安装（可加 #v0.9.1 / #master 指定 tag / 分支）
 dsh plugin --profile web add github:xia-sc/dsh-cc-studio
 
 # 从本地仓库安装（开发 / 调试）：装出来是 link:，改 lib/*.js 重启即生效
@@ -128,7 +128,7 @@ dsh plugin --profile web remove @xia-sc/dsh-cc-studio       # 卸载（同时移
 | 条目管理 | `cc_update_lorebook_entry` / `cc_delete_lorebook_entries` |
 | 导出与起点 | `cc_preview_export`（体积、估算 token、字段清单、重复内容量）/ `cc_new_card`（破坏性，须用户同意后带 `confirm:true`） |
 | 人物关系（0.8.0） | `cc_get_relations` / `cc_patch_relations` / `cc_render_relations` / `cc_group_check` |
-| 共享世界书（0.9.0） | `cc_get_shared_book` / `cc_patch_shared_book` / `cc_promote_shared_entries` / `cc_apply_shared_book` |
+| 共享世界书（0.9.0） | `cc_get_shared_book` / `cc_patch_shared_book` / `cc_promote_shared_entries` / `cc_apply_shared_book` —— 工坊导出页给两种形态：**CCv3 独立世界书**（`lorebook_v3`）与 **SillyTavern 世界书**（`{entries:{…}}`；ST 只认后者）。导卡时（JSON / PNG / CHARX）自动在导出副本上写 ST 的世界书绑定（`data.extensions.world`），PNG 同时带 `ccv3`（纯 CCv3）与 `chara`（V2 回填）两个块 |
 | 分组管理（0.8.0） | `cc_list_groups` / `cc_create_group` / `cc_rename_group` / `cc_delete_group` / `cc_set_card_group` |
 | 已存库 CRUD | `cc_list_library` / `cc_save_to_library` / `cc_load_from_library` / `cc_delete_from_library` / `cc_rename_in_library` / `cc_get_library_entry` |
 
@@ -184,6 +184,8 @@ node tests/tools-contract.test.mjs          # 只跑 CC 工具链契约（97 项
 ## 更新日志
 
 完整历史见 [CHANGELOG.md](./CHANGELOG.md)。最近几版大多是「另一个 LLM 以工具使用者身份跑回归」挖出来的问题：
+
+- `0.9.1` **共享世界书导不进 SillyTavern**：把 CCv3 独立 lorebook（`{spec:"lorebook_v3", data}`）拖进「世界信息 → 导入」只会得到 `Error importing world info: … Bad Request`。根因有两层（对着本地 ST 1.19.0 源码 + 实测复现）：服务端 `/api/worldinfo/import` 拿到文件第一句就是 `if (!('entries' in worldContent)) throw` —— 顶层没有 `entries` 一律 **400**；而 ST 客户端 `importWorldInfo()` 只转 Novel / Agnai / Risu，整份 `world-info.js` 里搜不到 `lorebook_v3`（**它不是「换个后缀」能解决的**）。另外 ST 的 `parseDecorators()` 只认 `@@activate` / `@@dont_activate`，其余 `@@` 行会**连同正文一起被丢掉**。修法是多一种形态而非改掉原来那种：共享书页与导出页各多一枚「⬇ SillyTavern 世界书」，导出 `{entries:{"<uid>":{…}}}`，字段照抄 ST 自己的 `convertCharacterBook()`，`@@position` / `@@depth` 翻译成 ST 的 `position` / `depth` 并从正文删掉（`@@activate` 原样留给 ST），文件名 = 书名（ST 用上传文件名当世界名）；**CCv3 那份一个字节没动**。实测：同一本真书导出的 ST 文件导入返回 **200 + `{"name":…}`**、ST 落盘、条目 uid 与源 `id` 一致、「年表」落在 `position:1`。测试 647 → 683 项（16 个文件）。**同一版还补齐了 SillyTavern 兼容层**：PNG 现在同时写 `ccv3`（纯 CCv3）与 `chara`（诚实的 V2 投影，按规范摘掉装饰器）两个块，读取器改成**按载荷里的 spec 判并优先 `ccv3`**（此前是「取第一个命中的块」，而 ST 导出的 PNG 是 `chara` 在前，于是把 ST 导出的卡拖进工坊会报「spec 需为 chara_card_v3」）；导出 PNG / CHARX / JSON 时若该卡所属分组有共享书，会**只在导出副本上**写 ST 的世界书绑定（`data.extensions.world = 书名`）—— ST 里的顺序是先导世界书、再导卡，绑定就自动接上（卡内私有条目还要点一次 Import Card Lore）。规范同样明文禁止往卡片里加应用私有字段，所以卡片顶层一个 ST 私有键都不加。实测：我们导出的双块 PNG 进 ST 返回 **200**，ST 回读 `data.extensions.world`、卡内 3 条书条目与 V3 独有字段俱在且世界名可解析；ST 落盘的「V2 在前」PNG 我们也能读了。测试 683 → **718 项（17 个文件）**。**同一版还有第三步：V2 卡现在能进工坊了** —— SillyTavern 里绝大多数存量卡是 V2（ST 界面新建的就是 V2 形状，只是 `spec` 被改写成 v3 标签），此前拖 PNG/JSON 进来只会得到「spec 需为 chara_card_v3」。现在 `upgradeCardToV3()` 一份实现管 PNG / CHARX / JSON 三条导入路径（规则照 ST 的 `readFromV2()`：顶层 V1 平铺字段只在 `data` 缺值时补、`creatorcomment`→`creator_notes`、`talkativeness`/`fav`→`data.extensions`、纯 V1 整份包成 `data`），导入返回带 `upgradedFrom`、界面明说「V2 卡已升级为 CCv3」（不静默变换）；JSON 导入也收口到宿主的新端点 `cc_importFromJson`（客户端不再自己 parse 卡 JSON）。`cc_setDraft` 故意不升级（它是工坊自己草稿的镜像）。测试 718 → **735 项（17 个文件）**。**需重启 dsh（桌面版重启应用）→ 刷新页面**。
 
 - `0.9.0` **「共享世界书」的收口版**：0.8.2 把世界设定从「每张卡一份」挪到了「组上一本」，但**所有读数、判定与质量检查还按「卡里」算** —— 五轮 LLM 侧回归把它逐个补平：四个读数工具（`simulate` / `lint` / `group_check` / `preview_export`）全部拆成「**卡内 / 共享书 / 合计**」三段（`simulate` 此前会把「会命中」报成「不会命中」，实测低估约 3 倍）；**提升去重后自动同步草稿**（否则下一次保存会把重复原样写回卡里）；`cc_validate` 的「世界书 ≥5 条」改走合计口径（按最佳实践去重过的卡此前**必然判不合格**）；重复检测补上「**卡 ↔ 共享书**」一类（`bookDuplicates` / `wouldClean`）；`constant` 与 `@@decorator` 的存在性检查两端统一；**共享书自己的逐条质量检查**补上（此前「共享书质量走 `cc_get_shared_book`」只是一句没实现的说明 —— 那条线上只有重复检测）。口径与质量各收口成一个纯函数（`lorebookMetrics` / `auditLoreEntries`），以后改口径只动一处。测试 604 → 647 项（15 个文件）。
 

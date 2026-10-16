@@ -2,6 +2,83 @@
 
 `dsh-cc-studio` 的版本变更记录，倒序排列（最新在上）。README 只保留最近几条，完整历史在本文件。
 
+## 0.9.1
+
+**共享世界书导不进 SillyTavern：把 CCv3 独立 lorebook 拖进「世界信息 → 导入」，只会得到一条 `Bad Request`。**
+
+```
+Error importing world info: Error: Failed to import world info: Bad Request
+    at importWorldInfo (world-info.js:5912:19)
+```
+
+0.9.0 的共享书是 **CCv3 官方独立 lorebook**（`{spec:"lorebook_v3", data}`）—— 这是规范形态，认 CCv3 的客户端能直接把它绑成全局世界书。但**SillyTavern 不认**，而工坊当时只有这一种导出，于是「拷出去就能用」在 ST 上直接变成一条报错（用户实机报告）。
+
+### 根因：两处都堵着，而且都不是「换个后缀」能解决的
+
+| 层 | 事实（本地 SillyTavern **1.19.0** 源码 + 实测） |
+| --- | --- |
+| 服务端 `src/endpoints/worldinfo.js` 的 `/api/worldinfo/import` | 写完临时文件后**第一句**就是 `if (!('entries' in worldContent)) throw new Error('File must contain a world info entries list')` → 顶层没有 `entries` 一律 **400**（`Is not a valid world info file`），**且不落盘** |
+| 客户端 `public/scripts/world-info.js` 的 `importWorldInfo()` | 只转 Novel / Agnai / Risu 三种第三方格式；整份文件里**搜不到 `lorebook_v3`** —— ST 根本没有这个规范的概念，那条 `Bad Request` 就是上面那句 `throw` 的 400 |
+| 装饰器 | ST 的 `parseDecorators()` 只认 `@@activate` / `@@dont_activate`（`KNOWN_DECORATORS`），其余 `@@` 行会被它**连同正文一起丢掉**（它从第一个非 `@@` 行开始截取正文）—— 就算格式能进，autoLorebook 的 `@@position` / `@@depth` 也会静默消失、5 条全落在默认插入位置 |
+
+**实测复现（改前）**：把 `~/.dsh/cc-books/1792051504349-e3kz.json` 原样 POST 到本机 `/api/worldinfo/import` → `400 Is not a valid world info file`，ST 的 worlds 目录里没有新文件。顺带记一笔：Chrome DevTools 的「Copy as fetch」**不带文件内容**（body 里那段 `filename="1.json"` 后面是空的），所以那种片段单独是复现不出来的 —— 定位靠的是源码 + 真文件。
+
+### 修法：多一种形态，而不是改掉原来那种
+
+- 工坊「共享世界书」页与导出页各多一枚 **「⬇ SillyTavern 世界书」**（原来那枚改名为「⬇ CCv3 独立世界书」，两枚并列）。导出 ST 原生形态 `{entries:{"<uid>":{…}}}`。
+- 条目字段**照抄 ST 自己的 `convertCharacterBook()`**（ST 唯一权威的 CC 书转换器）：`key←keys`、`keysecondary←secondary_keys`、`comment←comment/name`（并置 `addMemo`）、`content←content`、`order←insertion_order`、`position←…`、`disable←!enabled`、`uid←id`（缺 `id` 时退回下标）、其余可调项一律从 `extensions.*` 取；`extensions` 原样带过（`cc_auto` / `cc_world_ref` 都还在）。每条还补齐 ST 的 `newWorldInfoEntryTemplate` 全字段，免得 ST 编辑器读到一堆 `undefined`。
+- **`@@position` / `@@depth` 翻译成 ST 字段并删掉该行**（不翻就等于被 ST 丢掉）：`before_desc` / `before_char` → 0，`after_desc` / `after_char` → 1，`an_top` / `an_bottom` / `at_depth` / `em_top` / `em_bottom` 各有对应；认不出的值跟 ST 自己的回退走（非 `before_char` 一律 after，`@@position scenario` 就落在这里 —— ST 没有 scenario 这个插入点，我们不发明）；`@@depth N` → `position:4`（atDepth）+ `depth:N`。`@@activate` **原样留给 ST**（它本来就有这个语义，硬翻成 `constant` 只是多一层猜测）；未知装饰器不猜、不删。
+- 文件名 = **书名**（ST 用上传文件名当世界名），所以这份不再是 `.lorebook.json` 后缀 —— 否则导入后世界名叫「锁天司·共享设定.lorebook」。
+- **CCv3 那份一个字节没动**（`spec` / `data`、`.lorebook.json` 文件名照旧）：两枚按钮各有各的读者，**这是规范差异，不是「谁写错了」** —— 别在下一次改动里顺手把两种形态合并成一种（CCv3 校验器对多出来的顶层键未必宽容，ST 又只认 `entries`，合并出来的文件两头不讨好）。
+- 工具侧的措辞同步（`cc_get_shared_book` / `cc_validate` / `cc_preview_export` 的共享书提示）：明说 **SillyTavern 要拿「SillyTavern 世界书」那份**，不再笼统写成「导出后就能在客户端里绑成全局世界书」。
+
+### 实测（本地 ST 1.19.0，跑着的服务）
+
+- 改前：CCv3 那份 → `400 Is not a valid world info file`（未落盘）。
+- 改后：同一本真书（锁天司·共享设定，5 条）导出的 ST 文件 → **200** `{"name":"ZZ-cc-studio-probe"}`，ST 落盘成功；`/api/worldinfo/list` 里看得到，条目 uid 与源 `id` 逐条一致，「年表」落在 `position:1`、正文里不再有 `@@position` 那一行（探针世界书已用 `/api/worldinfo/delete` 删除，真实数据零残留）。
+
+- `tests/shared-book-st-export.test.mjs` 新增 **36 项**：顶层形状（= ST 服务端那句判据的模拟）而 CCv3 那份**必须**没有顶层 `entries`、字段映射逐条对照、四类装饰器、模板字段齐全、`undefined` 不泄漏、两处入口产同一份文件、文件名、词表 zh/en。
+- `npm test` 647 → **683 项**，16 个文件全绿（第一部分；加上下面那层兼容层是 **718 项 / 17 个文件**）。
+- **生效方式：宿主半（工具文案）与客户端半都改了 → 重启 dsh（桌面版重启应用）+ 刷新页面；只刷新页面看不到 `cc_validate` 的新措辞。**
+
+### 二、顺手把 SillyTavern 兼容层补齐：PNG 双块 / `ccv3` 优先 / 世界书绑定
+
+上面那条不是终点。对着 **CCv3 规范原文**（[SPEC_V3.md](https://github.com/kwaroran/character-card-spec-v3/blob/main/SPEC_V3.md)）与本地 ST 1.19.0 源码把两边过了一遍，发现还有三处「ST 本来能拿到，我们却没给」：
+
+- **PNG 只写了一个块**：ST 自己导出时**两个都写**（`chara` = 给只认 V2 的读取器回填用，`ccv3` = 规范 MUST；`src/character-card-parser.js:15-46`），读取时优先 `ccv3`。我们只写 `ccv3` —— 等于放弃了「老 ST / 只认 `chara` 的工具」这一整片读者。
+- **我们的读取器取「第一个命中的块」**：ST 导出的 PNG 恰好是 `chara` 在前、`ccv3` 在后，于是**把 ST 导出的卡拖进工坊会报「spec 需为 chara_card_v3」** —— 明明同一张文件里就躺着正确的 `ccv3` 块。规范对此有明文：「if the application detects both `chara` and `ccv3` chunk, the application *SHOULD* use the `ccv3` chunk」。
+- **ST 的「角色↔世界书」绑定没人写**：ST 的绑定就是 `data.extensions.world = <世界书文件名>`（`characters.js:391,617`），而我们的共享书导出的文件名就是书名 —— 只要导卡时把这名字写进去，用户在 ST 里导完书再导卡就**自动绑上**，不必再去下拉框里挑一次。
+
+**修法（兼容层只在导出副本上生成，真源永远是纯 CCv3）**
+
+- `pngCardChunks()`：每个 PNG 写两个 tEXt 块，顺序与 ST 一致（`chara` 在前）—— `ccv3` 是**原卡一个字节不改**；`chara` 是 `stV2Projection()` 生成的**诚实 V2 卡**：只保留 V2 的字段集（`nickname` / `creator_notes_multilingual` / `source` / `group_only_greetings` / `assets` / 两个日期**一个都不进**），并按规范「On backfilling V2, the application *SHOULD* remove all decorators」把条目正文开头的 `@@` 装饰器行摘掉。
+- `extractCardFromPngBytes()`：改成**按载荷里的 `spec` 判**并优先 V3（块名与顺序都不作数 —— 现实里真有工具把 V3 塞进 `chara`）；只有 V2 块时给一句可读的错误（点名 `chara_card_v2`），不再让 spec 校验兜底报一句看不懂的话。`embedCardIntoPngBytes()` 本来就清旧块，现在两个块一起换。
+- `withStWorld(card, 书名)`：导出 PNG / CHARX / JSON 时，若该卡所属分组有共享书，就**只在导出副本上**写 `data.extensions.world = <书名>`；**没书不写**（不给 ST 留悬空世界名），草稿与库里的卡一个字节都不动（同「并入本卡」家规）。返回值里的 `draft` 也不带这个 ST 专有字段。
+- **不学 ST 往卡片顶层塞 V1 平铺字段**：规范同节写着应用 *MUST* follow the specification、私有数据只能放 `extensions` —— 兼容层只活在 `chara` 块与 `extensions` 里（`tests/st-compat.test.mjs` 有一条钉住「顶层键 = spec, spec_version, data」）。
+- 文案：导出页共享书块与 `cc_validate` / `cc_preview_export` 的共享书提示写明 ST 里的顺序（**先导世界书、再导卡** → 自动绑定；卡内私有条目还要点一次 Import Card Lore 才生效）。
+
+**实测（本地 ST 1.19.0，跑着的服务；探针角色/世界书跑完即删，零残留）**
+
+- 我们新导出的双块 PNG → ST 导入 **200**；ST 回读 `spec=chara_card_v3/3.0`、`data.extensions.world` = 书名、3 条卡内书条目与 V3 独有字段（`nickname` / `assets`）都在，且**那个书名确实在 ST 的世界书列表里** → 绑定可解析。
+- ST 落盘的那种「`chara`=V2 在前」的 PNG → 我们的读取器现在读到 `chara_card_v3`（**改动前这里会抛「spec 需为 chara_card_v3」**）。
+
+- `tests/st-compat.test.mjs` 新增 **52 项**：装饰器摘除、V2 投影字段集、绑定只在副本上、两个块的载荷、按 spec 判块、旧块清理、真实 RPC 线上 `stWorld` 的接线与草稿纯净、客户端半的三处传参与词表，以及下面的 V2/V1 升级导入。
+- **生效方式同上：重启 dsh + 刷新页面。**
+
+### 三、V2 卡也能导入了：升级，而不是拒绝
+
+顺着「ST 不兼容」这条线往下看，发现**最影响日常的一条不兼容其实在我们这边**：SillyTavern 里绝大多数存量卡是 **V2**（ST 界面新建出来的就是 V2 形状，它只是把 `spec` 改写成 v3 标签），而工坊只收 `chara_card_v3` —— 用户把 ST 里那张卡的 PNG/JSON 拖进来，得到的是一句「spec 需为 chara_card_v3」，**一张都进不来**。
+
+- **一份实现管三条路**：新增纯函数 `upgradeCardToV3(obj)`（返回 `{card, from}`），`normalizeDraft()` 调它，于是 **PNG / CHARX / JSON 三条导入路径共用同一套升级规则**。规则照 ST 自己的 `readFromV2()`（`characters.js:504-556`）：顶层 V1 平铺字段**只在 `data` 缺该值时**补进去（不覆盖 V2 自己的值）、`creatorcomment` → `data.creator_notes`、`talkativeness` / `fav` → `data.extensions`、`tags` 逗号字符串 → 数组；**纯 V1**（没有 `data`）整份包成 `data`；`spec`/`spec_version` 改写成 `chara_card_v3`/`3.0`。升级是**深拷贝**，调用方的对象一个字节都不改。
+- **不是静默变换**：导入返回里带 `upgradedFrom`（`chara_card_v2` / `chara_card_v1`，本来就是 V3 时为 `null`），界面在提示后追加「V2 卡已升级为 CCv3」—— 用户得知道这份卡被改过形状。
+- **JSON 导入也收口到宿主**：新增端点 `cc_importFromJson`。此前**客户端自己 parse 且只认 v3**，宿主有升级能力也用不上；现在客户端只负责把文本递过去（顺便支持自家草稿文件那种 `{key,rev,draft}` 包一层），错误信息由宿主统一给（「不是合法 JSON：…」「不是可识别的卡片（没有名称）」）。客户端的 `store.errNotCcJson` / `errSpecMismatch` / `errNoData` 三个键随之删除。
+- **PNG 侧配套**：`extractCardFromPngBytes()` 遇到「只有 `chara`（V2）块」的 PNG 不再抛错，而是把那份 V2 卡交出去让上层升级 —— 这正是「ST 落盘的那种 PNG / 只写过 chara 的老工具导出」会走到的分支。
+- ⚠️ `cc_setDraft` **故意不升级**：它是工坊自己那份草稿的镜像，在写入口偷偷变形状会让「界面里是什么」和「盘上是什么」对不上；要升级的是**外部输入**（三条导入路径），不是内部同步。
+
+- `tests/st-compat.test.mjs` 35 → **52 项**（V2/V1 升级纯函数 8 项、真实 RPC 线上 JSON/PNG 升级导入 5 项、客户端不再自己 parse 的守卫 2 项、⑤c 从「报错」改成「升级」2 项）。
+- `npm test` 718 → **735 项**，17 个文件全绿。
+- **生效方式同上：重启 dsh + 刷新页面。**
+
 ## 0.9.0
 
 **「共享世界书」这一整段迭代的收口版：把「写进去了」补成「处处自洽」。**
