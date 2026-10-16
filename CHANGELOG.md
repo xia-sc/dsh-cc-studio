@@ -2,6 +2,78 @@
 
 `dsh-cc-studio` 的版本变更记录，倒序排列（最新在上）。README 只保留最近几条，完整历史在本文件。
 
+## 0.10.0
+
+**卡组的第五个功能不该再动五个工具的口径。**
+
+### 现象：两轮补丁打在同一个地方
+
+0.9.0 的组级共享世界上线后，连着两轮修的都是同一件事 —— `cc_simulate_trigger` / `cc_lint_lorebook` / `cc_group_check` / `cc_preview_export` / `cc_validate` 五个「读数」工具**各自补了一遍**「把共享书算进来」。当时的注释就写着这个症状：
+
+> 口径已经散落在 simulate / lint / group_check / preview_export / validate 五个工具里，于是连着两轮出现「改了四个、漏了第五个」与「validate 改了、lint 漏了」。
+
+0.9.1 结束时的实际形状（用户直接点出来的问题）：
+
+| 语义 | 有几份实现 | 位置 |
+| --- | --- | --- |
+| 卡组数据读取（组 / 成员 / 共享书） | **2 份**（两半互不 import，靠测试逐字比对维持同步） | `listGroups` / `groupMemberIds` / `libraryCardsFor` / `bookCardsFor` / `readBookRaw`… 在 `index.js` 与 `agent.js` 各一套 |
+| 「这次操作哪个组、哪本书」 | **每个工具各写一遍** | simulate / lint / preview_export / validate / group_check / 宿主 getBook / groupCheck |
+| 世界书分段统计 | 1 份，但只支持「1 卡 + 1 书」 | `lorebookMetrics(cardEntries, sharedEntries)` |
+| 卡组级统计 | **另一套，与上面平行**（同一个 constant 数各算一遍） | `checkGroup().stats` |
+| 界面统计 | 客户端再算一遍（且只算卡内） | `client.js` 的 overview |
+
+**结论**：加「卡组级一致性检查」这类新功能时，无论写成新工具还是塞进 `cc_group_check`，都要先动数据层、再动口径函数、再让 5 个工具复核一遍 —— 卡组当时**不是一层，是一堆工具的组合**。
+
+### 根因：同一个语义存在多份实现，而不是谁手滑
+
+「两半同构」这条家规（`index.js` 与 `agent.js` 互不 import，各自实现同一份逻辑，靠测试逐字比对）在**纯函数**上是纯负担：口径改一处就得记得改另一处，漏一处就是线上分叉 —— 而「漏一处」正是人最容易犯的错。真正需要两份的只有**落盘根与读盘**（各自的 `DSH_HOME` 解析），不是统计与判定。
+
+### 修法：scope / 口径 / 检查表三层，且两半共用同一个文件
+
+新增 **`lib/group-layer.js`**（608 行，纯函数、零 IO、零环境变量），`lib/index.js` 与 `lib/agent.js` **都 import 它**：
+
+| 层 | 入口 | 职责 |
+| --- | --- | --- |
+| 数据层 | `readLibrarySnapshot()`（两半各一份 IO）+ `groupScope(input)` | 一次遍历 + 一次 parse 拿到 meta 与 draft；`来源卡 → meta.groupId → 组 + 成员 + 书` 的唯一入口。支持 `include` / `maxCards` / `snapshot`（传了就不回读盘） |
+| 口径层 | `groupMetrics()` | **所有「多少条 / 多少 token」只在这里产生**：`card` / `members.byId` / `members.total` / `book` / `all` 五段 + `derived`（群聊固定开销、最坏情况单次触发、跨卡重复触发词、组内五维漂移）。`lorebookMetrics(card, shared)` 保留为它的薄包装，**旧签名输出逐字不变** |
+| 检查层 | `runGroupChecks()` + `GROUP_CHECKS` 注册表 | 一份清单、一套 issue 形状（`{check, level, code, message, refs, contentKeys?}`）、一个 `byCheck` 计数。0.8/0.9 的七类 issue 全部迁移，**code / level / message / refs 与 stats 逐字未变** |
+
+同时把散落的重复实现收进卡组层（两半改为 import）：`REL_TYPES` / `REL_TYPE_LABELS` / `REL_BEGIN` / `REL_END`、`WORLD_DIMS` / `AUTO_NAMES` / `isAutoEntry` / `looksLikeLegacyAuto`、`estimateTokens` / `lorebookTokens` / `contentKeyOf`、`auditLoreEntries` / `worstCaseTrigger` / `scanSharedEntries`。
+
+`checkGroup(group, members, cards, sharedEntries, opts)` 保留旧签名与旧输出形状（薄包装，函数体 6 行 —— 以前是 48 行 if 序列），所以宿主 `cc_groupCheck`、工具与既有测试**一行都不用改**。
+
+### 第五个功能（验收用例）：卡组级一致性检查
+
+按用户勾选的清单，`GROUP_CHECKS` 新增 **cross-card** 类别（四项，单卡体检永远看不到 —— 问题在「卡与卡之间」）：
+
+| code | 判据 |
+| --- | --- |
+| `cross-card-duplicate-keys` | 同一个触发词被多张卡 / 共享书共用（**只报涉及 ≥2 个来源的** —— 同一张卡内部两条撞词属于单卡 lint 的 `duplicate-keys`，不在这里对同一个问题喊第二遍） |
+| `book-duplicate-in-card` | 卡内条目与共享书**逐字重复**（签名只用来筛，判等逐字比对） |
+| `world-drift` | 同一维度在多张成员卡里写成不同设定（一方是另一方子串 / 逐字相同都不报） |
+| `card-auto-only` | 成员卡的世界书全是 autoLorebook 生成的条目（在组里等于没有自己的设定） |
+
+外加 **lore-quality** 类别（共享书自身的死 key / 只含维度名的 key / keys 不在正文 —— 这一格此前只有 `cc_get_shared_book` 在报）。
+
+**这就是「一层」的证明**：加这五项只改了 `lib/group-layer.js` 的注册表与判定，`cc_simulate_trigger` / `cc_lint_lorebook` / `cc_preview_export` / `cc_validate` / `cc_get_shared_book` 的**口径代码一行未动**（`tests/group-layer-guard.test.mjs` 钉住）。入口仍是 `cc_group_check`（工具）与 `cc_groupCheck`（宿主），新增 `checks?` 参数可只跑某几类，返回带 `checks` / `byCheck`。
+
+客户端顺带改了渲染：体检结果从「一行拼接文本」改成按 error / warn 分组的清单（每条挂检查类别 badge），issues / byCheck 存进 store、换组自动清空；新增词表键 `workshop.rel.checkStats` / `workshop.rel.checkPass`（zh + en）。
+
+### 顺手修的与记录在案的
+
+- **组体检的读盘从 `1+2N` 降到 `1+N`**：`listLibraryEntries()` 以前解析完整份卡 JSON 却只留 meta，于是体检要对每张卡再读一遍盘，而且拿不到条目（跨卡检查根本做不了）。现在 `readLibrarySnapshot()` 一次拿到 meta + draft，`listLibraryEntries()` / `libraryCardsFor()` / `bookCardsFor()` 都是它的视图。
+- **组文件缺失时不再提前返回**：旧 `sharedBookScopeFor` 从不看组文件，而新的 `groupScope` 一开始写了「组不存在就早退」，那会让「组没了、书还在」的卡突然看不到自己的书 —— 已改回读取成员与书（`ok:false` 只表示组本身不在）。
+- **`groupScope` 的书摘要带 `doc`**：书级参数（`description` / `scan_depth` / `token_budget`）与含 `enabled:false` 的全部条目只有完整文档上有，导出/编辑类调用点需要它。
+- **已知不可达**：`type-unknown` 这条检查永远不触发 —— `normalizeGroup()` 早把未知 `type` 归一到 `other`（`relTypeOf`），所以能走到 `runGroupChecks` 的边都是合法类型。测试里钉住这个事实（`tests/group-checks.test.mjs` ⑦），别再把它当成一条有效检查。
+
+### 测试
+
+- 新增 4 个文件、109 项断言：`tests/group-scope.test.mjs`（24）、`tests/group-metrics.test.mjs`（25）、`tests/group-checks.test.mjs`（22）、`tests/group-consistency.test.mjs`（18）、`tests/group-layer-guard.test.mjs`（16 —— 耦合守卫：口径只有一份、读数工具不再自己读盘、检查项 code 只写在卡组层）。
+- `tests/relations-view.test.mjs` 加 4 项渲染断言（体检清单分组渲染、issue 存进 store、换组清空）。
+- **重构不变性的证据**：第 3 步（六个消费点改读新层）提交时，`git diff --stat -- tests/` 为空 —— 现有 784 项断言一字未改即全绿。
+- `npm test` 735 → **844 项**，17 → **22 个文件**。
+- **生效方式：宿主半、预设半、客户端半都改了 → 重启 dsh（桌面版重启应用）+ 刷新页面。** 只刷新页面看不到新的 `checks` 参数与 `byCheck` 字段；工具返回里的 `build` 应为 `0.10.0`。
+
 ## 0.9.1
 
 **共享世界书导不进 SillyTavern：把 CCv3 独立 lorebook 拖进「世界信息 → 导入」，只会得到一条 `Bad Request`。**
