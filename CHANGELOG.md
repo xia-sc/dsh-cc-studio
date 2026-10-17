@@ -2,6 +2,137 @@
 
 `dsh-cc-studio` 的版本变更记录，倒序排列（最新在上）。README 只保留最近几条，完整历史在本文件。
 
+## 0.10.3
+
+**模型把换行写成了字面 `\n`，卡导进 SillyTavern 后整段显示成「说完这句话。\n\n下一段」。**
+
+### 现象：多行文本落盘成字面 `\n`（用户实机报告 P1）
+
+用户端到端测试报告（`E:\dsh\cc\cc-mode-llm-ux-report-newline-escape.md`）：六步工作流全链路可用、`cc_validate` 0 error / 0 warning，但所有经 `cc_patch_character` / `cc_patch_greetings` / `cc_patch_world` 写入的字符串，换行都落盘成**字面两字符** `\` + `n`：
+
+```jsonc
+"description": "褚晚灯，十七岁……唯一在册社员。\\n\\n外貌：……"
+```
+
+同一张卡里 `alternate_greetings` 与世界书条目却是真换行 —— 于是报告作者判断为「patch 类工具多转义了一层」，并推断「无法靠多写反斜杠绕过」。
+
+### 根因：不是工具的转义 bug，是模型在 tool call 里写成了字面 `\n`
+
+两处取证推翻了「工具多转义」的假设：
+
+1. **工具层往返测试**：直接向 `cc_patch_character` 传真换行，读回就是真换行；传字面 `\n`，读回原样保留 —— 工具只做 `String()`，没有任何 `JSON.stringify` / `replace`。
+2. **会话日志（`session-4b8901fa-…`）解帧看模型原始 arguments**：18 次工具调用里有 6 次在 JSON 字符串里写了 `\\n`（JSON 层多转义一层，parse 后就是字面 `\n`）；同一模型对 `alternate_greetings` 和 lorebook 的 `content` 写的却是正确的 `\n`（真换行）。所以「有的字段正常、有的不正常」来自**模型输出不一致**，而「传字面 `\n` 落盘更多反斜杠」只是同一现象的单向叠加，并非再转义。
+
+结论：工具侧不能假设模型写对。卡内文本没有「字面反斜杠 n」的正当用途，写类工具应先做一次解码。
+
+### 修法：写类工具统一解码字面转义
+
+- 新增 `decodeEscapedText()` + `textArg()`（`lib/agent.js`）：把字面 `\n` / `\r` / `\t` 解成真字符；**多层转义**（模型写了 `A\\\\nB` 这种）逐层收敛，最多 4 轮；成对反斜杠先占位，避免误伤。
+- 覆盖所有模型输入的文本字段：`cc_patch_character`（name/nickname/description/personality/scenario/system_prompt/post_history_instructions/tags/creator_notes/creator）、`cc_patch_world`（五维，`extensions.cc_world` 与 autoLorebook 条目因此一并正确）、`cc_patch_greetings`（first_mes / alternate / group_only / mes_example）、`cc_add_lorebook_entries`、`cc_update_lorebook_entry`、`cc_patch_book_meta`、`cc_patch_shared_book`（条目 content/name/keys 与书级参数）。
+- **只作用于模型输入的工具参数**：工坊保存（`cc_setDraft`）、导入（JSON / PNG / CHARX）路径一个字节没动 —— 那两条链路本来就是真换行。
+- 6 项回归断言（`tests/tools-contract.test.mjs` ⑫a–⑫f）：单层 / 多层字面转义、真换行保留、问候语、世界书条目、书级元信息（含 `\t`）。
+
+### 顺带（同一份报告的 P2 / P4）
+
+- **P2 卡内 `token_budget` 默认 1200 → 2400**：报告实测一张正常密度卡（5 维 + 7 条）落盘就 1620，默认值一落盘就超预算。两半空卡模板、读数兜底与卡组层 fallback 一起改（`lib/index.js` / `lib/agent.js` / `lib/group-layer.js`）；已有卡不受影响（其 `token_budget` 已落盘）。
+- **P4 autoLorebook 的「力量体系」条目裸 `@@activate` → `@@activate 100`**：其余维度本来就有 `@@position` / `@@depth`，只有这一条是裸装饰器。
+- **未做**：P3（从五维正文自动抽实体名当 keys —— 抽取规则需要单独设计，宁可让模型带 `loreKeys`）；P5（`@@position` 各取值在 SillyTavern 的映射确认 —— 需要 ST 侧实测，本版只记录现状）。
+
+### 测试
+
+`tools-contract` 98 → 104 项；全量 `npm test` 858 → **864 项**。
+
+### 生效方式
+
+工具半、宿主半与卡组层都改了（`lib/agent.js` / `lib/index.js` / `lib/group-layer.js`）：**重启 dsh（桌面版退出应用再启动）**，工具返回里的 `build` 应为 `0.10.3`。⚠️ **已存卡里已经被写坏的字面 `\n` 不会自动修复**（它已经是普通文本了）—— 需要重新调用一次对应工具写入那几个字段，或在工坊里手动改回真换行。
+
+## 0.10.2
+
+**长 JSON 里的一个尾逗号就能让整轮对话失败，而插件此前没有任何提示让模型「分小步写」。**
+
+### 现象：`DeepSeek Messages stream: tool input is invalid JSON`
+
+dsh 0.2.1-rc.2 上跑 CC 模式，某一步模型调用 `cc_patch_character` 时整轮失败：
+
+```
+本轮运行失败 DeepSeek Messages stream: tool input is invalid JSON
+```
+
+会话日志取证（`session.v4.jsonl.zstd` 解帧后重建 `tool-call-chunks`）：模型生成的 arguments 是 1230 字符的 JSON，末尾是 `..."tags":["校园怪谈",...],}` —— **一个尾逗号**。工具从未被调用，卡片数据也没有被写坏。
+
+### 根因：provider 对 tool input 是严格 `JSON.parse`，且默认不重试
+
+- `@deepseek-ai/dsh-llm-deepseek` 在 `message_stop` 时对每个 tool-call 的 arguments 做 `JSON.parse`，失败即抛 `MALFORMED_RESPONSE`（源码里的 `tool input is invalid JSON`），**没有容错修复**（上游若将来改成 partial-json 修复，这条自然消失）。
+- `@deepseek-ai/dsh-llm` 的默认 `retryableCodes` 只有 `EMPTY_RESPONSE` / `RATE_LIMIT` / `SERVER` / `TIMEOUT` / `TRANSPORT`，`MALFORMED_RESPONSE` 不在其中 → `dsh-llm-retry` 不会自动重试。
+- 于是失败形态是「模型偶尔手滑一次，用户那一轮直接没了」——与卡片数据无关，工具本身也没执行。
+- 同类报错在社区 bundle 的 issue 里也核过：`ranxianglei/billion-context#2605`（DSH 0.2.0-rc.2，坏参数形态不同、根因相同）；对应 PR #2610 的做法也只是在自己的补丁层给 provider 加 `MALFORMED_RESPONSE`，**没有改 DSH 内核** —— 与下面的两条修法一致。
+
+### 修法：插件侧降低概率（提示词），用户侧可开自动重试
+
+插件能施加影响的只有**模型可见文本**：
+
+- **persona 加入 JSON 卫生与分步写规则**：工具参数必须是严格合法 JSON（最后一个字段 / 数组元素后不写逗号、不用 ```json 包裹、不要注释与单引号、字符串内换行要转义），一次只传 1-3 个字段，长字段分多次调用，**数组 / 对象字段单独一批**；并明确说明「非法 JSON 时 provider 会在调用前判本轮失败」。
+- **五个主要写工具的 description 同步这句规则**（`cc_patch_character` / `cc_patch_world` / `cc_add_lorebook_entries` / `cc_patch_greetings` / `cc_patch_book_meta`）——工具描述是模型每次决定调哪个工具时都会读的文本。
+- 回归测试：`tests/preset-install.test.mjs` 断言 persona 含该规则（两份清单都要有）；`tests/tools-contract.test.mjs` 断言五个写工具的 description 含「严格合法的 JSON」。
+
+用户侧（可选，但更彻底）：给 provider 行加 `retryPolicy`，把 `MALFORMED_RESPONSE` 纳入自动重试（每次重试是一次新请求，模型重新生成，不消耗会话历史）：
+
+```yaml
+- id: llm-deepseek-account
+  name: '@deepseek-ai/dsh-llm-deepseek-account'
+  config:
+    retryPolicy:
+      mode: normal
+      retryableCodes: [EMPTY_RESPONSE, RATE_LIMIT, SERVER, TIMEOUT, TRANSPORT, MALFORMED_RESPONSE]
+```
+
+写进 profile 的 `cordis.patch.yml`；⚠️ **补丁层对 `config` 是整条替换、不做深合并** —— 五个默认码必须写全，否则会静默丢掉限流 / 服务端错误的重试。`retryPolicy` 由 `@deepseek-ai/dsh-llm-deepseek` 的 Config 透传，`dsh-llm-retry` 会在同一个打开的轮次内重跑失败步骤（每次重试多一次计费请求；坏输出不进模型历史，不会污染会话）。
+
+### 测试
+
+`preset-install` 83 → 84 项、`tools-contract` 97 → 98 项；全量 `npm test` 856 → **858 项**。
+
+### 生效方式
+
+预设与工具描述都随宿主加载：**重启 dsh（桌面版退出应用再启动）**。persona / 工具描述改动不需要刷新页面；写进 profile 的 `retryPolicy` 同样在重启后生效。
+
+## 0.10.1
+
+**dsh 0.2.1-rc.2 的 prompt 变量表里没有 `{{cwd}}`，而 CC 预设的 persona 还在引用它。**
+
+### 现象：CC 模式每一轮都「本轮运行失败」
+
+用户环境：dsh 桌面版 `0.2.1-rc.2`。CC 模式的会话能建立、roster 里照常可选、胶囊与工坊都正常，但任何一轮对话都直接失败：
+
+```
+本轮运行失败 unknown prompt variable "{{cwd}}" in section "deployment:persona-prefix";
+registered variables: provider, model
+```
+
+### 根因：0.2.1 移除了内置 `{{cwd}}`，而段插值对未知引用是**严格**的
+
+`presets/cc.patch.yml` 与 `presets/cc/agent.cordis.yml` 的 persona prefix 写的是「模型 {{model}}，工作目录 {{cwd}}」。这条写法在 0.1.x 上成立（当时 `{{cwd}}` 是内置变量），但 `@deepseek-ai/dsh-system-prompt` 在 0.2.1-rc.2 的注册表只剩 `provider` / `model`：
+
+- 工作目录改由 working-directory 服务以 **runtime context**（必需的 user 上下文）提供给模型，不再是 prompt 变量；
+- 段文本插值遇到未注册的 `{{name}}` **直接抛错**（「格式错误的提示词比明确失败更糟」），发生在任何模型请求之前 —— 所以失败形态是「每轮运行失败」，而不是某条工具报错。
+- `dsh-system-prompt` 的 README 已写明：`Custom persona templates must not depend on a built-in {{cwd}} variable`；内置 `standard` 预设的 persona 也只写 `{{model}}`。
+
+预设本身挂载正常、不判 broken，`--dump-config` 与 roster 诊断都看不出来 —— 唯一线索就是运行时报错里那句 `registered variables: provider, model`。
+
+### 修法：persona 只保留 `{{model}}`，并把变量白名单钉进测试
+
+- 两份清单（`presets/cc.patch.yml` 的声明行、`presets/cc/agent.cordis.yml` 的目录模板）的 persona prefix 同步删掉「，工作目录 {{cwd}}」，保留「模型 {{model}}」与全部工作流文本；注释改写成 0.2.1 的事实，并注明**别再加回来**。
+- `tests/preset-install.test.mjs` 新增 4 项断言：预设里不许出现 `{{cwd}}`；非注释行里的 prompt 变量必须落在 dsh 0.2.1-rc.2 的注册表白名单 `provider` / `model` 内；两份清单的变量集合一致；`{{model}}` 仍在（防止有人把整句一起删掉）。dsh 以后再改注册表，先到这里改白名单 —— 而不是等用户在线上每轮撞一次。
+
+### 测试
+
+- `tests/preset-install.test.mjs` 79 → 83 项；全量 `npm test` 852 → 856 项。
+- 白名单是**显式快照**：将来 dsh 若新增/移除 prompt 变量，这条测试会红，逼人回来核对预设，而不是静默变成线上运行失败。
+
+### 生效方式
+
+预设声明在补丁层里，**重启 dsh（桌面版退出应用再启动）即生效** —— 不用重装插件、不用刷新页面。生效后 CC 模式的第一轮对话应正常；工具返回里的 `build` 应为 `0.10.1`。
+
 ## 0.10.0
 
 **卡组的第五个功能不该再动五个工具的口径。**

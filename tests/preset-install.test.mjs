@@ -298,6 +298,36 @@ const sha256Of = (s) => createHash('sha256').update(String(s), 'utf8').digest('h
     fromPatch.length === fromTemplate.length && fromPatch.length > 0 && firstDiff === -1,
     firstDiff === -1 ? `${fromPatch.length} 行` : `第 ${firstDiff + 1} 行不同：${JSON.stringify(fromPatch[firstDiff])} vs ${JSON.stringify(fromTemplate[firstDiff])}`);
 
+  // —— 12b) prompt 变量白名单：dsh 0.2.1-rc.2 只注册 provider / model ——
+  //
+  // 0.10.1 用户实机报错：`unknown prompt variable "cwd" in section "deployment:persona-prefix";
+  // registered variables: provider, model`（原文里 cwd 外面是双花括号）。dsh-system-prompt 对段文本
+  // **严格插值**：未知引用会在任何模型请求之前抛错，于是 CC 模式的每一轮都失败 —— 而预设本身挂载
+  // 正常、roster 里也照常可选，属于最难归类的那类（`--dump-config` 与 broken 诊断都看不出来）。
+  // dsh 0.2.1-rc.2 起注册表只有 provider / model：工作目录改由 working-directory 服务以
+  // runtime context 形式给模型，cwd 变量被移除，内置 standard 的 persona 也只写 model。
+  // 这里把「预设里允许出现哪些变量」钉成显式白名单：dsh 升级若改注册表，先回来核对这张表，
+  // 而不是等用户在线上每轮撞一次「本轮运行失败」。
+  const PROMPT_VARIABLES = ['provider', 'model'];
+  const codeLines = (text) => text.split('\n').filter((l) => !l.trimStart().startsWith('#'));
+  const variablesIn = (text) => [...text.matchAll(/\{\{([^{}]*)\}\}/g)].map((m) => m[1].trim());
+  const patchVars = variablesIn(codeLines(patchText).join('\n'));
+  const tplVars = variablesIn(codeLines(tplText).join('\n'));
+  const allVars = [...new Set([...patchVars, ...tplVars])];
+  check('预设里不出现 cwd prompt 变量（0.10.1 线上每轮报错的直接原因）',
+    !allVars.includes('cwd'), allVars.join(', ') || '(无变量)');
+  check('预设的 prompt 变量都在 dsh 0.2.1-rc.2 的注册表白名单内（provider / model）',
+    allVars.every((v) => PROMPT_VARIABLES.includes(v)), allVars.join(', ') || '(无变量)');
+  check('两份清单的 prompt 变量集合一致（模板与声明层不许各用一套）',
+    eq([...new Set(patchVars)], [...new Set(tplVars)]), `${[...new Set(patchVars)].join(',')} vs ${[...new Set(tplVars)].join(',')}`);
+  check('persona 仍介绍模型（{{model}} 不该被一并删掉）',
+    patchVars.includes('model') && tplVars.includes('model'), allVars.join(', '));
+  // 0.10.2：DSH provider 对 tool input 严格 JSON.parse，模型偶发尾逗号 → 整轮 MALFORMED_RESPONSE。
+  // persona 是模型最关注的文本，JSON 卫生 + 分小步写的规则必须留在里面（两份清单都要有）。
+  check('persona 含工具参数 JSON 卫生规则（尾逗号会让 provider 判本轮失败）',
+    codeLines(patchText).join('\n').includes('工具参数必须是严格合法的 JSON')
+    && codeLines(tplText).join('\n').includes('工具参数必须是严格合法的 JSON'), '');
+
   check("声明行是 preset-cc + '@deepseek-ai/dsh-agent-preset'",
     /- id: preset-cc/.test(patchText) && /name: '@deepseek-ai\/dsh-agent-preset'/.test(patchText), '');
   check('预设 id 恒为 cc（宿主 isCcPreset 与前端 CC_PRESET_ID 都按它精确比较）', /^\s*id: cc$/m.test(patchText), '');

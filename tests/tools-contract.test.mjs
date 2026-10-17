@@ -96,6 +96,14 @@ const src = readFileSync(new URL('../lib/agent.js', import.meta.url), 'utf8');
 check('①e 源码里不再出现旧的 Ok/Partial 双真相字段（注释里提到旧名不算）',
   !/const characterPartial|const greetingsPartial|wf\.loreOk|wf\.worldOk/.test(src), '');
 
+// 0.10.2：DSH 的 DeepSeek provider 在流结束时对 tool input 做严格 JSON.parse，模型偶发一个
+// 尾逗号就会让整轮 MALFORMED_RESPONSE（用户只看到「本轮运行失败」），工具根本不会被调用 ——
+// 插件侧唯一能施加影响的是模型可见文本。写类工具必须带上 JSON 卫生规则（分小步写 + 禁尾逗号）。
+const JSON_HYGIENE_TOOLS = ['cc_patch_character', 'cc_patch_world', 'cc_add_lorebook_entries', 'cc_patch_greetings', 'cc_patch_book_meta'];
+check('①f 写类工具 description 含严格 JSON 规则（尾逗号会让 provider 直接判本轮失败）',
+  JSON_HYGIENE_TOOLS.every(n => /严格合法的 JSON/.test(String(tools.get(n).description || ''))),
+  JSON_HYGIENE_TOOLS.filter(n => !/严格合法的 JSON/.test(String(tools.get(n).description || ''))).join(','));
+
 // ——————————————————————————————————————————————————————————————
 // ② 状态机（P0-2 / P0-3）
 // ——————————————————————————————————————————————————————————————
@@ -479,7 +487,7 @@ check('⑪b B1：全量路径同样补齐（creation_date 被空卡模板填回�
 const hostFixed = indexMod.normalizeCardShape({ spec: 'chara_card_v3', data: { name: '外部导入卡' } });
 check('⑪c B1 宿主半同构：工坊侧读到外部导入卡时也补齐（否则前端会把 undefined 直接渲染出来）',
   hostFixed.spec_version === '3.0' && hostFixed.data.creator === '' && typeof hostFixed.data.creation_date === 'number'
-    && Array.isArray(hostFixed.data.character_book.entries) && hostFixed.data.character_book.token_budget === 1200,
+    && Array.isArray(hostFixed.data.character_book.entries) && hostFixed.data.character_book.token_budget === 2400,
   JSON.stringify({ spec_version: hostFixed.spec_version, creator: hostFixed.data.creator, kind: typeof hostFixed.data.creation_date }));
 
 check('⑪d 每次返回都带 build 版本标识（LLM 能自己确认「我测的是不是最新代码」，第五轮为此白跑一轮）',
@@ -507,6 +515,53 @@ check('⑪h B2：cc_patch_book_meta 也只记真改动（同值写入 changed �
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 check('⑪i build 与 package.json 的 version 同步（发版时两处一起改，别让 build 变成谎报）',
   b1full.build === pkg.version, b1full.build + ' vs ' + pkg.version);
+
+// ——————————————————————————————————————————————————————————————
+// ⑫ 多行文本转义（0.10.3，用户实机报告 P1）
+//
+// 模型经常把换行写成**字面** `\n`（JSON 层多转义一层的 `"A\\nB"`），落盘后导出的卡在
+// SillyTavern 里显示成「说完这句话。\n\n下一段」。工具层必须把字面 `\n` / `\r` / `\t`
+// 解成真字符（多层转义逐层收敛），同时不能碰真换行。
+// ——————————————————————————————————————————————————————————————
+await call('cc_new_card', { confirm: true });
+await call('cc_patch_character', {
+  name: '换行测试',
+  description: 'A\\nB',
+  personality: 'P\\nQ',
+  scenario: '真\n换行',
+});
+r = await call('cc_get_card', { fields: ['description', 'personality', 'scenario'] });
+const nlCard = r.draft.data;
+check('⑫a 字面 \\n 解码为真换行（cc_patch_character 的三个字段）',
+  nlCard.description === 'A\nB' && nlCard.personality === 'P\nQ'
+    && !String(nlCard.description).includes('\\n') && !String(nlCard.personality).includes('\\n'),
+  JSON.stringify({ description: nlCard.description, personality: nlCard.personality }));
+check('⑫b 真换行原样保留（不因解码被二次处理）',
+  nlCard.scenario === '真\n换行' && nlCard.scenario.split('\n').length === 2, JSON.stringify(nlCard.scenario));
+
+await call('cc_patch_character', { description: 'X\\\\nY' });   // 双层转义：模型多写了一个反斜杠
+r = await call('cc_get_card', { fields: ['description'] });
+check('⑫c 多层转义也收敛（传 X\\\\nY → 两个字符的反斜杠+n → 真换行）',
+  r.draft.data.description === 'X\nY', JSON.stringify(r.draft.data.description));
+
+await call('cc_patch_greetings', { first_mes: 'F\\nG', alternate_greetings: ['H\\nI'], group_only_greetings: ['J\\nK'] });
+r = await call('cc_get_card', { fields: ['first_mes', 'alternate_greetings', 'group_only_greetings'] });
+check('⑫d 问候语同样解码（first_mes / alternate / group_only）',
+  r.draft.data.first_mes === 'F\nG' && r.draft.data.alternate_greetings[0] === 'H\nI' && r.draft.data.group_only_greetings[0] === 'J\nK',
+  JSON.stringify({ first: r.draft.data.first_mes, alt: r.draft.data.alternate_greetings[0] }));
+
+await call('cc_add_lorebook_entries', { entries: [{ name: '条\\n目', keys: ['换行键'], content: '@@depth 4\\n第一行\\n第二行' }] });
+r = await call('cc_get_card', { fields: ['character_book'] });
+const nlEntry = r.draft.data.character_book.entries.find(e => e.name === '条\n目');
+check('⑫e 世界书条目 content / name 也解码（不是只有角色字段）',
+  !!nlEntry && nlEntry.content.includes('\n第一行\n第二行') && !nlEntry.content.includes('\\n'),
+  JSON.stringify({ name: nlEntry && nlEntry.name, content: nlEntry && nlEntry.content.slice(0, 40) }));
+
+await call('cc_patch_book_meta', { name: '书\\n名', description: '说\\t明' });
+r = await call('cc_get_card', { fields: ['character_book'] });
+check('⑫f 世界书元信息 name / description 同样解码（含 \\t）',
+  r.draft.data.character_book.name === '书\n名' && r.draft.data.character_book.description === '说\t明',
+  JSON.stringify({ name: r.draft.data.character_book.name, description: r.draft.data.character_book.description }));
 
 // —— 收尾：清掉临时落盘根 ——
 rmSync(tmpHome, { recursive: true, force: true });
