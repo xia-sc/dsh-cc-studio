@@ -144,6 +144,36 @@ function writeLibFile(dir, id, name) {
   check('删除后 load 报错', loadThrew, '');
 }
 
+// —— 4b) 草稿锁的落盘：写主根、读回退旧根、清两个根 ——
+// 锁文件路径必须与工具半同构（<safe 去 .json>.lock.json）：LLM 锁住的是哪把槽，宿主半就要看见哪把，
+// 否则会出现「LLM 以为锁着、用户在工坊里照改」。IO 两半各一份，但路径规则与读写回退规则必须一致。
+{
+  const lockOf = (key, extra) => Object.assign({ key, owner: 'llm', since: 1000, updatedAt: 2000, rev: 1, cardName: '锁' }, extra || {});
+  host.writeDraftLockSync('session-lock', lockOf('session-lock'));
+  const primaryLock = join(primaryDrafts, host.safeDraftFile('session-lock').replace(/\.json$/, '.lock.json'));
+  check('锁文件写主根：<主根>/cc-drafts/<safe 去 .json>.lock.json', existsSync(primaryLock), primaryLock);
+  const readBack = host.readDraftLockSync('session-lock');
+  check('readDraftLockSync 读回并归一（owner=llm / key 一致）',
+    !!readBack && readBack.owner === 'llm' && readBack.key === 'session-lock' && readBack.updatedAt === 2000,
+    JSON.stringify(readBack));
+
+  // 旧根里有一把锁（升级前工具半写下的）→ 读盘必须回退旧根；清的时候两个根都要删
+  const legacyLock = join(legacyDrafts, host.safeDraftFile('session-lock-legacy').replace(/\.json$/, '.lock.json'));
+  mkdirSync(legacyDrafts, { recursive: true });
+  writeFileSync(legacyLock, JSON.stringify(lockOf('session-lock-legacy', { cardName: '旧根锁' })), 'utf8');
+  const legacyRead = host.readDraftLockSync('session-lock-legacy');
+  check('主根没有锁文件时读盘回退旧根（升级后不把 LLM 的锁当没有）',
+    !!legacyRead && legacyRead.cardName === '旧根锁' && legacyRead.key === 'session-lock-legacy',
+    JSON.stringify(legacyRead));
+  host.clearDraftLockSync('session-lock-legacy');
+  check('clearDraftLockSync 两个根都删（否则回退读会把刚释放的锁复活）', !existsSync(legacyLock), legacyLock);
+
+  host.clearDraftLockSync('session-lock');
+  check('clearDraftLockSync 删掉主根锁文件', !existsSync(primaryLock), primaryLock);
+  check('无锁时锁摘要显式 null（不是 undefined / 空对象）',
+    host.draftLockSummaryFor('session-lock') === null, String(host.draftLockSummaryFor('session-lock')));
+}
+
 // —— 5) 源码守卫：不许再出现写死的 homedir()/.dsh/cc-* ——
 {
   const idx = readFileSync(new URL('../lib/index.js', import.meta.url), 'utf8');
@@ -154,6 +184,16 @@ function writeLibFile(dir, id, name) {
   check('两半都从 dataRoots("cc-*") 派生',
     /dataRoots\("cc-drafts"\)/.test(idx) && /dataRoots\("cc-library"\)/.test(idx)
       && /dataRoots\("cc-drafts"\)/.test(agt) && /dataRoots\("cc-library"\)/.test(agt), '');
+
+  // 0.11.0：草稿锁的文件名必须两半同构（同一个 key → 同一个 .lock.json）—— 一个算成 A、一个算成 B，
+  // 就会「LLM 锁了，宿主看不见」。这条钉的是**逐字表达式**（参数名 key），不是行为：
+  // 行为侧由 tests/rpc-channel.test.mjs 的锁定矩阵与 tests/draft-lock.test.mjs 分别盯着两半。
+  const lockExpr = 'safeDraftFile(key).replace(/\\.json$/, ".lock.json")';
+  check('两半的锁文件路径都派生自 safeDraftFile(key)（逐字表达式一致）',
+    idx.includes(lockExpr) && agt.includes(lockExpr), lockExpr);
+  const hardcodedLock = /homedir\(\)[^;\n]{0,160}lock\.json/;
+  check('两半都没有写死的 homedir()/.dsh 锁路径',
+    !hardcodedLock.test(idx) && !hardcodedLock.test(agt), '');
 }
 
 // —— 清理 ——

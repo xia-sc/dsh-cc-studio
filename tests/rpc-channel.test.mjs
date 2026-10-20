@@ -16,7 +16,7 @@
  * 运行：node tests/rpc-channel.test.mjs   （全绿退出码 0）
  */
 import { createServer } from 'node:http';
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -399,6 +399,137 @@ async function post(path, body, { contentType = 'application/json', method = 'PO
     const s = host.draftContentSummary(full('A'));
     return s.name === 'A' && s.entries === 1 && s.filled >= 1;
   })(), '');
+}
+
+// 16) 0.11.0 草稿锁：LLM 写草稿时锁住，用户侧（浏览器 RPC）的写动作被拦 / 只读预览 / force / 备份。
+//     锁文件是**按路径规则手工写**出来的（<cc-drafts>/<safe 去 .json>.lock.json，与工具半同构），
+//     所以这一段不依赖工具半的落地进度，锁契约本身由宿主半的端点接线钉死。
+{
+  const rpc = async (method, args) => {
+    const r = await post('/dsh-cc-studio-rpc/' + method,
+      JSON.stringify({ type: 'client-request', rpcId: 'rid-lock-' + method, method, payload: { args } }));
+    return (r.json && r.json.result) || {};
+  };
+  const value = (res) => ((res && res.ok) ? res.value : null);
+  const sid = 'session-draft-lock';
+  const ddir = join(sandboxHome, 'cc-drafts');   // 本测试里 DSH_HOME === HOME === sandboxHome
+  const backupsDir = join(ddir, 'backups');
+  const nowS = () => Math.floor(Date.now() / 1000);
+  const card = (name) => ({ spec: 'chara_card_v3', spec_version: '3.0',
+    data: { name, group_only_greetings: [], description: '锁矩阵用卡', assets: [{ type: 'icon', uri: 'ccdefault:', name: 'main', ext: 'png' }] } });
+  // 按 safeDraftFile 的路径规则找这把槽的锁文件：先从 cc-drafts 目录里拿到草稿文件名，再把 .json 换成 .lock.json
+  const lockFileOf = (key) => {
+    const names = readdirSync(ddir);
+    const draftName = names.find((f) => f === host.safeDraftFile(key));
+    if (!draftName) throw new Error('草稿文件不存在: ' + key);
+    return join(ddir, draftName.replace(/\.json$/, '.lock.json'));
+  };
+  const writeLock = (key, updatedAt) => {
+    writeFileSync(lockFileOf(key), JSON.stringify({ key, owner: 'llm', since: updatedAt - 60, updatedAt, rev: 1, cardName: '锁中的卡' }, null, 2), 'utf8');
+  };
+  const draftFile = join(ddir, host.safeDraftFile(sid));
+  const originFile = join(ddir, host.safeDraftFile(sid).replace(/\.json$/, '.origin.json'));
+  const snapshot = () => ({
+    draft: readFileSync(draftFile, 'utf8'),
+    origin: existsSync(originFile) ? readFileSync(originFile, 'utf8') : null,
+  });
+
+  // 16a) 先写一张有内容的卡并入库（拿到载入用的 id / 建立 origin sidecar），然后手工上锁
+  const wA = await rpc('cc_setDraft', { sessionId: sid, draft: card('锁矩阵 A') });
+  const savedA = await rpc('cc_saveToLibrary', { sessionId: sid, draft: card('锁矩阵 A') });
+  const idA = (value(savedA) || {}).id;
+  check('锁矩阵准备：写入一张有内容的卡并入库',
+    wA.ok === true && typeof idA === 'string' && idA.length > 0, JSON.stringify({ id: idA }));
+  const beforeLock = snapshot();
+
+  writeLock(sid, nowS());
+  const gLocked = await rpc('cc_getDraft', { sessionId: sid });
+  check('锁定时 cc_getDraft 的 draftStatus.lock：active=true / owner=llm / cardName 可见',
+    gLocked.ok === true && !!gLocked.value.draftStatus.lock
+      && gLocked.value.draftStatus.lock.active === true
+      && gLocked.value.draftStatus.lock.owner === 'llm'
+      && gLocked.value.draftStatus.lock.cardName === '锁中的卡',
+    JSON.stringify(gLocked.value && gLocked.value.draftStatus));
+
+  // 16b) 锁定时载入另一张卡：返回 locked + preview，草稿文件与 origin 一个字节都不动
+  const seededB = await host.saveLibraryEntry(card('锁矩阵 B'), {});
+  const lockedLoad = await rpc('cc_loadFromLibrary', { sessionId: sid, id: seededB.id });
+  const afterLockedLoad = snapshot();
+  check('锁定时 cc_loadFromLibrary → locked + preview{id,draft,meta}，且不写草稿 / 不写 origin',
+    lockedLoad.ok === true && lockedLoad.value.locked === true && lockedLoad.value.key === sid
+      && !!lockedLoad.value.preview && lockedLoad.value.preview.id === seededB.id
+      && lockedLoad.value.preview.draft.data.name === '锁矩阵 B'
+      && !!lockedLoad.value.preview.meta
+      && afterLockedLoad.draft === beforeLock.draft
+      && afterLockedLoad.origin === beforeLock.origin,
+    JSON.stringify({ locked: lockedLoad.value && lockedLoad.value.locked }),
+  );
+
+  // 16c) 锁定时写类端点报 draft-locked（真实错误码在 details.code，details.lock 带摘要）
+  const lockedSet = await rpc('cc_setDraft', { sessionId: sid, draft: card('锁下改写') });
+  check('锁定时 cc_setDraft → details.code=draft-locked + details.lock，草稿未变',
+    lockedSet.ok === false && lockedSet.error.details.code === 'draft-locked'
+      && !!lockedSet.error.details.lock && lockedSet.error.details.lock.active === true
+      && snapshot().draft === beforeLock.draft,
+    JSON.stringify(lockedSet.error && lockedSet.error.details));
+  const lockedPatch = await rpc('cc_patchDraft', { sessionId: sid, patch: { name: '锁下改名' } });
+  check('锁定时 cc_patchDraft 同样 draft-locked（写类端点同一套规则）',
+    lockedPatch.ok === false && lockedPatch.error.details.code === 'draft-locked',
+    JSON.stringify(lockedPatch.error && lockedPatch.error.details));
+
+  // 16d) 锁定时导入 JSON：解析成功但不落盘，返回 locked + preview（upgradedFrom 字段保持存在）
+  const lockedImport = await rpc('cc_importFromJson', { sessionId: sid, json: JSON.stringify(card('锁下导入')) });
+  check('锁定时 cc_importFromJson → locked + preview{draft,upgradedFrom}，草稿未变',
+    lockedImport.ok === true && lockedImport.value.locked === true
+      && !!lockedImport.value.preview && lockedImport.value.preview.draft.data.name === '锁下导入'
+      && Object.prototype.hasOwnProperty.call(lockedImport.value.preview, 'upgradedFrom')
+      && snapshot().draft === beforeLock.draft,
+    JSON.stringify({ locked: lockedImport.value && lockedImport.value.locked }),
+  );
+
+  // 16e) force:true 放行：写入生效并清掉锁文件（LLM 下一次写会重新上锁）
+  const forcedSet = await rpc('cc_setDraft', { sessionId: sid, force: true, draft: card('force 覆盖') });
+  check('cc_setDraft force:true 放行：写入生效且锁文件被删',
+    forcedSet.ok === true && forcedSet.value.draft.data.name === 'force 覆盖'
+      && !existsSync(lockFileOf(sid))
+      && JSON.parse(readFileSync(draftFile, 'utf8')).draft.data.name === 'force 覆盖',
+    JSON.stringify({ ok: forcedSet.ok, lockExists: existsSync(lockFileOf(sid)) }),
+  );
+
+  // 16f) 重新上锁后 force 载入：草稿被替换，但覆盖前留了一份备份
+  writeLock(sid, nowS());
+  const forcedLoad = await rpc('cc_loadFromLibrary', { sessionId: sid, id: seededB.id, force: true });
+  const backupFiles = existsSync(backupsDir) ? readdirSync(backupsDir) : [];
+  const backupName = forcedLoad.value && forcedLoad.value.backup ? forcedLoad.value.backup.file : '';
+  let backupDraft = null;
+  try { backupDraft = JSON.parse(readFileSync(join(backupsDir, backupName), 'utf8')).draft; } catch {}
+  check('cc_loadFromLibrary force:true 放行：草稿被替换、锁被清、覆盖前备份进 backups/',
+    forcedLoad.ok === true && forcedLoad.value.draft.data.name === '锁矩阵 B'
+      && !existsSync(lockFileOf(sid))
+      && backupFiles.length >= 1 && backupName.length > 0 && backupFiles.indexOf(backupName) >= 0
+      && !!backupDraft && backupDraft.data.name === 'force 覆盖',
+    JSON.stringify({ backup: backupName, backupCount: backupFiles.length, backedName: backupDraft && backupDraft.data.name }),
+  );
+
+  // 16g) 锁超时（TTL 30 分钟内没有写入）：视为 LLM 已停止，不 force 也能写；摘要如实报 stale
+  writeLock(sid, nowS() - 2000);
+  const staleSet = await rpc('cc_setDraft', { sessionId: sid, draft: card('超时后写入') });
+  const gStale = await rpc('cc_getDraft', { sessionId: sid });
+  check('锁超时 → cc_setDraft 不带 force 也成功；lock.stale=true / active=false',
+    staleSet.ok === true && staleSet.value.draft.data.name === '超时后写入'
+      && gStale.ok === true && !!gStale.value.draftStatus.lock
+      && gStale.value.draftStatus.lock.stale === true
+      && gStale.value.draftStatus.lock.active === false,
+    JSON.stringify({ setOk: staleSet.ok, lock: gStale.value && gStale.value.draftStatus.lock }),
+  );
+
+  // 16h) 锁只拦「写草稿」：保存到角色库在锁定时照常可用（用户想留住 LLM 这一轮的卡也不该被挡）
+  writeLock(sid, nowS());
+  const saveLocked = await rpc('cc_saveToLibrary', { sessionId: sid, draft: card('锁下保存') });
+  check('锁定时 cc_saveToLibrary 仍然成功（不拦存库/导出/分组/共享书/校验）',
+    saveLocked.ok === true && typeof saveLocked.value.id === 'string' && saveLocked.value.id.length > 0,
+    JSON.stringify({ ok: saveLocked.ok, id: saveLocked.value && saveLocked.value.id }),
+  );
 }
 
 await new Promise((resolve) => server.close(resolve));

@@ -15,7 +15,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 | Item | Value |
 | --- | --- |
 | Package | `@xia-sc/dsh-cc-studio` |
-| Version | `0.10.3` |
+| Version | `0.11.0` |
 | Compatibility & permissions | dsh `>=0.1.5-rc.1`, Node `>=22`, **zero runtime dependencies**; permission bounds in [Compatibility & permissions](#compatibility--permissions) |
 | Host RPC | `/dsh-cc-studio-rpc` (self-owned route, works on dsh ≥ `0.1.5-rc.1`; verified on `0.1.6-alpha.2` / `0.1.7-alpha.1` / `0.1.7-rc.1`) |
 | CC preset | `presets/cc.patch.yml` (dsh ≥ `0.1.7-alpha.1`, a composition declaration row) / `<DSH_HOME>/.agent-presets/cc` (≤ `0.1.6-alpha.2`, the legacy directory) |
@@ -32,7 +32,7 @@ This plugin supports **both `dsh web` (the CLI-launched Web GUI) and DSH Desktop
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
 
 # pin a version
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.4.0
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.11.0
 ```
 
 **Or from GitHub**:
@@ -45,7 +45,7 @@ dsh plugin --profile web add github:xia-sc/dsh-cc-studio
 
 > **Since 0.3.2 the package was renamed from `@dsh-plugins/dsh-cc-studio` to `@xia-sc/dsh-cc-studio`** (the former is not an npm scope this project owns, so it could not be published). If you installed the old name, remove it first as shown in "5. Update and uninstall"; `~/.dsh/cc-library/`, `~/.dsh/cc-drafts/`, `~/.dsh/.agent-presets/cc/` and your plugin settings are unaffected.
 
-- **Pin a version / branch**: `github:xia-sc/dsh-cc-studio#v0.3.0`, `...#master` (see the repo tags).
+- **Pin a version / branch**: `github:xia-sc/dsh-cc-studio#v0.11.0`, `...#master` (see the repo tags).
 - **`allowBuilds` notice**: this plugin has no `prepare` build script, so pnpm's build gate is normally not triggered; if pnpm still prints the notice, add the exact key it prints under `allowBuilds` in `~/.dsh/profiles/web/pnpm-workspace.yaml` and re-run.
 - **When an agent runs it inside a DSH session**: the write target is outside the session workspace, so switch file permissions to `danger-full-access` first. Running it yourself in a terminal has no such limit.
 
@@ -220,6 +220,7 @@ Cards in `~/.dsh/cc-library/` and drafts in `~/.dsh/cc-drafts/` survive uninstal
 | Validation errors | Required `spec: chara_card_v3` / `spec_version: 3.0` / `group_only_greetings`; the main icon must be unique; regexes must be valid |
 | Occasional `本轮运行失败 tool input is invalid JSON` | The model wrote syntactically invalid JSON for tool arguments (most often a trailing comma). The DSH provider `JSON.parse`s tool input strictly and reports `MALFORMED_RESPONSE`, and does not retry by default. 0.10.2 adds "strict JSON + write in small steps" rules to the persona and the five write-tool descriptions — **restart dsh** so the new text is loaded; if it still happens, resend the same message (the model regenerates), or add `MALFORMED_RESPONSE` to `retryPolicy.retryableCodes` on the `llm-deepseek-account` row in the profile's `cordis.patch.yml` for automatic retries (full snippet in CHANGELOG 0.10.2) |
 | Newlines in a card render as literal `\n` (e.g. "said it.\n\nnext paragraph") | The model wrote the newline as a literal `\n` inside the tool-call JSON (one escaping layer too many) and older tools stored it verbatim. Since 0.10.3 write tools decode literal `\n` / `\r` / `\t` (including multiply-escaped input) — **restart dsh** to take effect. Note: fields already broken in a saved card are not auto-repaired; re-write them with the tool or fix them in the workshop |
+| While the LLM is writing, loading another card only opens a preview and the workshop is read-only | That is the 0.11.0 **draft lock** (LLM creation protection): writes from the LLM automatically lock the draft, so loading/importing never overwrites its unsaved content — you get a read-only preview instead. Have the LLM call `cc_release_draft` (or wait out the 30-minute stale timeout) and the workshop becomes editable again; the protection can also be switched off under Settings → Character Card Studio → Workshop defaults → **LLM creation protection (draft lock)** (off = old behaviour). Overwritten drafts are backed up under `<DSH_HOME>/cc-drafts/backups/` (up to 20 per slot) |
 | After a restart the browser shows `Failed to load plugins` / `web boot: 1 entry did not activate` / `import failed` | The rename was not followed by a reinstall under the new name: the profile's install identity (`dsh.profile.bundles` and the `link:` in `dependencies`) still says `@dsh-plugins/dsh-cc-studio`, while `package.json` and `lib/client.js` now say `@xia-sc/dsh-cc-studio`, so the client asset cannot be resolved (the host still boots — only the browser half dies). Confirm it by comparing the directory name under `~/.dsh/profiles/web/node_modules/` with the `name` in `package.json`; fix it by reinstalling under the new name (see the migration commands in "5. Update and uninstall"), restarting `dsh web`, and doing a **hard refresh** (`Ctrl+Shift+R`) — the old page's boot graph is cached, so a plain reload repeats the same error |
 
 ### 7. Desktop (DeepSeek Harness Desktop)
@@ -244,7 +245,7 @@ Only two steps differ:
 2. Just describe the idea: "I want a Rain City memory-pawnshop owner, but my worldbuilding is thin."
 3. The LLM walks the 6 steps and asks 1–2 questions before each one; the capsule and workshop refresh on every Tool call:
    `cc_get_card` (summarize progress + ask) → `cc_patch_character` (discuss vibe/relationship, then fill the 4-piece) → `cc_patch_world` (discuss world focus, then ≥3 dimensions, `autoLorebook`) → `cc_add_lorebook_entries` (discuss triggers, then ≥5 with ≥1 `constant`) → `cc_patch_greetings` (discuss scene, then greetings) → `cc_validate`.
-4. Tweak anything in the workshop anytime. After validation: sidebar `★ Save Current` (overwrites in place when an ID is loaded, otherwise creates one) or `＋ Save as New`, or export `JSON / PNG / CHARX`. Later load/rename/export/delete by ID (the top `Loaded ID:xxxx` highlights the active card), or just tell the model "load ID xxxx".
+4. Watch progress in the workshop (it is **read-only while the LLM writes** — it holds the draft lock, and loading another card only opens a read-only preview without replacing the draft). When creation is done and you want to fine-tune, have the LLM hand the draft back (`cc_release_draft`), or wait for the 30-minute idle lock timeout; then: sidebar `★ Save Current` (overwrites in place when an ID is loaded, otherwise creates one) or `＋ Save as New`, or export `JSON / PNG / CHARX`. Later load/rename/export/delete by ID (the top `Loaded ID:xxxx` highlights the active card), or just tell the model "load ID xxxx".
 
 ## Features
 
@@ -256,14 +257,16 @@ Only two steps differ:
 - **5D worldbuilding**: Timeline / Factions / Geography / Power / Daily → `cc_patch_world(autoLorebook=true)` auto-generates Lorebook entries with `@@position / @@depth / @@activate` (≥1 `constant`; re-calling overwrites previous auto entries and keeps manual ones). The five dimensions render as **document-style text** (borderless auto-growing textareas, editable in place); `⛶` opens a 720px modal carrying an open-time snapshot, so Cancel really rolls back.
 - **Large editors for all long texts**: `description / personality / scenario / system_prompt / post_history_instructions / first_mes / alternate_greetings / group_only_greetings / mes_example / creator_notes` each have a `⛶` 720px modal that syncs live.
 - **Saved sidebar (ID-based CRUD)**: 268px, collapsible (down to a 40px bar), highlights the active card (purple border + `Loaded ID:xxxx`, first 8 chars); `★ Save Current` overwrites when an ID is loaded, `＋ Save as New` always creates a new one, `✎ Rename` / `＋ New`; search / load / export / delete persist to `~/.dsh/cc-library/<id>.json`.
+- **LLM draft lock (0.11.0)**: every write from the LLM locks the draft (`<DSH_HOME>/cc-drafts/<slot>.lock.json`). While active the workshop is read-only; loading/importing another card opens a **read-only preview** (neither the draft nor its source id is written) — exit the preview to get back to the LLM's draft. The LLM hands control back with `cc_release_draft`, or the lock goes stale after **30 minutes** without writes. The protection can be switched off in Settings (off = old behaviour). Before any overwriting action (load / import / migrate / forced overwrite) the current draft is backed up to `<DSH_HOME>/cc-drafts/backups/` (up to 20 per slot; empty drafts and identical content are skipped).
 - **Import / export**: sidebar `⬆ Import JSON/PNG/CHARX` auto-detects the container; on the export page `⬇ JSON` / `⬇ PNG` (1×1 placeholder) / `⬆ Embed into PNG` (writes into any PNG you upload, stripping old `ccv3/chara` chunks and recalculating `CRC32`) / `⬇ CHARX` (packs `card.json`).
 - **Bilingual (zh/en)**: complete `zh / en` dictionaries (`locale: dshCcStudio`) that follow the global `Settings → General → Language` (capsule/workshop/settings refresh instantly, no in-plugin toggle).
 - **Adaptive theming**: full `var(--dsw-alias-bg-* / border-l1/l2 / label-primary/secondary)`, primary actions stay brand purple, live on refresh.
 
-### CC Mode (32 model-side Tools)
+### CC Mode (33 model-side Tools)
 
-- **6-step workflow + co-creation constraint**: before each step the LLM must ask 1–2 open questions (vibe / relationship / world focus / triggers / opening scene) and may never fill everything by assumption; 4-piece character → ≥3 world dimensions → ≥5 lorebook entries (**at least one of them co-created with the user** — auto-generated entries alone don't count) → greetings → `cc_validate` to finish. Each reply carries exactly one `workflow.next` (what's next) and `workflow.state` (tri-state progress for the four parts).
-  `cc_get_card` / `cc_patch_character` / `cc_patch_world` / `cc_add_lorebook_entries` / `cc_patch_greetings` / `cc_validate`
+- **6-step workflow + co-creation constraint**: before each step the LLM must ask 1–2 open questions (vibe / relationship / world focus / triggers / opening scene) and may never fill everything by assumption; 4-piece character → ≥3 world dimensions → ≥5 lorebook entries (**at least one of them co-created with the user** — auto-generated entries alone don't count) → greetings → `cc_validate` → `cc_release_draft` (hand the draft back). Each reply carries exactly one `workflow.next` (what's next) and `workflow.state` (tri-state progress for the four parts).
+  `cc_get_card` / `cc_patch_character` / `cc_patch_world` / `cc_add_lorebook_entries` / `cc_patch_greetings` / `cc_validate` / `cc_release_draft`
+- **Draft hand-off (0.11.0)**: `cc_release_draft` — **`cc_validate` passing (valid=true) means creation is done: the model must call it right away**; otherwise the workshop stays read-only and the user can only preview. It releases the draft lock so the workshop becomes editable; the lock is re-acquired automatically on the next write. The persona, the `cc_validate` terminal state (`workflow.releaseRequired`) and the first-lock warning all steer the model here.
 - **Lorebook quality**: `cc_patch_world` takes `loreKeys` (per-dimension trigger words — without them auto entries can only use dimension names as keys, which real chat never says); `cc_simulate_trigger` checks a real sentence for hits; `cc_lint_lorebook` statically audits; `cc_patch_book_meta` edits book-level fields (name / `scan_depth` / `token_budget` / recursive scanning).
 - **Fine-grained lorebook control**: `cc_delete_lorebook_entries` / `cc_update_lorebook_entry`.
 - **Dry-run before export**: `cc_preview_export` (size, estimated tokens, field list, and how much of the 5D text is duplicated inside entries).
@@ -289,25 +292,28 @@ dsh-cc-studio/
 │   │                     #   cc_validateDraft, library cc_*Library, containers cc_importFromPng/cc_exportPng(+imageB64)/
 │   │                     #   cc_importFromCharx/cc_exportCharx, CRC32/ZIP/STORE&DEFLATE)
 │   ├── agent.js          # CC Mode Tools: 6-step co-creation + 5 lorebook-quality + 2 lorebook CRUD + 6 saved-library CRUD
-│   │                     #   + 4 relations (0.8.0) + 5 group management (0.8.0) = 28
+│   │                     #   + 4 relations + 5 group management + 4 shared book + cc_release_draft = 33
+│   ├── draft-lock.js     # 0.11.0 draft lock: normalize / TTL / write-gate (pure, zero IO, imported by both halves)
 │   └── client.js         # client: dock capsule + overlay workshop + settings.section (DSW Tokens, brand purple,
-│                         #   5D echo, large editors, JSON/PNG/CHARX import/export/embed)
+│                         #   5D echo, large editors, JSON/PNG/CHARX import/export/embed, lock banners + preview)
 ├── presets/
 │   ├── cc.patch.yml      # patch layer 2: the CC preset declaration row (dsh ≥ 0.1.7-alpha.1)
 │   └── cc/               # legacy preset directory template (dsh ≤ 0.1.6-alpha.2, installed on mount)
 │       ├── preset.yml
 │       └── agent.cordis.yml
-├── tests/                # 22 files, 864 assertions (not published with the package)
-│   ├── rpc-channel.test.mjs       # host-half RPC channel regression (fake ctx + real http), 52 assertions incl. the group endpoints + the cc_getGroup reply shape
-│   ├── preset-install.test.mjs    # install decisions + native hand-off + anti-drift + row contract + prompt-variable whitelist + persona JSON hygiene + DSH STORE listing contract, 84 assertions
+├── tests/                # 24 files, 959 assertions (not published with the package)
+│   ├── rpc-channel.test.mjs       # host-half RPC channel regression (fake ctx + real http), 67 assertions incl. the group endpoints, the cc_getGroup reply shape and the draft-lock matrix
+│   ├── preset-install.test.mjs    # install decisions + native hand-off + anti-drift + row contract + prompt-variable whitelist + persona JSON hygiene + DSH STORE listing contract, 85 assertions
 │   ├── cc-detection.test.mjs      # source-level guards for CC Mode detection, 51 assertions
 │   ├── client-greetings.test.mjs  # client greetings and i18n guards, 62 assertions
-│   ├── draft-slot-sync.test.mjs   # behavioural draft-slot regression (fake React/slot/RPC harness), 18 assertions
+│   ├── draft-slot-sync.test.mjs   # behavioural draft-slot regression (fake React/slot/RPC harness), 19 assertions
+│   ├── draft-lock-client.test.mjs # 0.11.0 client draft lock: read-only, preview, polling, guards, settings switch, 32 assertions
 │   ├── nav-highlight.test.mjs     # workshop step-nav tri-state regression (selection / keyboard focus / hover stay exclusive), 23 assertions
 │   ├── clear-card.test.mjs        # "clear the current card" confirmation regression, 20 assertions
 │   ├── export-entry.test.mjs      # export entry points unified (three doors down to two), 31 assertions
 │   ├── close-button.test.mjs      # workshop close button ✕ (red on hover), 14 assertions
-│   ├── tools-contract.test.mjs    # CC Mode tool-chain contract, state machine and draft identity (32 tools), 104 assertions
+│   ├── tools-contract.test.mjs    # CC Mode tool-chain contract, state machine, draft identity and lock wiring (33 tools), 113 assertions
+│   ├── draft-lock.test.mjs        # 0.11.0 draft lock: pure functions + tool-half locking/renew/ release/TTL, 34 assertions
 │   ├── relations.test.mjs         # relationship graph + group CRUD: two-half parity, idempotent rendering, data-loss invariants, 69 assertions
 │   ├── relations-view.test.mjs    # workshop relations view renders what the host actually returns (the "0 relations" bug) + the 0.10.0 check list, 20 assertions
 │   ├── shared-book.test.mjs       # group-level shared lorebook: storage, promote/apply, draft sync, round-trip,  75 assertions
@@ -319,7 +325,7 @@ dsh-cc-studio/
 │   ├── group-checks.test.mjs      # 0.10.0 the check registry: codes unchanged, category filters, byCheck, 22 assertions
 │   ├── group-consistency.test.mjs # 0.10.0 cross-card consistency checks (the fifth card-group feature), 18 assertions
 │   ├── group-layer-guard.test.mjs # 0.10.0 coupling guards: one implementation, no re-reading, no re-counting, 16 assertions
-│   └── data-root.test.mjs         # data roots: DSH_HOME first + read-time fallback to ~/.dsh, 37 assertions
+│   └── data-root.test.mjs         # data roots: DSH_HOME first + read-time fallback to ~/.dsh + lock path parity, 45 assertions
 ├── CHANGELOG.md          # full version history (Chinese)
 ├── README.md             # Chinese (default)
 └── README_EN.md          # English
@@ -330,8 +336,8 @@ dsh-cc-studio/
 ## Development and tests
 
 ```bash
-npm test                                   # 22 files, 864 assertions (twenty-two node scripts chained)
-node tests/rpc-channel.test.mjs            # only the host-half RPC channel regression (52 assertions)
+npm test                                   # 24 files, 959 assertions (twenty-four node scripts chained)
+node tests/rpc-channel.test.mjs            # only the host-half RPC channel regression (67 assertions)
 ```
 
 - **Client changes**: `lib/client.js` only needs a page refresh; with `pnpm run dev:web` running from the dsh checkout it hot-updates.

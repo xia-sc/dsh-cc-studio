@@ -14,6 +14,8 @@
  *   P2-7 characterOk 与 characterPartial 同时为 true → 四态改三态 state{character,world,lore,greetings}
  *   P2-8 同一次返回里 next/hint/notice/warning 重复 4-6 份 → 只留 workflow.next 一份
  *   另：源码复核发现「按名字兜底删自动条目」会误删用户手工建的「日常」条目 → 兜底同时看内容
+ *   0.11.0 另加草稿锁：LLM 每次写草稿都建立 <草稿>.lock.json，创作告一段落时调 cc_release_draft 交还
+ *   （否则用户载入别的卡会覆盖 LLM 还没保存的内容；TTL 兜底防崩溃后永久锁死）。
  *
  * 运行：node tests/tools-contract.test.mjs   （全绿退出码 0）
  * 隔离：DSH_HOME / HOME / USERPROFILE 全部指向临时目录，跑完删除（见 AGENTS.md §2.6）
@@ -44,7 +46,8 @@ const call = (n, a) => tools.get(n).execute(a || {}, exec);
 // 需要「从外部改草稿」的用例统一走真实路径：写回磁盘 + 递增 rev，下一次调用以盘为准重载。
 function patchDraftOnDisk(mutate) {
   const dir = mod.draftDirs()[0];
-  const f = join(dir, readdirSync(dir).filter(x => x.endsWith('.json') && !x.endsWith('.origin.json'))[0]);
+  // 0.11.0：草稿目录里多了 .lock.json（草稿锁）—— 扫草稿文件时必须排除，否则会读到锁文件。
+  const f = join(dir, readdirSync(dir).filter(x => x.endsWith('.json') && !x.endsWith('.origin.json') && !x.endsWith('.lock.json'))[0]);
   const obj = JSON.parse(readFileSync(f, 'utf8'));
   obj.rev = (obj.rev || 1) + 1;
   mutate(obj.draft);
@@ -56,13 +59,15 @@ function patchDraftOnDisk(mutate) {
 // ① 工具集与返回契约
 // ——————————————————————————————————————————————————————————————
 const NAMES = [...tools.keys()];
-check('① 14 个既有 + 5 个 0.5.0 + 4 个 0.8.0 关系 + 5 个 0.8.0 分组 + 4 个 0.9.0 共享世界书 = 32 个', NAMES.length === 32, NAMES.length + '：' + NAMES.join(', '));
+check('① 14 个既有 + 5 个 0.5.0 + 4 个 0.8.0 关系 + 5 个 0.8.0 分组 + 4 个 0.9.0 共享世界书 + 1 个 0.11.0 草稿锁 = 33 个', NAMES.length === 33, NAMES.length + '：' + NAMES.join(', '));
 ['cc_new_card', 'cc_patch_book_meta', 'cc_simulate_trigger', 'cc_lint_lorebook', 'cc_preview_export',
  'cc_get_relations', 'cc_patch_relations', 'cc_render_relations', 'cc_group_check',
  // 0.8.0 分组管理：LLM 侧的增删改查（此前模型改不了「哪张卡属于哪个组」）
  'cc_list_groups', 'cc_create_group', 'cc_rename_group', 'cc_delete_group', 'cc_set_card_group',
  // 0.9.0 组级共享世界书：群聊卡世界书去重（一份设定整组共用，卡里只留私有条目）
- 'cc_get_shared_book', 'cc_patch_shared_book', 'cc_promote_shared_entries', 'cc_apply_shared_book'].forEach(n => {
+ 'cc_get_shared_book', 'cc_patch_shared_book', 'cc_promote_shared_entries', 'cc_apply_shared_book',
+ // 0.11.0 草稿锁：LLM 写草稿即上锁，创作告一段落后交还用户编辑
+ 'cc_release_draft'].forEach(n => {
   check('①b 新工具已注册：' + n, tools.has(n) && String(tools.get(n).description || '').length > 10, '');
 });
 check('①c 每个工具都有 description 与 parameters 声明（模型看不到声明就不会调）',
@@ -137,8 +142,13 @@ r = await call('cc_validate');
 check('②h 校验通过后有终态：done=true、step=7，且 next 不再指向 cc_validate（P0-3 的死循环诱因）',
   r.valid === true && r.done === true && r.workflow.step === 7 && !/必须 cc_validate/.test(r.workflow.next),
   'valid=' + r.valid + ' step=' + r.workflow.step + ' next=' + String(r.workflow.next).slice(0, 40));
-check('②i 通过后的 next 指向导出/保存（导出页入口名称与 0.4.1 的 UI 一致）',
-  /校验导出/.test(r.workflow.next) && /保存当前/.test(r.workflow.next), String(r.workflow.next).slice(0, 80));
+check('②i 通过后的 next 指向导出/保存（导出页入口名称与 0.4.1 的 UI 一致），并提醒交还草稿锁',
+  /校验导出/.test(r.workflow.next) && /保存当前/.test(r.workflow.next)
+    && /cc_release_draft/.test(r.workflow.next) && r.workflow.releaseRequired === true,
+  String(r.workflow.next).slice(0, 120) + ' / releaseRequired=' + r.workflow.releaseRequired);
+check('②j cc_validate 的 description 明确「通过后必须调用 cc_release_draft」（模型选工具时就能看到）',
+  /cc_release_draft/.test(String(tools.get('cc_validate').description || '')),
+  String(tools.get('cc_validate').description).slice(0, 110));
 
 // ——————————————————————————————————————————————————————————————
 // ③ autoLorebook 的 keys（P0-1）
@@ -312,7 +322,7 @@ check('⑨c 每次落盘 rev 递增（跨进程唯一的版本号，落在草稿
 
 // 模拟「工坊界面 / host 从另一条路径改了草稿」：直接改草稿文件并递增 rev
 const ddir = mod.draftDirs()[0];
-const dfName = readdirSync(ddir).filter(f => f.endsWith('.json') && !f.endsWith('.origin.json'))[0];
+const dfName = readdirSync(ddir).filter(f => f.endsWith('.json') && !f.endsWith('.origin.json') && !f.endsWith('.lock.json'))[0];
 const dfPath = join(ddir, dfName);
 const onDisk = JSON.parse(readFileSync(dfPath, 'utf8'));
 onDisk.rev = (onDisk.rev || 1) + 1;
@@ -402,7 +412,7 @@ check('⑩e S2 对照：确实没有草稿时才提示「可能已丢失」（�
 await call('cc_get_card');
 const draftFileOf = () => {
   const dir = mod.draftDirs()[0];
-  return join(dir, readdirSync(dir).filter(f => f.endsWith('.json') && !f.endsWith('.origin.json'))[0]);
+  return join(dir, readdirSync(dir).filter(f => f.endsWith('.json') && !f.endsWith('.origin.json') && !f.endsWith('.lock.json'))[0]);
 };
 const bumpDisk = (mutate) => {
   const f = draftFileOf();
@@ -562,6 +572,43 @@ r = await call('cc_get_card', { fields: ['character_book'] });
 check('⑫f 世界书元信息 name / description 同样解码（含 \\t）',
   r.draft.data.character_book.name === '书\n名' && r.draft.data.character_book.description === '说\t明',
   JSON.stringify({ name: r.draft.data.character_book.name, description: r.draft.data.character_book.description }));
+
+// ——————————————————————————————————————————————————————————————
+// ⑬ 0.11.0：草稿锁（LLM 写草稿即上锁 / cc_release_draft 交还 / TTL 兜底）
+//
+// 事故：LLM 正在工坊草稿里创作时，用户点「载入」另一张卡，同一会话槽的草稿被整份替换 ——
+// LLM 已写入但未保存的内容被覆盖。修法：工具半每次写草稿都建立 <safeDraftFile>.lock.json，
+// 宿主侧看到 active 锁就只读 / 预览；交还由 LLM 调 cc_release_draft（另有 TTL 兜底，防崩溃后锁死）。
+// 纯函数与超时边界在 tests/draft-lock.test.mjs；这里只钉工具链侧的接线。
+// ——————————————————————————————————————————————————————————————
+await call('cc_release_draft', {});   // 先清掉前面流程留下的锁，验证「首次上锁」的流程引导
+r = await call('cc_new_card', { confirm: true });
+check('⑬g 首次建立草稿锁的返回带交还引导（模型第一次写草稿就知道完成时要释放）',
+  Array.isArray(r.warnings) && r.warnings.some(w => /cc_release_draft/.test(String(w))),
+  JSON.stringify(r.warnings || []).slice(0, 180));
+await call('cc_patch_character', { name: '锁契约卡', description: '给草稿锁用' });
+const lockDir = mod.draftDirs()[0];
+const lockName = mod.safeDraftFile('session-tools-test').replace(/\.json$/, '.lock.json');
+const lockFull = join(lockDir, lockName);
+check('⑬ 写类工具跑完后草稿目录出现 .lock.json（与会话槽同基名，owner=llm）',
+  existsSync(lockFull) && JSON.parse(readFileSync(lockFull, 'utf8')).owner === 'llm', lockFull);
+r = await call('cc_get_card');
+check('⑬b cc_get_card 的 draftStatus.lock.active=true（客户端据此把工坊置为只读）',
+  !!r.draftStatus.lock && r.draftStatus.lock.active === true && r.draftStatus.lock.cardName === '锁契约卡',
+  JSON.stringify(r.draftStatus.lock));
+check('⑬c 工具返回顶层没有多余的锁副本（锁只经 draftStatus.lock 一个出口；契约 ①d 的追加样本）',
+  !Object.prototype.hasOwnProperty.call(r, 'lock') && !Object.prototype.hasOwnProperty.call(r, 'next')
+    && !Object.prototype.hasOwnProperty.call(r, 'hint'), Object.keys(r).join(','));
+
+r = await call('cc_release_draft', {});
+check('⑬d cc_release_draft 交还：released=true、锁文件消失、sessionKey 对得上',
+  r.ok === true && r.released === true && r.sessionKey === 'session-tools-test' && !existsSync(lockFull),
+  JSON.stringify({ released: r.released, sessionKey: r.sessionKey, exists: existsSync(lockFull) }));
+check('⑬e 释放后 draftStatus.lock 显式 null（工坊恢复可编辑）',
+  r.draftStatus.lock === null, JSON.stringify(r.draftStatus.lock));
+r = await call('cc_release_draft', {});
+check('⑬f 无锁再释放幂等成功（released=false，不报错也不乱清东西）',
+  r.ok === true && r.released === false && r.draftStatus.lock === null, JSON.stringify({ ok: r.ok, released: r.released }));
 
 // —— 收尾：清掉临时落盘根 ——
 rmSync(tmpHome, { recursive: true, force: true });

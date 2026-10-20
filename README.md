@@ -10,13 +10,13 @@
 
 > 从一句话点子到可导入 SillyTavern / Risu 的 `chara_card_v3`。专治「只有点子，世界观薄弱」。
 
-DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工坊，配合 `CC 模式` 预设让 LLM 通过 32 个 Tool **先问再填**、与你共创角色卡，最后一键导出 `JSON / PNG / CHARX`。
+DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工坊，配合 `CC 模式` 预设让 LLM 通过 33 个 Tool **先问再填**、与你共创角色卡，最后一键导出 `JSON / PNG / CHARX`。
 
 | 项目 | 值 |
 | --- | --- |
-| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.10.3` |
+| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.11.0` |
 | 兼容 | DSH `>=0.4.5-rc.4`（含**桌面版**）、Node `>=22`、**零运行依赖**；逐版本实测见 [兼容与权限](#兼容与权限) |
-| 落盘位置 | `<DSH_HOME>/cc-library/`（角色卡）、`<DSH_HOME>/cc-drafts/`（会话草稿）；`DSH_HOME` 默认 `~/.dsh`，旧位置仍读得到 |
+| 落盘位置 | `<DSH_HOME>/cc-library/`（角色卡）、`<DSH_HOME>/cc-drafts/`（会话草稿；LLM 创作锁 `.lock.json` 与覆盖前备份 `backups/` 也在这里）；`DSH_HOME` 默认 `~/.dsh`，旧位置仍读得到 |
 | 文档 | 用户文档＝本文件；改代码前必读 [AGENTS.md](./AGENTS.md)；完整历史 [CHANGELOG.md](./CHANGELOG.md) |
 
 ---
@@ -42,7 +42,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
    dsh --profile <profile> --dump-config
    期望在 `# == @xia-sc/dsh-cc-studio` 那一层下看到两行：`id: dsh-cc-studio`（宿主行）与 `id: preset-cc`（CC 预设行）。
 4. 告诉用户重启：宿主行只在启动时组合 —— CLI 重启 `dsh web`，桌面版退出并重新打开应用。
-5. 重启后可选自检：在「CC 模式」会话里调任意一个 cc_* 工具，返回里带 "build": "0.10.3" 即说明新代码已加载
+5. 重启后可选自检：在「CC 模式」会话里调任意一个 cc_* 工具，返回里带 "build": "0.11.0" 即说明新代码已加载
    （这也是判断「改了但没重启」的唯一可靠依据）。
 6. 不要做的事：
    - 不要手工把 presets/ 拷进 ~/.dsh/.agent-presets/（dsh >= 0.4.7-alpha.4 已不读该目录，拷了也不生效）；
@@ -58,9 +58,9 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 ```bash
 # 从 npm 安装（推荐）
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.10.3    # 锁定版本
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.11.0    # 锁定版本
 
-# 从 GitHub 源安装（可加 #v0.10.3 / #master 指定 tag / 分支）
+# 从 GitHub 源安装（可加 #v0.11.0 / #master 指定 tag / 分支）
 dsh plugin --profile web add github:xia-sc/dsh-cc-studio
 
 # 从本地仓库安装（开发 / 调试）：装出来是 link:，改 lib/*.js 重启即生效
@@ -94,6 +94,7 @@ dsh plugin --profile web remove @xia-sc/dsh-cc-studio       # 卸载（同时移
 | 改完代码没变化 | 分三层看：改 `lib/client.js` → 刷新页面；改 `lib/index.js`（宿主）或预设 → **重启 dsh（桌面版重启应用）**；先看一眼工具返回里的 `build` 是不是你以为的版本 |
 | 偶发「本轮运行失败 `tool input is invalid JSON`」 | 模型生成的工具参数 JSON 有语法错误（最常见是尾逗号），DSH provider 严格 `JSON.parse` 后判 `MALFORMED_RESPONSE`，且默认不重试。0.10.2 已在 persona 与五个写类工具描述里要求「严格 JSON + 分小步写（数组字段单独一批）」，**重启 dsh 让新文本生效**；仍偶发就重发同一句话（模型会重新生成），或在 profile 的 `cordis.patch.yml` 给 `llm-deepseek-account` 加 `retryPolicy`（`retryableCodes` 要**写全默认 5 码 + `MALFORMED_RESPONSE`** —— 补丁层对 config 是整条替换、不做深合并），完整片段见 CHANGELOG 0.10.2 |
 | 卡里的换行显示成字面 `\n`（如「说完这句话。\n\n下一段」） | 模型在 tool call 里把换行写成了字面 `\n`（JSON 多转义一层），旧版工具原样落盘。0.10.3 起写类工具统一解码字面 `\n` / `\r` / `\t`（含多层转义），**重启 dsh 生效**。⚠️ 已存卡里已经被写坏的字段不会自动修复 —— 重新调一次对应工具写入那几个字段，或在工坊里手动改回真换行 |
+| LLM 正在创作时，点「载入」另一张卡没反应/只出预览，工坊变只读 | 这是 0.11.0 的**草稿锁**（LLM 创作保护）：LLM 写草稿后自动锁住，载入/导入只进只读预览，不会覆盖 LLM 未保存的草稿。让 LLM 调 `cc_release_draft` 交还、或等锁超过 **30 分钟**无写入自动失效，工坊即恢复可编辑；也可以在 设置 →「角色卡工坊」→ 工坊默认行为里关掉「**LLM 创作保护（草稿锁）**」（等价旧行为）。被覆盖前的草稿都在 `<DSH_HOME>/cc-drafts/backups/`（同槽最多 20 份） |
 
 ---
 
@@ -101,9 +102,9 @@ dsh plugin --profile web remove @xia-sc/dsh-cc-studio       # 卸载（同时移
 
 4. 新建会话，会话模式选 **CC 模式** —— 胶囊随即出现在输入框上方，后台会把 CC 预设挂上。
 2. 直接说需求，例如「我想做雨城记忆典当行老板娘，世界观很薄」。
-3. 模型按 **6 步**推进，每步先用 4-2 个开放问题问你的偏好，再落笔；每次调用 Tool，胶囊与工坊实时刷新：
-   `cc_get_card`（总结进度 + 提问）→ `cc_patch_character`（气质/关系 → 四件套）→ `cc_patch_world`（世界侧重 → ≥3 维 + `autoLorebook`）→ `cc_add_lorebook_entries`（触发词 → ≥5 条，至少 4 条 `constant`）→ `cc_patch_greetings`（开场场景 → 问候语）→ `cc_validate`。
-4. 随时点胶囊进工坊手改。校验通过后：侧栏 `★ 保存当前`（已载入 ID 时原地覆盖，否则新建）、`＋ 另存为新`，或导出 `JSON / PNG / CHARX`；也可以直接对模型说「帮我载入 ID xxxx」。
+3. 模型按 **6 步**推进（第 6 步校验通过后再调用 `cc_release_draft` 交还编辑权），每步先用 4-2 个开放问题问你的偏好，再落笔；每次调用 Tool，胶囊与工坊实时刷新：
+   `cc_get_card`（总结进度 + 提问）→ `cc_patch_character`（气质/关系 → 四件套）→ `cc_patch_world`（世界侧重 → ≥3 维 + `autoLorebook`）→ `cc_add_lorebook_entries`（触发词 → ≥5 条，至少 4 条 `constant`）→ `cc_patch_greetings`（开场场景 → 问候语）→ `cc_validate`（校验通过）→ `cc_release_draft`（交还草稿编辑权）。
+4. 随时点胶囊进工坊看进度。**LLM 写作期间工坊是只读的**（它持有草稿锁，你载入别的卡只会进入只读预览，不会覆盖它正在写的草稿）；校验通过、你确认创作完成后，让 LLM 交还编辑权限（`cc_release_draft`），或等锁 30 分钟无写入自动失效，再在工坊里微调。之后：侧栏 `★ 保存当前`（已载入 ID 时原地覆盖，否则新建）、`＋ 另存为新`，或导出 `JSON / PNG / CHARX`；也可以直接对模型说「帮我载入 ID xxxx」。
 
 ---
 
@@ -116,16 +117,18 @@ dsh plugin --profile web remove @xia-sc/dsh-cc-studio       # 卸载（同时移
 - **文档式阅读排版**：字段是无边框 textarea、按内容自动撑高，点进去即可改；长文点「⛶」开 720px 大框（带打开时快照，「取消」真回滚）。写作是主线，手动编辑是次要入口。
 - **5 维世界观**：年表 / 势力 / 地理 / 力量体系 / 日常 → `autoLorebook` 自动生成带 `@@position / @@depth / @@activate` 的条目（至少 4 条 `constant`；再次调用覆盖旧自动条目、保留手工条目）。
 - **ID 化 CRUD**：`★ 保存当前`（已载入时原地覆盖）/ `＋ 另存为新` / `✎ 重命名` / `＋ 新建` / 载入 / 删除，搜索、高亮当前卡，落盘 `<DSH_HOME>/cc-library/<id>.json`。
+- **LLM 创作保护（草稿锁，0.11.0）**：LLM 每次写草稿都会上锁（`<DSH_HOME>/cc-drafts/<槽>.lock.json`），锁 active 期间工坊只读、载入/导入只进**只读预览**（草稿与来源 id 都不写），退出预览即回到 LLM 的草稿；LLM 调 `cc_release_draft` 交还、或锁 30 分钟无写入自动失效后恢复编辑。设置页可关掉该保护（关闭 = 旧行为）。任何覆盖型动作（载入/导入/迁移/force 覆盖）前都会把当前草稿备份到 `<DSH_HOME>/cc-drafts/backups/`（同槽最多 20 份，空壳与同内容不重复备份）
 - **导入导出**：`⬆ 导入 JSON/PNG/CHARX` 自动识别容器；`⬇ JSON`、`⬇ PNG`（4×4 占位图）、`⬆ 写入 PNG`（写入你上传的任意 PNG，自动剥离旧 `ccv3/chara` 块并重算 CRC32）、`⬇ CHARX`（打包 `card.json`）。
 - **中英双语 + 深浅色**：完整 `zh / en` 词表，跟随 `设置 → 通用 → 语言` 实时切换；配色走 `var(--dsw-alias-*)`，主操作固定品牌紫 `#7c5cff`。
 
-### CC 模式（模型侧 32 个 Tool）
+### CC 模式（模型侧 33 个 Tool）
 
 **6 步工作流 + 共创约束**：每步前必须先问偏好，严禁无讨论就一次性填满；世界书的完成态是「**≥5 条且至少 4 条共创**」（纯自动条目不算完成）。每次返回只有一份 `workflow.next`（下一步）+ `workflow.state`（四项三态进度）+ `message`（给用户的一句话），另有 `build` 标明插件版本。
 
 | 分类 | 工具 |
 | --- | --- |
 | 工作流（必调） | `cc_get_card` / `cc_patch_character` / `cc_patch_world` / `cc_add_lorebook_entries` / `cc_patch_greetings` / `cc_validate` |
+| 创作收口（0.11.0） | `cc_release_draft` —— **`cc_validate` 通过（valid=true）= 创作完成，必须立刻调用**，把草稿编辑权交还用户（释放锁，工坊恢复可编辑）。不释放时工坊保持只读，用户只能预览；persona、`cc_validate` 终态与首次上锁提示都会反复引导模型调用它 |
 | 世界书质量 | `cc_simulate_trigger`（拿一句用户会说的话验命中）/ `cc_lint_lorebook`（静态体检，含**最坏情况单次触发量**）/ `cc_patch_book_meta`（命名 / `scan_depth` / `token_budget` / 递归扫描） |
 | 条目管理 | `cc_update_lorebook_entry` / `cc_delete_lorebook_entries` |
 | 导出与起点 | `cc_preview_export`（体积、估算 token、字段清单、重复内容量）/ `cc_new_card`（破坏性，须用户同意后带 `confirm:true`） |
@@ -139,6 +142,7 @@ dsh plugin --profile web remove @xia-sc/dsh-cc-studio       # 卸载（同时移
 - `cc_patch_world` 的 **`loreKeys`**：为每一维自报触发词（真实对话里用户会说的实体名）。不给的话自动条目只能用维度名当 key，**真实对话永远命中不了**。同一实体被分给多个维度时会当场警告。
 - **载入后直接保存会更新原卡**（草稿旁记着来源 id），不会再莫名多出一张同名重复卡；改名同时改列表名与卡内 `data.name`。
 - 写类工具支持 **`expectedRev` 乐观锁**；不传也会在返回里给 `revDrift` 与 `draftStatus.watchedRev`，多端同时改卡时不会静默覆盖。
+- **草稿锁（0.11.0）**：模型每次写草稿都会自动上锁（`draftStatus.lock` 能随时看到自己是否持有），工坊随即只读、用户载入只进只读预览；创作完成调用 `cc_release_draft` 交还。锁超过 30 分钟无写入会自动失效（防模型崩溃后把工坊永久锁死），模型再写会自动重新上锁。
 - 工具返回的 `build` 与 `package.json` 的 `version` 同步 —— 能一眼确认当前跑的是哪一版代码。
 - **分组的增删改查模型侧也能做**（0.8.0 补）：`cc_create_group` 建组、`cc_set_card_group` 把卡放进/换/移出（`cardId` 省略 = 当前草稿的来源卡，**不传 `groupId` = 移出**）、`cc_delete_group` 是破坏性操作须显式 `confirm:true`。**移出分组不删节点与关系**（挪回来关系还在），**删组不删卡**（只清成员卡的 `meta.groupId`）。
 
@@ -176,8 +180,8 @@ dsh plugin --profile web remove @xia-sc/dsh-cc-studio       # 卸载（同时移
 ## 开发与测试
 
 ```bash
-npm test                                    # 22 个文件、864 项断言，全绿才算过
-node tests/tools-contract.test.mjs          # 只跑 CC 工具链契约（104 项）
+npm test                                    # 24 个文件、959 项断言，全绿才算过
+node tests/tools-contract.test.mjs          # 只跑 CC 工具链契约（113 项）
 node tests/group-layer-guard.test.mjs       # 只跑卡组层的耦合守卫（16 项）
 ```
 
@@ -187,6 +191,8 @@ node tests/group-layer-guard.test.mjs       # 只跑卡组层的耦合守卫（1
 ## 更新日志
 
 完整历史见 [CHANGELOG.md](./CHANGELOG.md)。最近几版大多是「另一个 LLM 以工具使用者身份跑回归」挖出来的问题：
+
+- `0.11.0` **新增 LLM 草稿锁（读写分离）**：LLM 创作期间工坊只读、载入/导入只进只读预览，不再覆盖未保存草稿；`cc_release_draft` 交还编辑权，锁 30 分钟无写入自动失效，设置页可关闭。**修复**：角色卡完成后主动交还锁（persona / `cc_validate` / 首次上锁三处引导）、客户端草稿来源 id 恢复失效；覆盖型载入/导入前自动备份到 `cc-drafts/backups/`。测试 864 → **959 项**。详细见 [CHANGELOG](./CHANGELOG.md)。
 
 - `0.10.3` **多行文本被写成字面 `\n`**：用户实机报告（六步全链路 `valid: true`）发现经 `cc_patch_character` / `cc_patch_greetings` / `cc_patch_world` 写入的字符串，换行全部落盘成字面 `\` + `n`，导进 SillyTavern 显示成「说完这句话。\n\n下一段」。取证推翻了「工具多转义」的猜测：工具层往返测试证明真换行原样保留；会话日志里模型 18 次调用有 6 次在 JSON 里把换行写成 `\\n`（多转义一层），而 `alternate_greetings` / lorebook 却写对了 —— 是**模型输出不一致**。修法：写类工具统一 `textArg()` 解码字面 `\n` / `\r` / `\t`（多层转义最多 4 轮收敛），覆盖角色 / 问候语 / 世界书条目 / 书级元信息 / 共享书；工坊保存与导入路径不动。顺带修报告 P2（卡内 `token_budget` 默认 1200 → **2400**）与 P4（autoLorebook 的「力量体系」条目裸 `@@activate` → `@@activate 100`）。测试 858 → **864 项**。**重启 dsh 生效**；已存卡里已写坏的字段需重写。
 

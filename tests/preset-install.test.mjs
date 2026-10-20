@@ -327,6 +327,11 @@ const sha256Of = (s) => createHash('sha256').update(String(s), 'utf8').digest('h
   check('persona 含工具参数 JSON 卫生规则（尾逗号会让 provider 判本轮失败）',
     codeLines(patchText).join('\n').includes('工具参数必须是严格合法的 JSON')
     && codeLines(tplText).join('\n').includes('工具参数必须是严格合法的 JSON'), '');
+  // 0.11.0 用户实测：角色卡完成后 LLM 不会主动释放草稿锁，工坊一直只读。流程引导必须写进 persona
+  // （模型最关注的文本）——「cc_validate 通过 = 创作完成，必须调用 cc_release_draft 收口」。
+  check('persona 含草稿锁交还规则（cc_validate 通过后必须 cc_release_draft；两份清单都有）',
+    codeLines(patchText).join('\n').includes('cc_release_draft')
+    && codeLines(tplText).join('\n').includes('cc_release_draft'), '');
 
   check("声明行是 preset-cc + '@deepseek-ai/dsh-agent-preset'",
     /- id: preset-cc/.test(patchText) && /name: '@deepseek-ai\/dsh-agent-preset'/.test(patchText), '');

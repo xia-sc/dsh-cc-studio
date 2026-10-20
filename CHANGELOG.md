@@ -2,6 +2,72 @@
 
 `dsh-cc-studio` 的版本变更记录，倒序排列（最新在上）。README 只保留最近几条，完整历史在本文件。
 
+## 0.11.0
+
+**LLM 创作期间草稿不再被用户「载入」覆盖，并在完成后主动交还编辑权。**
+
+### 新增
+
+- **LLM 草稿锁（读写分离）**：LLM 每次写草稿自动上锁；锁期间工坊只读，载入/导入只进只读预览（不写草稿、不改来源 id）。
+- **`cc_release_draft`（第 33 个工具）**：创作完成交还编辑权；锁超过 30 分钟无写入自动失效。
+- **设置开关「LLM 创作保护（草稿锁）」**（默认开，关闭 = 旧行为）。
+- **覆盖前自动备份**：载入 / 导入 / 迁移 / force 覆盖前，当前草稿存到 `cc-drafts/backups/`（同槽最多 20 份）。
+
+### 修复
+
+- **角色卡完成后 LLM 不主动交还锁**：persona、`cc_validate` 终态（`workflow.releaseRequired`）与首次上锁提示三处主动引导模型调用 `cc_release_draft`。
+- **客户端草稿来源 id 恢复失效**（0.5.0 起潜伏的 `ReferenceError` 被 `.catch` 吞掉）。
+
+<details>
+<summary>详细说明（现象 / 根因 / 修法 / 测试）</summary>
+
+**LLM 正在工坊里创作 A 卡时，用户点「载入」B 卡，A 的草稿被整份替换 —— 未保存的内容只能从历史对话里捞。**
+
+### 现象：LLM 创作中的草稿被用户的「载入」覆盖
+
+用户实机场景：LLM 用 `cc_load_from_library` 把一张卡载入会话草稿、开始创作；此时用户想去看另一张卡，在工坊右侧点「载入」—— `cc_loadFromLibrary` 对**同一把会话槽**执行 `setDraftFor(k, obj.draft)`，LLM 已经写进草稿、但还没保存到角色库的内容被整份替换。LLM 下一次工具调用只会看到「草稿已被外部修改（rev x → y）」，它只能从对话历史里重新拼回这张卡。
+
+### 根因：同一把草稿槽没有「谁在写」的概念
+
+Tools 与浏览器共用同一份 `<DSH_HOME>/cc-drafts/<session>.json` 是 issue #5 之后的有意设计（两边必须算出同一把 key）。但这份共享只有**事后**的 `rev` 检测：模型发现被改过之后只能重载，**没有任何机制阻止用户侧在 LLM 写作期间整份替换草稿**。载入、导入、槽迁移、清空、关系渲染都是「用户侧写草稿」的端门，却没有一把「当前谁拥有这份草稿」的锁。
+
+### 修法：草稿锁（读写分离）
+
+**模型**：LLM 每次写草稿自动建立一把创作锁（独立 sidecar，不写进草稿 JSON、不动 `rev`）。锁 active 时用户侧所有写草稿端点被拦，载入/导入只回**只读预览**；权限完全由 LLM 掌握 —— 它调 `cc_release_draft` 交还，或锁超过 **30 分钟**无写入自动失效（防 LLM 崩溃后永久锁死的安全阀）。**按产品决策不提供用户强制接管**：想在 LLM 未交还时微调，只能要求 LLM 调 `cc_release_draft`。
+
+- **共用判定层** `lib/draft-lock.js`（纯函数、零 IO，两半 import）：`normalizeLock` / `isLockStale` / `lockSummary` / `lockBlocksDraftWrite`。锁文件损坏、`key` 不符、`updatedAt` 缺失一律视为无锁（降级方向必须是放行）。
+- **锁文件**：`<主根>/cc-drafts/<safeDraftFile 去 .json>.lock.json`，字段 `{key, owner:"llm", since, updatedAt, rev, cardName}`。两半同构：写主根、读回退旧根、清两个根；锁写失败只记日志，不影响草稿写入。
+- **工具半（LLM 侧）**：`setDraft` 落盘成功即上锁 / 续期；**内容无变化的空写也续期**（`updatedAt` 是「还在创作」的心跳，不是「内容变了」的记号）。`draftStatus` 增加 `lock` 摘要（无锁显式 `null`）。新增第 33 个工具 **`cc_release_draft`**：清锁并读取锁内卡名返回 `{ok, released, sessionKey, cardName, rev, message}`，无锁幂等成功。`cc_validate` 终态 `next` 追加「准备交给用户微调时调用 `cc_release_draft`」。
+- **宿主半（用户侧）**：`cc_setDraft` / `cc_patchDraft` / `cc_migrateDraft` / `cc_setOrigin` / `cc_renderRelations` 在锁 active 且未带 `force:true` 时回 `fail("draft-locked")`（真实码在 `details.code`、`details.lock` 带摘要）；`cc_loadFromLibrary` / `cc_importFromPng|Json|Charx` 改回 `ok({locked:true, lock, preview, key})` 且**零写入**（不写草稿、不写 origin）。`cc_saveToLibrary` / 库删改 / 导出 / 分组 / 共享书 / `validate` 不拦 —— 用户仍可保存 LLM 进行中的卡、导出一份看看。
+- **客户端**：设置页新增「**LLM 创作保护（草稿锁）**」开关（默认开，`localStorage:dsh-cc-studio-settings` 的 `draftLock`）；锁 active 时工坊只读、顶部横幅显示「LLM 正在创作『卡名』· 最后写入 N 分钟前」；载入/导入进入**只读预览**（可继续预览别的卡、退出预览恢复最新 LLM 草稿；预览期间轮询只更新 LLM 快照，绝不覆盖显示中的卡）；写入口（`updateDraft` / `pushDraftToHost` / `clearDraft` / `migrateSlot` / `renderRelationsToCard` / `syncDraftAfterPromote`）先过 `isReadOnly()`；`cc_setDraft` 竞态返回 `draft-locked` 时刷新并提示「本次修改未写入」。开关关闭时所有写 RPC 带 `force:true`，完全回到旧行为。
+- **覆盖前备份**：载入 / 导入 / 迁移 / force 覆盖前，把当前草稿写到 `<DSH_HOME>/cc-drafts/backups/<safe>-<毫秒>.json`（空壳与「和最近一份内容指纹相同」跳过；同槽保留 20 份）。这是「原草稿已经被换掉」之后还能捞回来的最后一道保险。
+
+### 流程引导：LLM 完成后主动交还（用户实机反馈补充）
+
+首版只把「交还」写在 `cc_validate` 终态 `next` 的末尾，实测**角色卡完成后 LLM 直接总结，不调 `cc_release_draft`**，工坊一直只读。补三处引导，模型从第一次写草稿起就知道「完成时要交还」：
+
+- **persona**（两份预设清单同步）：工作流第 6 步改为「**通过后必须立刻调用 cc_release_draft 交还草稿编辑权**（不调用的话工坊一直只读、用户无法微调）」；规则段补「**cc_validate 通过 = 创作完成，必须调用 cc_release_draft 收口**（不调就算没做完）」。
+- **`cc_validate`**：终态 `next` 改为以「**下一步必须调用 cc_release_draft**」开头（导出/保存指引保留），新增 `workflow.releaseRequired=true`，`message` / `hint` 也点名交还，工具 description 写明「valid=true 即创作完成，必须立刻调用」。
+- **首次上锁提示**：任何写类工具首次建立锁时，在 `warnings` 里加一条「已锁定草稿，完成时必须调用 cc_release_draft 交还」——弱模型不用等到最后一步才知道机制。
+- **`cc_release_draft`** 的 description 改为「`cc_validate` 通过 = 必须调用」。
+
+### 顺带修：草稿来源 sidecar 恢复其实一直没生效
+
+客户端 `pullDraft` 在 `apply()` 作用域里直接调 `set({ currentLibraryId: originId })` —— 那是 `createStore` 内部的局部函数，`apply` 里没有它。`originId` 非空时这里抛 `ReferenceError` 并被链尾 `.catch` 吞掉，于是**来源 id 从未恢复**，且同一响应里排在它后面的 `setDraftFromHost` 也不执行（0.5.0 起潜伏）。修法是给 store 增加 `setCurrentLibraryId(id)` 并在这里调用；`tests/draft-slot-sync.test.mjs` ③e 钉住。
+
+### 测试与版本
+
+- 新增 `tests/draft-lock.test.mjs`（34 项：纯函数边界 + 工具半真实上锁/续期/交还/超时重锁 + 两半锁路径一致）与 `tests/draft-lock-client.test.mjs`（32 项：锁→只读、载入→预览、预览期轮询、退出恢复、守卫、开关关闭 force）。
+- `tools-contract` 104 → 113（33 个工具 + `cc_release_draft` + 锁接线 + `releaseRequired` + 首次上锁引导）；`preset-install` 84 → 85（persona 交还规则）；`rpc-channel` 57 → 67（锁定端点矩阵 + 备份）；`data-root` 37 → 45（锁路径同构 + 旧根回退 + 双根清理）；`draft-slot-sync` 18 → 19（来源 id 修复）。
+- 全量 `npm test` 864 → **959 项（24 个文件）**；i18n 中英各 314 → **327 键**。
+- 版本 `0.11.0`；工具返回里的 `build` 同步为 `0.11.0`。
+
+</details>
+
+### 生效方式
+
+**重启 dsh（桌面版退出应用再启动）→ 刷新页面**（persona 与工具描述改动都随宿主/预设加载，必须重启）。之后 LLM 写草稿时工坊会显示只读横幅；LLM 在 `cc_validate` 通过后会先调 `cc_release_draft` 交还，再引导你微调/导出。⚠️ 预览不是持久状态：刷新页面会回到 LLM 的当前草稿。已有的草稿与角色卡不受影响；锁文件只在 LLM 下次写入时才会出现。
+
 ## 0.10.3
 
 **模型把换行写成了字面 `\n`，卡导进 SillyTavern 后整段显示成「说完这句话。\n\n下一段」。**

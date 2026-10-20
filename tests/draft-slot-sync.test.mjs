@@ -156,7 +156,7 @@ const S1 = 'session-1111';
 {
   handler = (endpoint, payload) => {
     if (endpoint === 'cc_getDraft' && payload.args.sessionId === S1) {
-      return { ok: true, value: { key: S1, keySource: 'arg', draft: fullDraft('S1 的草稿', [{ content: 'a' }]), draftStatus: { isNew: false, key: S1 } } };
+      return { ok: true, value: { key: S1, keySource: 'arg', originId: 'lib-origin-1', draft: fullDraft('S1 的草稿', [{ content: 'a' }]), draftStatus: { isNew: false, key: S1 } }, };
     }
     return { ok: false, error: { code: 'internal', message: 'unexpected ' + endpoint } };
   };
@@ -173,6 +173,11 @@ const S1 = 'session-1111';
   check('③d 满草稿被渲染进 store（同一把 key 读写）',
     store.getSnapshot().draft.data.name === 'S1 的草稿' && store.getSnapshot().slotWarn === null,
     JSON.stringify({ name: store.getSnapshot().draft.data.name, warn: store.getSnapshot().slotWarn }));
+  // 0.11.0 集成修：旧代码在 apply() 作用域里直接调 createStore 内部的 set()，originId 非空时抛
+  // ReferenceError 并被 .catch 吞掉 → 来源 sidecar 恢复不了、同一次响应里的 setDraftFromHost 也不执行。
+  check('③e 来源 id（originId）恢复到 currentLibraryId（且不影响同一响应的草稿渲染）',
+    store.getSnapshot().currentLibraryId === 'lib-origin-1',
+    String(store.getSnapshot().currentLibraryId));
 }
 
 // —— 4) 主机回的 key 与点名的 key 不一致：不渲染，只告警 ——

@@ -1,7 +1,7 @@
 # AGENTS.md — 给在本仓库工作的 Agent 的说明书
 
 `@xia-sc/dsh-cc-studio`：DSH（DeepSeek Harness）插件，CCv3 角色卡工坊。
-一句话：**输入框上方的胶囊 → 全屏融合工坊**，配合 `CC 模式` 预设让 LLM 用 32 个 Tool 先问再填，最后导出 `JSON / PNG / CHARX`。
+一句话：**输入框上方的胶囊 → 全屏融合工坊**，配合 `CC 模式` 预设让 LLM 用 33 个 Tool 先问再填，最后导出 `JSON / PNG / CHARX`。
 
 用户文档看 `README.md`（中文）/ `README_EN.md`（英文），历史看 `CHANGELOG.md`。本文件只写**改代码前必须知道的事**。
 
@@ -10,15 +10,17 @@
 ## 1. 仓库结构
 
 ```
-lib/index.js       2354 行 ── 宿主半：RPC 端点 + 草稿落盘 + 角色库 + 人物关系分组 + PNG/CHARX + 预设安装（旧版目录形态）
-lib/agent.js       2910 行 ── 预设半：CC 模式的 32 个 Tool（只随 CC 预设挂载）
-lib/client.js      2918 行 ── 浏览器半：手写 bundle，胶囊(Capsule) + 工坊(Workshop) + 设置页(SettingsView)
-lib/group-layer.js  608 行 ── **卡组层**（0.10.0）：卡组作用域 / 世界书分段统计 / 检查注册表 —— 纯函数、零 IO，
+lib/index.js       2563 行 ── 宿主半：RPC 端点 + 草稿落盘 + 草稿锁拦截/备份 + 角色库 + 人物关系分组 + PNG/CHARX + 预设安装（旧版目录形态）
+lib/agent.js       3132 行 ── 预设半：CC 模式的 33 个 Tool（只随 CC 预设挂载）
+lib/client.js      3156 行 ── 浏览器半：手写 bundle，胶囊(Capsule) + 工坊(Workshop) + 设置页(SettingsView)
+lib/group-layer.js  624 行 ── **卡组层**（0.10.0）：卡组作用域 / 世界书分段统计 / 检查注册表 —— 纯函数、零 IO，
                               两半都 import 它。这是全仓**唯一一处「不写两份」的实现**（理由与家规见 §2.7）
+lib/draft-lock.js    98 行 ── **草稿锁层**（0.11.0）：锁归一 / TTL / 能不能写的**唯一实现** —— 纯函数、零 IO，
+                              两半 import 它（锁文件 IO 仍由两半各一份；理由与家规见 §2.8）
 presets/cc.patch.yml     ── 补丁层 2：CC 预设的**声明行**（dsh ≥ 0.1.7-alpha.1 唯一认的形态）
 presets/cc/              ── CC 预设的目录模板（dsh ≤ 0.1.6-alpha.2，挂载时安装到 <DSH_HOME>/.agent-presets/cc）
 cordis.patch.yml         ── 补丁层 1：宿主组合补丁（insert 一个插件行）
-tests/*.test.mjs         ── 22 个测试文件、864 项断言；**不随包发布**
+tests/*.test.mjs         ── 24 个测试文件、959 项断言；**不随包发布**
 dist/*.zip               ── 历史发布包（按版本命名），不是构建产物，不要改
 .github/workflows/       ── CI：打 v* tag 自动发 npm（OIDC）+ 建 Release（正文抽自 CHANGELOG.md）
 .github/scripts/         ── release-notes.mjs：上面那个 Release 正文/标题的抽取脚本，可本地直接跑
@@ -130,6 +132,21 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
 
 `include:"summary"`（默认）不回条目正文；`maxCards` 默认 50、超限置 `truncated`；组文件缺失时**不提前返回**（成员与共享书照样读出来，`ok:false` 只表示组本身不在）—— 旧 `sharedBookScopeFor` 从不看组文件，早退会让「组没了、书还在」的卡突然看不到自己的书。客户端**只显示**宿主返回的 `issues` / `byCheck`，不参与任何统计。
 
+### 2.8 草稿锁：LLM 创作保护（0.11.0）
+
+**问题**：LLM 正在工坊草稿里创作 A 卡时，用户点「载入」B 卡，`cc_loadFromLibrary` 把同一会话槽的草稿整份替换 —— LLM 已写入但未保存的内容被覆盖，只能从历史对话里捞。
+
+**模型**：LLM 每次写草稿（工具半的 `setDraft`）都会建立一把创作锁（**独立 sidecar**，不写进草稿 JSON）。锁 active 时浏览器侧所有写草稿端点被拦，载入/导入只回只读预览；权限完全由 LLM 掌握 —— 它调 `cc_release_draft` 交还，或锁超过 **30 分钟**无写入自动失效（防 LLM 崩溃后永久锁死的安全阀，不是「用户抢权」）。**没有 `owner:"user"` 状态、没有用户侧强制接管端点。**
+
+- **路径与格式**：`<主根>/cc-drafts/<safeDraftFile 去 .json>.lock.json`，字段 `{key, owner:"llm", since, updatedAt, rev, cardName}`。写主根、读回退旧根、清两个根都删；写失败只记日志，**不影响草稿写入**（锁是附加保护层）。
+- **判定只有一份**：`lib/draft-lock.js`（纯函数、零 IO，两半 import）——`normalizeLock` / `isLockStale` / `lockSummary` / `lockBlocksDraftWrite`。**两半各自再写一份「算不算超时/能不能写」= 一边锁住、一边照写，比没有锁更危险**（同 §2.7 的教训）。锁文件损坏 / `key` 不符 / `updatedAt` 缺失一律视为无锁（降级方向必须是放行）。
+- **两半 IO 同构**：`draftLockPath` / `readDraftLockSync` / `writeDraftLockSync` / `clearDraftLockSync` / `draftLockSummaryFor` 在 `lib/index.js` 与 `lib/agent.js` 各一份，路径表达式必须逐字一致（`tests/data-root.test.mjs` 源码守卫）。
+- **LLM 侧（工具半）**：`setDraft` 落盘成功即 `refreshDraftLock`（保留首次 `since`，刷新 `updatedAt` / `rev` / `cardName`）；**内容无变化的空写也要续期**（心跳，不是「内容变了」的记号）。`draftStatusFor` 带 `lock` 摘要（无锁显式 `null`）。
+- **用户侧（宿主半）**：写草稿端点统一走 `draftLockBlockFor(k, args, action)`；锁 active 且 `force !== true` 时 `fail("draft-locked")`（真实码在 `details.code`，`details.lock` 带摘要）。`cc_loadFromLibrary` / `cc_importFrom*` 回 `ok({locked:true, lock, preview, key})` 且**零写入**（不写草稿、不写 origin）。`cc_saveToLibrary` / 库删改 / 导出 / 分组 / 共享书 / `validate` 不拦。
+- **`stale` 与 `force`**：stale（> TTL 无写入）视为可写、**不清锁文件**（LLM 回来再写会重新 active）；`force:true` 只由客户端在设置开关关闭时发送，宿主收到即清锁放行。**新增写草稿的端点必须接这把锁**，否则用户仍能绕过保护覆盖 LLM 的草稿。
+- **覆盖前备份**：载入 / 导入 / 迁移 / force 覆盖前，`backupDraftSync` 把当前草稿写到 `<draftDir>/backups/<safe>-<毫秒>.json`（空壳与「和最近一份内容指纹相同」跳过；同槽保留 20 份）。`listDraftSlotsOnDisk` 只扫顶层，备份子目录不会被误当草稿槽。这是「LLM 未保存内容被覆盖后还能捞回来」的最后一道保险。
+- **流程引导（0.11.0 用户实测补充）**：**角色卡完成后 LLM 不会主动交还** —— 首版只在 `cc_validate` 终态 `next` 末尾提了一句，弱模型直接总结就结束，工坊一直只读。三处引导缺一不可：① **persona**（两份预设清单同步）写明「`cc_validate` 通过 = 创作完成，必须调用 `cc_release_draft` 收口」；② **`cc_validate` 终态**：`next` 以「下一步必须调用 `cc_release_draft`」开头、`workflow.releaseRequired=true`、`message`/`hint` 点名；③ **首次上锁提示**：`tool()` 包装发现「本次调用前无锁、调用后有锁」时在 `warnings` 里说明「完成时必须交还」（弱模型第一次写草稿就知道了）。改任何一处都要保留另外两处，`tools-contract` ②i/②j/⑬g 与 `preset-install` 第 12 节会拦。
+
 ---
 
 ## 3. 四个文件的分工（三个入口 + 一个共用的卡组层）
@@ -137,8 +154,9 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
 ### 3.1 `lib/index.js`（宿主）
 
 - **RPC 端点**：`validate` / `ping` / `cc_isCcMode` / `cc_getDraft` / `cc_setDraft` / `cc_patchDraft` / `cc_validateDraft` / `cc_migrateDraft` / `cc_listLibrary` / `cc_saveToLibrary` / `cc_loadFromLibrary` / `cc_deleteFromLibrary` / `cc_renameInLibrary` / `cc_getLibraryEntry` / `cc_setOrigin` / `cc_importFromJson` / `cc_importFromPng` / `cc_exportPng` / `cc_importFromCharx` / `cc_exportCharx`。未知端点返回 **200 + 失败帧**（`details.code = "unknown-endpoint"`），不是 404。**三条导入路径（JSON/PNG/CHARX）都走 `normalizeDraft` → `upgradeCardToV3`**，返回里带 `upgradedFrom`（V2/V1 卡自动升级，非静默——界面会显示）；`cc_setDraft` **故意不升级**（它是工坊自己那份草稿的镜像，静默变换会让两边不一致）。
+- **草稿锁（0.11.0）**：写草稿端点（`cc_setDraft` / `cc_patchDraft` / `cc_migrateDraft` / `cc_setOrigin` / `cc_renderRelations`）在 LLM 锁 active 且未带 `force:true` 时回 `fail("draft-locked")`（真实码在 `details.code`、`details.lock` 带摘要）；`cc_loadFromLibrary` / `cc_importFrom*` 改回 `ok({locked:true, lock, preview, key})` 且**零写入**；`force:true` 清锁放行（覆盖型动作先备份）。`cc_getDraft` 的锁摘要只在 `draftStatus.lock`，**不另开顶层 lock 字段**。详见 §2.8。
 - **草稿槽 key 的不变量**（issue #5 的教训）：同一会话里 **Tools 与浏览器必须算出同一把 key**。Tools 侧是 `exec.agent.session.id`；浏览器侧**必须显式把会话 id 传进来**（RPC 是 HTTP 处理函数，`agents.currentInitiator()` 在那里恒为空 → 回退成 `"default"` → 「模型写 `session-<id>`、工坊读 `default`」两槽并存）。回退时 `source` 如实报 `fallback`（`keySource`），前端据此**不渲染**该槽并告警。新增读写草稿的端点一律走 `draftKeyFrom(ctx, args)`，别自己拼 key。
-- **草稿持久化**：`<主根>/cc-drafts/<session>.json`（`draftDir()` = `dataRoots("cc-drafts")[0]`；读盘经 `findDraftPath()` 回退旧根）。变更即落盘，**内存 miss 时不静默建空**（告警 + 提示恢复）。文件名 `safe(key)-<hash>.json`；`listDraftSlotsOnDisk()` 扫两个根、按文件名去重，用于「当前槽是空壳」时的救回提示。
+- **草稿持久化**：`<主根>/cc-drafts/<session>.json`（`draftDir()` = `dataRoots("cc-drafts")[0]`；读盘经 `findDraftPath()` 回退旧根）。变更即落盘，**内存 miss 时不静默建空**（告警 + 提示恢复）。文件名 `safe(key)-<hash>.json`；`listDraftSlotsOnDisk()` 扫两个根、按文件名去重，用于「当前槽是空壳」时的救回提示。同目录还有两类 sidecar：`<safe>.origin.json`（来源卡 id）与 `<safe>.lock.json`（LLM 创作锁，见 §2.8）；`<draftDir>/backups/` 是覆盖前备份（`listDraftSlotsOnDisk` 只扫顶层，不会误读）。
 - **草稿槽迁移**：`cc_migrateDraft({ from, to?, overwrite? })` + 纯决策函数 `migrateDraftDecision`。目标槽非空**必须显式 `overwrite: true`**（绝不静默覆盖，同 2.5 家规）；候选槽只报「错位真正会牵涉到的另一把」，别把所有会话的槽当噪音端给用户。
 - **角色库**：`<主根>/cc-library/<id>.json`。读经 `readLibraryRaw(id)` 回退旧根；`listLibraryEntries` 并集去重（主根优先）；**`deleteLibraryEntry` 会把两个根里的同名副本都删**（否则回退读会把刚删的卡「复活」）；`renameLibraryEntry` 就地写在解析到的那一份上，不搬家。
 - **容器互通**：PNG 的 `tEXt` `ccv3` 块（自带 CRC32/deflate）、CHARX（ZIP + `card.json`）。
@@ -146,11 +164,12 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
 
 ### 3.2 `lib/agent.js`（预设半）
 
-- `inject` 是 `["tools", "agents"]`，用 `ctx.tools.register({ name, description, parameters, execute })` 注册 **32 个** Tool。
+- `inject` 是 `["tools", "agents"]`，用 `ctx.tools.register({ name, description, parameters, execute })` 注册 **33 个** Tool。
 - **返回契约（0.5.0 起，动工具前先看这条）**：一次返回里同一个状态只出现一份 —— 顶层**不许**再放 `next` / `hint` / `notice` / `warning` 副本，只留 `workflow`（`next` / `hint` / `step` / `readyToValidate` / 三态 `state{character,world,lore,greetings}` / `loreCount` / `manualLoreCount`）+ `message`（给用户看的中文）+ 可选 `warnings[]`。patch 类默认只回 `changed` 字段名（`verbose:true` 才回整份 draft）；`cc_get_card` 支持 `fields`，`cc_load_from_library` / `cc_get_library_entry` 支持 `includeDraft:false`。**`tests/tools-contract.test.mjs` 会把顶层出现这四类副本直接判失败**。
 - **世界书完成态 = ≥5 条且 ≥1 条共创条目**（`!isAutoEntry(e)`）：autoLorebook 生成的条目带 `cc_auto` 标记、**不算共创** —— 否则 auto 一次生成 5 条就把第 4 步「必调」的共创顶掉（LLM 侧实测的卡壳点）。`cc_patch_world` 的 `loreKeys` 是模型自报的触发词；缺省时 keys 只有「维度名 + 英文维度名」并会在 `warnings` 里警告。
 - **草稿来源 id（sidecar）**：`cc-drafts/<key>.origin.json` 记「这份草稿是从哪张已存卡载入的」，两半同构（`readDraftOrigin` / `writeDraftOrigin` ↔ `readOriginSync` / `writeOriginSync`）。保存不传 id 时沿用它 —— 这是 P0-4「载入后保存产生重复卡」的修法；**清空草稿 / `cc_new_card` / 删除来源卡时必须清掉它**，否则会去更新一张不该动的卡。
 - **草稿身份与版本（0.6.0 + 0.7.0）**：写类工具返回**必须**带 `cardName` / `cardId`（未关联已存卡时 `null`），`draftStatus` 用 **`sessionKey`**（**不再是 `key`** —— 那只是会话槽标识，LLM 曾把它当草稿身份、在草稿被换掉后误伤了另一张卡）并带 `cardId` / `cardName` / `rev`。`rev` 落在**草稿文件**里（两半同构、每次写 +1，是跨进程唯一真相）：**盘上 rev 与本次调用前记着的不一致 = 别人改过**，`getDraft()` 以盘为准重载并回 `revDrift:{from,to}`（**不传 `expectedRev` 也生效**，给弱模型的兜底）；传了 `expectedRev` 不匹配则直接拒绝（`staleRev`）。**空改动不落盘、不涨 rev**（指纹忽略 `modification_date`，两半同构）。新草稿提示走 `meta.pendingFresh`（只有「内存与磁盘都没有草稿」才是 `"welcome"`）。**这些全由 `apply()` 里的 `tool()` 包装统一收口**，别再往单个工具里塞身份字段或自己拼提示。细节见 [CHANGELOG 0.6.0 / 0.7.0](./CHANGELOG.md)。
+- **草稿锁（0.11.0，32 → 33 个工具）**：`setDraft` 落盘即上锁 + 空写续期（见 §2.8），所以**任何写类工具都自动锁住草稿**，包括 `cc_load_from_library` 与 `cc_new_card`；`draftStatus.lock` 让模型随时看到自己是否持有锁。新增第 33 个工具 **`cc_release_draft`**（无参数）：读锁取卡名 → 清锁 → `{ok, released, sessionKey, cardName, rev, message}`，无锁幂等成功。`cc_validate` 终态（`valid:true`）的 `next` 必须带「准备交给用户微调时调用 `cc_release_draft`」的提醒（同时保留「校验导出」「保存当前」字样，`tools-contract` ②i 依赖）。**工具半不拦自己的写**（锁只有 LLM 一种 owner）；stale 后 LLM 再写会自动重新 active，`since` 沿用旧锁。**完成时的交还引导**见 §2.8「流程引导」：persona + `cc_validate` 终态（`releaseRequired`）+ 首次上锁 warning，三处都别删。
 - **人物关系图谱（0.8.0）**：CCv3 没有关系字段，所以关系**只活在插件侧**（`<DSH_HOME>/cc-groups/<id>.json`；两半同构的纯函数 + 落盘，`tests/relations.test.mjs` 逐字比对两半渲染输出与落盘根）。三维 = 方向 × 类型 × 强度；节点分 `kind:"card"`（绑 cardId）与 `kind:"npc"`（卡内 NPC，没有自己的卡）；「卡属于哪个组」记在库条目 `meta.groupId`（**单一真源**，分组文件里刻意不存成员列表 —— 成员由库条目派生，删卡/移组天然一致）。渲染进 description 的 `<!-- cc-relations:begin … -->` 标记区：**显式动作**、幂等替换、空图谱 = 清空该段、`dryRun` 可预览。三条硬规矩：分组乐观锁参数叫 **`expectedGroupRev`**（别用 `expectedRev` —— 那是草稿层的锁，会抢先拦截且文案误导）；删卡只把节点降级为 orphan（**保留边** —— 关系是用户资产）、改名同步节点名；**`outgoingEdgesOf(myNodeId, edges)` 是出边的唯一口径**（渲染与计数共用）。细节见 [CHANGELOG 0.8.0](./CHANGELOG.md)。
 - **分组管理（0.8.0，23 → 28 个工具）**：`cc_list_groups` / `cc_create_group` / `cc_rename_group` / `cc_delete_group` / `cc_set_card_group`（理由：真正高频用这套工具的是**模型**，而它此前改不了「哪张卡属于哪个组」）。必须保持：① 入组自动补节点，且 `assignCardToGroup(cardId, groupId)` 是**两半共用的一份实现**（宿主端点也调它 —— 别再各写一套）；② 移出**不删节点与边**、删组**不删卡**（只清成员 `meta.groupId`）；③ 卡删掉后同名回来要**复活原 orphan 节点**，不新建第二个同名节点；④ 建组/改名**查重**（`findGroupByName`，同名拒绝并回 `existingGroupId`，`allowDuplicate:true` 才放行）；⑤ `cc_delete_group` **必须 `confirm:true`**（不带只回盘点）；⑥ 无实际改动不写盘（同 N4 家规）。
 - **组级共享世界书（0.9.0，28 → 32 个工具）**：`<主根>/cc-books/<groupId>.json`，**一组一本**、整组共用；条目与卡内 `character_book.entries` **完全同构**。必须保持：① 文件**本身就是** CCv3 独立 lorebook（`{spec:"lorebook_v3", data}`），插件状态放 `data.extensions.cc`（rev/groupId）。② `makeBookEntry` / `normalizeBook` **只补缺、不裁剪**（未知字段与 `cc_auto` / `id` / `priority` 都必须原样保留）。③ 提升默认 `dryRun`、`apply:true` 才动手，且只删**内容逐字相符**的条目（签名只用来筛，动手前再比对内容）；书级乐观锁叫 **`expectedBookRev`**。④ 删组时书一起删（`deleteBook`）。⑤ 导出以独立文件为主 + 可选并入卡，**并入只做在导出副本上**。⑥ **提升之后必须同步草稿**：工具侧 `syncDraftAfterPromote`（认 `origin.json`）与界面侧（认 `currentLibraryId`）**同一套判据** —— 只删「共享书里已有且内容逐字相符」的条目，不适用就**不猜**，改在返回里给 `draftSync` + `warnings`；⚠️ 读草稿与写草稿之间**不许有 await**。⑦ **口径必须与共享书一致**：完成度看**合计**（`loreCount`/`manualLoreCount` 是卡内，`sharedLoreCount`/`loreTotal` 另报），**判定完成度一律走 `workflowFor(ctx, exec, draft)`**（13 处已统一）。⑧ **重复分两类**：`scanSharedEntries` 既报卡间重复（`candidates`，动作 = 提升）也报「卡内 vs 共享书」（`bookDupes`，动作 = **只清理卡内副本**）；promote 的 `wouldPromote` / `wouldClean` / `cleaned` 就这么分。⑨ 新书默认名走 `newBookFor` → `defaultBookName`（`<组名>·共享设定`，两半同构）。⑩ **`constant` / `@@decorator` 是「整本世界书」的存在性检查**，走合计口径 —— 口径收口在卡组层的 **`groupMetrics()`**（`lorebookMetrics(cardEntries, sharedEntries)` 只是它的薄包装、旧签名输出逐字不变；**改口径只动 `lib/group-layer.js` 一处**，见 §2.7）；**逐条质量**收口在 **`auditLoreEntries([{source, entries}])`**（死 keys / 只有维度名 / keys 与正文无交集 / 触发词冲突）：`cc_lint_lorebook` 对**卡内 + 共享书**各跑一遍、issue 带 `code`/`contentKeys`/`source`，`cc_get_shared_book` 用同一个函数报「这本书」自己的问题；⚠️ **`cc_validate` 有意只查卡内**（它是「这张卡」的收尾判定）。**别把分工写成既成事实**：上一版写过「共享书质量走 `cc_get_shared_book`」，而那条线上当时只有重复检测 —— 共享书于是成了没人体检的一格，可它恰恰多卡共用、又没有「卡」这个载体。细节见 [CHANGELOG 0.9.0](./CHANGELOG.md)。
@@ -175,7 +194,8 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
   - **两个挂载点共用一份 `store`**：`Capsule` 在会话域（有会话 id），`Workshop` 在根域（`shell.overlay`，**拿不到会话 id**）。根域实例只准把结论改成「是」，**不准写 `false`**（否则它每秒的 `evaluate()` 会把会话域刚判定的状态清掉，胶囊一闪一闪）。
   - **草稿槽 key 只能来自这个会话 id**：`pullDraft` 没有 key 就一次都不发（不许拿 `default` 顶替），节流按 key、切会话后回来的响应丢弃、主机回的 `key` 与点名的 key 不一致时不渲染只告警。`default` 槽只是「没有会话上下文」时的回退，**不是**当前会话的草稿。
 - 状态在 `store`（`createStore` + `subscribe/getSnapshot`）；设置存 `localStorage:dsh-cc-studio-settings`。
-- i18n：文件内 `zh` / `en` 两张表（**各 314 键**，两边键集必须一致），`ctx.locale.register(NS, { zh, en })`，`t = ctx.locale.bind(NS)`。**UI 层不得出现中文字面量**（有守卫测试），新增文案必须同时进 `zh` 和 `en`，并保持 `{n}` 之类的占位符一致。
+- **草稿锁（0.11.0）**：锁数据只从 `cc_getDraft` 的 `draftStatus.lock` 读（`{owner,cardName,since,updatedAt,ageSec,ttlSec,stale,active}|null`）。`store` 新增 `lock` / `preview` / `llmDraft` / `llmWorld` / `llmDraftStatus` / `draftLock`；`isLockActive()` = `draftLock && lock?.owner==="llm" && !lock.stale`，`isReadOnly()` = `isLockActive() || !!preview`。**所有写入口（`updateDraft` / `pushDraftToHost` / `clearDraft` / `migrateSlot` / `renderRelationsToCard` / `syncDraftAfterPromote`）先过 `isReadOnly()` 才发 RPC**。载入/导入收到宿主的 `locked:true` → `enterPreview()`（首次进预览时存 `llm*` 快照；连续预览只换卡；退出预览恢复最新 LLM 草稿）；`pullDraft` 在预览期间只更新 `llm*`，**绝不动显示中的草稿**。设置开关关闭时所有写 RPC 带 `force:true`（等价旧行为）。`pushDraftToHost` 收到 `details.code="draft-locked"` 要刷新锁并提示「本次修改未写入」。
+- i18n：文件内 `zh` / `en` 两张表（**各 327 键**，两边键集必须一致），`ctx.locale.register(NS, { zh, en })`，`t = ctx.locale.bind(NS)`。**UI 层不得出现中文字面量**（有守卫测试），新增文案必须同时进 `zh` 和 `en`，并保持 `{n}` 之类的占位符一致。
 - 工坊排版（0.4.0 重构）：三列 `200px 1fr 268px`（导航 / 阅读区 / 已存角色，右侧可折叠成 40px 竖条）；原右侧 360px 栏与「融合说明」块已删，实时 CCv3 预览与 CBS 速查改走主区底部 `foldPanel()`（默认全收起）。字段统一走 `field(title, key, opts)`（小号标签 + ⛶ + 无边框控件；`S.readText` 用 `field-sizing:content` 撑高），长文大框走 `setEditingText` 的快照回滚。旧的 `S.card` / `S.field` / `S.mono` / `S.side` 已删。工具条右侧是 **✕ 图标按钮**（30×30，`title`/`aria-label` 取 `action.close`；默认描边、**悬停红底白字 `#e05555`**、hover 走局部 `hoverKey` 不写 store、按下 `stopFocusSteal` 不抢焦点）。
 - 导出入口（0.4.1 归一）：**导出动作只有一套实现**（`store.exportJSON / exportPNG / embedIntoPng / exportCharx`，都长在导出页 `s.cur === 3`），入口只剩两处 —— 左下角那枚（文案键 `step.export`）与已存角色卡片上的「导出」。顶部工具条的「导出 JSON」已删；卡片「导出」只 `store.setCur(3)`，**既不载入也不下载**（旁路 `exportLibraryEntry` 已删）。导出页导出的**永远是工坊里那张卡**（页内 `workshop.export.currentHint` 写明，标题挂卡名）；从卡片跳进来时按钮自己先变（`workshop.library.exportJumped`，6s 后复原）+ 页内琥珀提示（`workshop.export.jumpedOther`）。左下角入口**不做选中态**（曾经与卡片反馈同时发亮 → 「两处看起来像选中」的坑，别再犯）。导航与胶囊都只有 **3 个写作步骤**，`s.cur === 3` 是「不在导航里的第 4 个视图」，页内那枚 `action.validate` 就是全部校验入口。
 - **关系视图（`s.cur === 4`）读的是宿主半 `cc_getGroup` 的返回**：`{ group, members, rev }` —— 节点与边在 `group` **里面**（`group.nodes` / `group.edges`），顶层只有 `members` 与 `rev`。⚠️ 曾经按工具半 `cc_get_relations` 的形状去读顶层，于是界面**永远**显示「关系 · 0」、NPC 区空白（实机截图报的就是这个）。改它时形状两头夹着：**渲染级** `tests/relations-view.test.mjs`（假 React harness）+ **RPC 级** `tests/rpc-channel.test.mjs`。
@@ -226,7 +246,7 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
 ## 6. 本地验证
 
 ```bash
-npm test          # 22 个文件：57 + 84 + 51 + 62 + 18 + 23 + 20 + 31 + 14 + 104 + 69 + 20 + 75 + 36 + 52 + 6 + 24 + 25 + 22 + 18 + 16 + 37 = 864 项断言，全绿才算过
+npm test          # 24 个文件：67 + 85 + 51 + 62 + 19 + 32 + 23 + 20 + 31 + 14 + 113 + 34 + 69 + 20 + 75 + 36 + 52 + 6 + 24 + 25 + 22 + 18 + 16 + 45 = 959 项断言，全绿才算过
 ```
 
 测试只跑纯函数与源码级守卫（不启动 dsh、不写真实用户目录），所以**还需要手工验证**：
@@ -258,6 +278,7 @@ npm test          # 22 个文件：57 + 84 + 51 + 62 + 18 + 23 + 20 + 31 + 14 + 
 12. **升级 dsh 后 CC 模式「每轮运行失败」先看 prompt 变量**（0.10.1，dsh 0.2.1-rc.2 实测）：报错形如 `unknown prompt variable "{{cwd}}" in section "deployment:persona-prefix"; registered variables: provider, model`。0.2.1 起注册表只有 `provider` / `model`，persona（或任何 `systemPrompt` 段）里写别的变量会在**第一个模型请求前**抛错。预设挂载、roster、胶囊与工坊全都正常，`--dump-config` 与 broken 诊断也看不出来 —— 只有对话一轮都跑不了。修法是删掉/替换该变量；`tests/preset-install.test.mjs` 的变量白名单会在提交前拦住同类改动。
 13. **CC 模式偶发「本轮运行失败 `tool input is invalid JSON`」→ 坏的是模型输出，不是卡片数据**（0.10.2，dsh 0.2.1-rc.2 实测）：会话日志（`~/.dsh/sessions/<cwd>/session-*.jsonl.zstd`，**多帧 zstd** —— 按 magic `28 B5 2F FD` 切帧逐帧解压，只解第一帧会得到一行 session 头）里能重建 `tool-call-chunks` 的 `args`；本次是模型生成的 arguments 末尾多了个逗号（`..."tags":[...],}`）。`@deepseek-ai/dsh-llm-deepseek` 在流结束时严格 `JSON.parse`，失败即抛 `MALFORMED_RESPONSE`；`dsh-llm-retry` 默认不重试它。工具根本没被调用、草稿不会被写坏。插件只能改模型可见文本（persona + 写类工具 description 已有「严格 JSON + 分小步写」）；用户侧可把 `MALFORMED_RESPONSE` 加进 `llm-deepseek-account` 行的 `retryPolicy.retryableCodes` 自动重试。**别去找「参数校验 bug」** —— 参数没到工具层。
 14. **卡里的换行变成字面 `\n` → 先怀疑模型多转义了一层，别去改工具的 `String()`**（0.10.3，用户实机报告 P1）：六步全链路 `valid: true`，但 `cc_patch_character` / `cc_patch_greetings` / `cc_patch_world` 写的文本换行落盘成字面 `\` + `n`，导出到 SillyTavern 显示成「说完这句话。\n\n下一段」。取证两件事：① 工具层往返测试（传真换行 → 读回真换行、传字面 `\n` → 原样）证明工具本身不做任何转义；② 会话日志解帧重建 `tool-call-chunks` 的 args —— 模型 18 次调用有 6 次在 JSON 里写成 `\\n`（多转义一层），而 `alternate_greetings` / lorebook 写对了，是**模型输出不一致**。修法是写类工具统一走 `textArg()`（= `decodeEscapedText` + `String()`：字面 `\n` / `\r` / `\t` 解成真字符，多层转义最多收敛 4 轮），**只作用于模型输入的工具参数**；新增写类工具时文本字段一律用 `textArg()`，别用裸 `String()`。工坊保存与导入路径**不要**加这层（那两条本来就是真换行）。
+15. **「LLM 正在创作，工坊怎么点载入都不换卡」不是 bug，是草稿锁**（0.11.0，§2.8）：LLM 写草稿后工坊只读、载入/导入只进只读预览；要恢复编辑得让 LLM 调 `cc_release_draft`，或等锁超过 30 分钟无写入自动失效。排查时先看 `cc_getDraft` 的 `draftStatus.lock`：`active:true` 就是锁着、`stale:true` 就是已超时可编辑。**不要**为了「让它能载入」去删 `.lock.json` 或加用户强制解锁端点 —— 那正是 0.11.0 要修的覆盖事故；设置页的「LLM 创作保护」开关只影响客户端是否尊重锁（关闭后写请求带 `force:true`，等价旧行为）。
 
 ---
 
