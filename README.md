@@ -14,8 +14,8 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 
 | 项目 | 值 |
 | --- | --- |
-| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.11.1` |
-| 兼容 | DSH `>=0.4.5-rc.4`（含**桌面版**）、Node `>=22`、**零运行依赖**；逐版本实测见 [兼容与权限](#兼容与权限) |
+| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.11.2` |
+| 兼容 | DSH `>=0.1.5-rc.1`（含**桌面版**）、Node `>=22`、**零运行依赖**；逐版本实测见 [兼容与权限](#兼容与权限) |
 | 落盘位置 | `<DSH_HOME>/cc-library/`（角色卡）、`<DSH_HOME>/cc-drafts/`（会话草稿；LLM 创作锁 `.lock.json` 与覆盖前备份 `backups/` 也在这里）；`DSH_HOME` 默认 `~/.dsh`，旧位置仍读得到 |
 | 文档 | 用户文档＝本文件；改代码前必读 [AGENTS.md](./AGENTS.md)；完整历史 [CHANGELOG.md](./CHANGELOG.md) |
 
@@ -32,7 +32,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 ```text
 任务：给 DSH 安装 @xia-sc/dsh-cc-studio 插件。
 
-4. 确认目标 profile 名：问用户，或看 ~/.dsh/profiles/ 下的目录名。
+1. 确认目标 profile 名：问用户，或看 ~/.dsh/profiles/ 下的目录名。
    （桌面版通常叫 desktop，CLI 起的 Web GUI 通常叫 web。）
 2. 安装（把 <profile> 换成实际名字）：
    dsh plugin --profile <profile> add @xia-sc/dsh-cc-studio
@@ -42,10 +42,10 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
    dsh --profile <profile> --dump-config
    期望在 `# == @xia-sc/dsh-cc-studio` 那一层下看到两行：`id: dsh-cc-studio`（宿主行）与 `id: preset-cc`（CC 预设行）。
 4. 告诉用户重启：宿主行只在启动时组合 —— CLI 重启 `dsh web`，桌面版退出并重新打开应用。
-5. 重启后可选自检：在「CC 模式」会话里调任意一个 cc_* 工具，返回里带 "build": "0.11.1" 即说明新代码已加载
+5. 重启后可选自检：在「CC 模式」会话里调任意一个 cc_* 工具，返回里带 "build": "0.11.2" 即说明新代码已加载
    （这也是判断「改了但没重启」的唯一可靠依据）。
 6. 不要做的事：
-   - 不要手工把 presets/ 拷进 ~/.dsh/.agent-presets/（dsh >= 0.4.7-alpha.4 已不读该目录，拷了也不生效）；
+   - 不要手工把 presets/ 拷进 ~/.dsh/.agent-presets/（dsh >= 0.1.7-alpha.1 已不读该目录，拷了也不生效）；
    - 不要手改 ~/.dsh/profiles/*/package.json（dsh plugin 会自己维护 dsh.profile.bundles）；
    - 不要为了「验证」反复重装 —— 装不上先看第 3 步的 dump-config 输出。
 
@@ -58,9 +58,9 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 ```bash
 # 从 npm 安装（推荐）
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.11.1    # 锁定版本
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.11.2    # 锁定版本
 
-# 从 GitHub 源安装（可加 #v0.11.1 / #master 指定 tag / 分支）
+# 从 GitHub 源安装（可加 #v0.11.2 / #master 指定 tag / 分支）
 dsh plugin --profile web add github:xia-sc/dsh-cc-studio
 
 # 从本地仓库安装（开发 / 调试）：装出来是 link:，改 lib/*.js 重启即生效
@@ -71,7 +71,7 @@ dsh plugin --profile web add .
 `dsh plugin` 只是把参数转发给 profile 目录里的 pnpm，装完会把包名自动追加进该 profile 的 `dsh.profile.bundles`，不用手改 `package.json`。
 
 - **桌面版**：应用内左侧「插件」面板搜索 `@xia-sc/dsh-cc-studio` 安装，或用 `dsh plugin --profile desktop add @xia-sc/dsh-cc-studio`；生效方式是**退出并重新打开应用**（窗口里的刷新不足以加载宿主改动）。
-- **CC 预设无需手工操作**：插件会自己把 `CC 模式` 带到 roster 里（≥ `0.4.7-alpha.4` 走随包补丁层 `presets/cc.patch.yml` 的声明行；≤ `0.4.6-alpha.2` 由插件挂载时装到 `<DSH_HOME>/.agent-presets/cc`）。升级 dsh 后若 `CC 模式` 从列表里消失，见下方常见问题。
+- **CC 预设无需手工操作**：插件会自己把 `CC 模式` 带到 roster 里（≥ `0.1.7-alpha.1` 走随包补丁层 `presets/cc.patch.yml` 的声明行；≤ `0.1.6-alpha.2` 由插件挂载时装到 `<DSH_HOME>/.agent-presets/cc`）。升级 dsh 后若 `CC 模式` 从列表里消失，见下方常见问题。
 - **包名迁移**：0.3.2 起由 `@dsh-plugins/dsh-cc-studio` 改为 `@xia-sc/dsh-cc-studio`（旧名不在本项目的 npm scope 下）。装过旧名的先 `remove` 再 `add`；`cc-library/`、`cc-drafts/` 与插件设置都不受影响。
 
 ### 更新与卸载
@@ -166,11 +166,11 @@ dsh plugin --profile web remove @xia-sc/dsh-cc-studio       # 卸载（同时移
 
 | 项 | 值 |
 | --- | --- |
-| DSH 兼容范围 | `>=0.4.5-rc.4`；逐版本矩阵里 `0.4.5-rc.4` / `0.4.5-rc.2` / `0.4.6-alpha.4` / `0.4.6-alpha.2` / `0.4.7-alpha.4` / `0.4.7-rc.4` / `0.2.0-rc.2` 为 `compatible`。**没实测过的版本不写**（`0.4.7-alpha.2` / `0.4.7-rc.2` / `0.2.0-rc.4` / `0.2.4-alpha.4` 保持未声明） |
+| DSH 兼容范围 | `>=0.1.5-rc.1`；逐版本矩阵里 `0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.1` / `0.1.6-alpha.2` / `0.1.7-alpha.1` / `0.1.7-rc.1` / `0.2.0-rc.2` / `0.2.1-rc.2` 为 `compatible`。**没实测过的版本不写**（`0.1.7-alpha.2` / `0.1.7-rc.2` / `0.2.0-rc.1` / `0.2.1-alpha.1` 保持未声明） |
 | 宿主形态 | `dsh web`（CLI）与 **DSH 桌面版**同一套宿主 + profile bundles 机制，**均支持** |
 | 客户端平台 | `dsh.client.platform: "web"` 是**浏览器半**的平台标识，与 profile 名（`web` / `desktop`）不是一回事；两者加载同一份客户端 bundle |
 | 运行依赖 / 生命周期脚本 | **都没有**。`lib/*.js` 只 `import` `node:` 内建与相对路径，随包补丁与预设是静态 YAML |
-| 权限 · 文件 | 只读写 `<DSH_HOME>`（含旧根 `~/.dsh`）下自己的五个目录：`cc-drafts/`、`cc-library/`、`cc-groups/`、`cc-books/`、`.agent-presets/cc/`（最后一个只在 dsh ≤ `0.4.6-alpha.2` 上写），另读自身 `package.json` |
+| 权限 · 文件 | 只读写 `<DSH_HOME>`（含旧根 `~/.dsh`）下自己的五个目录：`cc-drafts/`、`cc-library/`、`cc-groups/`、`cc-books/`、`.agent-presets/cc/`（最后一个只在 dsh ≤ `0.1.6-alpha.2` 上写），另读自身 `package.json` |
 | 权限 · 网络 / 命令 / 凭据 | 无网络请求、不起子进程、不读也不存任何 token 或 cookie。只读两个环境变量：`DSH_HOME`、`DSH_CC_STUDIO_PRESET_INSTALL`。HTTP 路由复用宿主自己的 cookie 围栏（`connection.requestRejection`），插件不解析凭据 |
 
 > **为什么商城不会给它「自动通过」**：STORE 的自动低风险通道要求运行时代码完全不出现文件 / 网络 / 命令 / 凭据四类信号，而本插件的核心功能就是草稿与角色卡落盘（文件信号）并读 `DSH_HOME`（扫描器把任何 `process.env` 读取都算凭据信号）。这两条不会为了迎合扫描器而消除 —— 对这类合法插件，商城的正确档位是 `user-reviewed`。隔离环境下的安装 / 启动 / 卸载证据见 [CHANGELOG.md](./CHANGELOG.md) 的 `0.3.7` 小节。
@@ -191,6 +191,8 @@ node tests/group-layer-guard.test.mjs       # 只跑卡组层的耦合守卫（1
 ## 更新日志
 
 完整历史见 [CHANGELOG.md](./CHANGELOG.md)。最近几版大多是「另一个 LLM 以工具使用者身份跑回归」挖出来的问题：
+
+- `0.11.2` **修正中文 README 两处文档错误**：安装引导第 1 步被写成 `4.`；一批 dsh 版本号被写坏成 `0.4.x`（真实范围 `>=0.1.5-rc.1`），兼容范围 / 预设分界 / 实测矩阵已纠正，矩阵补上 `0.2.1-rc.2`。纯文档，无需重启。
 
 - `0.11.1` **CC 预设对齐 dsh `0.2.1-rc.2` 内置 `standard`**：修掉 `tool-ralph` 漏抄 `disabled`（CC 模式一直多挂一个实验性长循环工具）、`skill-filesystem` / `tool-skill` 被误关（模型没有技能目录与加载器）、以及 `backgroundMode` 等已下线的配置键；补 `time-context`、`tool-web` 的 `fetch` 改回 `true`。`dshReleases` 补 `0.2.1-rc.2`（npm `dsh web` 隔离环境实测）。测试补 CHARX 导入全链路与「按 id 改世界书条目」的回归 → **987 项**。**重启 dsh（桌面端重启应用）生效**。
 
