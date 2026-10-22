@@ -54,6 +54,12 @@
   config:
     maxBytes: 65536
 
+# 0.2.1 对齐：time-context 从 host 层挪进预设行（dsh 0.2.1-rc.2 的内置 standard 有这一行）。
+# 包 @deepseek-ai/dsh-time-context 在 dsh 0.1.6-alpha.2 的依赖里也存在，
+# 且那一代 host 层没有挂它，所以旧版目录形态上补这一行不会重复注册、不会 broken。
+- id: time-context
+  name: '@deepseek-ai/dsh-time-context'
+
 # ── shell ───────────────────────────────────────────────────────────────────
 
 # `shell-env` stays in the HOST composition: `apps/cli/src/web.ts` injects it to
@@ -104,11 +110,9 @@
 # carries whatever the deployment registered globally (repository plugins).
 - id: skill-filesystem
   name: '@deepseek-ai/dsh-skill-filesystem'
-  disabled: true
 
 - id: tool-skill
   name: '@deepseek-ai/dsh-tool-skill'
-  disabled: true
 
 # 0.3.7 补回：内置 `standard` 自 0.1.6-alpha.2 起就带这一行，本预设初次拷贝时整行漏掉了
 # （与 0.3.4 补回的 `present` 同类：不报错、不判 broken，只是少了能力）。
@@ -143,7 +147,7 @@
       name: '@deepseek-ai/dsh-plan-mode'
       config:
         section: |
-              You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
+              You are in plan mode. Stay in plan mode until the user approves your plan through exit_plan_mode or switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
 
               Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
 
@@ -225,36 +229,12 @@
         provider: spawn
         toolName: subagent
         modelSelectionSettings: true
-        backgroundMode: continuable
 
     - id: tool-subagent-fork
       name: '@deepseek-ai/dsh-tool-subagent'
       config:
         provider: fork
         toolName: subagent_fork
-        backgroundMode: continuable
-
-    # Production dsh does not install these optional providers. Install the
-    # matching Bundle in this Profile and restart the Host, then copy this
-    # preset and remove `disabled` from the matching tool row. Host availability
-    # alone grants no tool.
-    - id: tool-subagent-codex
-      name: '@deepseek-ai/dsh-tool-subagent'
-      disabled: true
-      config:
-        provider: codex
-        toolName: subagent_codex
-        backgroundMode: one-shot
-        maxDepth: provider-managed
-
-    - id: tool-subagent-claude-code
-      name: '@deepseek-ai/dsh-tool-subagent'
-      disabled: true
-      config:
-        provider: claude-code
-        toolName: subagent_claude_code
-        backgroundMode: one-shot
-        maxDepth: provider-managed
 
     # dsh 0.1.6-alpha.1: `dsh-workflow-worker-thread` is gone from the release;
     # the workflow engine is now `dsh-workflow-ptc` (sandboxed Node PTC runtime,
@@ -269,12 +249,6 @@
 
     - id: tool-workflow
       name: '@deepseek-ai/dsh-tool-workflow'
-
-    - id: tool-ralph
-      name: '@deepseek-ai/dsh-tool-ralph'
-      config:
-        subagentProvider: spawn
-        maxRounds: 64
 
 # ── remaining model-facing rows ─────────────────────────────────────────────
 
@@ -291,7 +265,7 @@
 - id: tool-web
   name: '@deepseek-ai/dsh-tool-web'
   config:
-    fetch: false
+    fetch: true
     searchTimeoutMs: 60000
 
 # 0.3.4 补回：`present` 是 standard 一直有的行，本预设此前整行漏抄。
@@ -308,6 +282,16 @@
 - id: tool-plugin-manager
   name: '@deepseek-ai/dsh-plugin-manager/tools'
   disabled: true
+
+# ── 与 dsh 0.2.1-rc.2 内置 standard 的**有意差异**（下次升级 diff 别当成漏抄）──
+# · `tool-schedule`：0.2.1 standard 有，但 `@deepseek-ai/dsh-tool-schedule` 在
+#   dsh ≤ 0.1.6-alpha.2 的依赖里不存在，而这份清单同时喂给目录形态（旧版）；
+#   非 disabled 行解析不到包会让**整个预设 broken**（unresolvableRows），
+#   所以为兼容旧版不带这一行。CC 模式也不需要定时任务工具。
+# · `tool-plugin-market`：0.2.1 standard 里是 disabled，但 0.1.6 没有
+#   `@deepseek-ai/dsh-plugin-market` 这个包；按家规「不拿 disabled 遮掩
+#   一个已经不存在的包」，同样不带。
+# 其余行与 standard 逐行对齐；本预设只保留 persona 定制与末尾的 cc-agent 行。
 
 # ── CC 角色卡工坊（CC 模式专用） ───────────────────────────────────
 - id: cc-agent

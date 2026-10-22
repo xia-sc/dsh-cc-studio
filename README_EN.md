@@ -15,7 +15,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 | Item | Value |
 | --- | --- |
 | Package | `@xia-sc/dsh-cc-studio` |
-| Version | `0.11.0` |
+| Version | `0.11.1` |
 | Compatibility & permissions | dsh `>=0.1.5-rc.1`, Node `>=22`, **zero runtime dependencies**; permission bounds in [Compatibility & permissions](#compatibility--permissions) |
 | Host RPC | `/dsh-cc-studio-rpc` (self-owned route, works on dsh ≥ `0.1.5-rc.1`; verified on `0.1.6-alpha.2` / `0.1.7-alpha.1` / `0.1.7-rc.1`) |
 | CC preset | `presets/cc.patch.yml` (dsh ≥ `0.1.7-alpha.1`, a composition declaration row) / `<DSH_HOME>/.agent-presets/cc` (≤ `0.1.6-alpha.2`, the legacy directory) |
@@ -32,7 +32,7 @@ This plugin supports **both `dsh web` (the CLI-launched Web GUI) and DSH Desktop
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
 
 # pin a version
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.11.0
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.11.1
 ```
 
 **Or from GitHub**:
@@ -45,7 +45,7 @@ dsh plugin --profile web add github:xia-sc/dsh-cc-studio
 
 > **Since 0.3.2 the package was renamed from `@dsh-plugins/dsh-cc-studio` to `@xia-sc/dsh-cc-studio`** (the former is not an npm scope this project owns, so it could not be published). If you installed the old name, remove it first as shown in "5. Update and uninstall"; `~/.dsh/cc-library/`, `~/.dsh/cc-drafts/`, `~/.dsh/.agent-presets/cc/` and your plugin settings are unaffected.
 
-- **Pin a version / branch**: `github:xia-sc/dsh-cc-studio#v0.11.0`, `...#master` (see the repo tags).
+- **Pin a version / branch**: `github:xia-sc/dsh-cc-studio#v0.11.1`, `...#master` (see the repo tags).
 - **`allowBuilds` notice**: this plugin has no `prepare` build script, so pnpm's build gate is normally not triggered; if pnpm still prints the notice, add the exact key it prints under `allowBuilds` in `~/.dsh/profiles/web/pnpm-workspace.yaml` and re-run.
 - **When an agent runs it inside a DSH session**: the write target is outside the session workspace, so switch file permissions to `danger-full-access` first. Running it yourself in a terminal has no such limit.
 
@@ -301,7 +301,7 @@ dsh-cc-studio/
 │   └── cc/               # legacy preset directory template (dsh ≤ 0.1.6-alpha.2, installed on mount)
 │       ├── preset.yml
 │       └── agent.cordis.yml
-├── tests/                # 24 files, 959 assertions (not published with the package)
+├── tests/                # 24 files, 987 assertions (not published with the package)
 │   ├── rpc-channel.test.mjs       # host-half RPC channel regression (fake ctx + real http), 67 assertions incl. the group endpoints, the cc_getGroup reply shape and the draft-lock matrix
 │   ├── preset-install.test.mjs    # install decisions + native hand-off + anti-drift + row contract + prompt-variable whitelist + persona JSON hygiene + DSH STORE listing contract, 85 assertions
 │   ├── cc-detection.test.mjs      # source-level guards for CC Mode detection, 51 assertions
@@ -312,13 +312,13 @@ dsh-cc-studio/
 │   ├── clear-card.test.mjs        # "clear the current card" confirmation regression, 20 assertions
 │   ├── export-entry.test.mjs      # export entry points unified (three doors down to two), 31 assertions
 │   ├── close-button.test.mjs      # workshop close button ✕ (red on hover), 14 assertions
-│   ├── tools-contract.test.mjs    # CC Mode tool-chain contract, state machine, draft identity and lock wiring (33 tools), 113 assertions
+│   ├── tools-contract.test.mjs    # CC Mode tool-chain contract, state machine, draft identity and lock wiring (33 tools), 125 assertions
 │   ├── draft-lock.test.mjs        # 0.11.0 draft lock: pure functions + tool-half locking/renew/ release/TTL, 34 assertions
 │   ├── relations.test.mjs         # relationship graph + group CRUD: two-half parity, idempotent rendering, data-loss invariants, 69 assertions
 │   ├── relations-view.test.mjs    # workshop relations view renders what the host actually returns (the "0 relations" bug) + the 0.10.0 check list, 20 assertions
 │   ├── shared-book.test.mjs       # group-level shared lorebook: storage, promote/apply, draft sync, round-trip,  75 assertions
 │   ├── shared-book-st-export.test.mjs # SillyTavern world-info export shape and field mapping, 36 assertions
-│   ├── st-compat.test.mjs         # dual-chunk PNG, ccv3 preference, V2 upgrade on import, ST world binding, 52 assertions
+│   ├── st-compat.test.mjs         # dual-chunk PNG, ccv3 preference, V2 upgrade on import, ST world binding, CHARX import, 68 assertions
 │   ├── promote-draft-sync.test.mjs # draft sync after promoting into the shared book, 6 assertions
 │   ├── group-scope.test.mjs       # 0.10.0 card-group layer: library snapshot + groupScope, two-half parity, single read, 24 assertions
 │   ├── group-metrics.test.mjs     # 0.10.0 the one place that counts: segments, derived numbers, audit/lint parity, 25 assertions
@@ -336,7 +336,7 @@ dsh-cc-studio/
 ## Development and tests
 
 ```bash
-npm test                                   # 24 files, 959 assertions (twenty-four node scripts chained)
+npm test                                   # 24 files, 987 assertions (twenty-four node scripts chained)
 node tests/rpc-channel.test.mjs            # only the host-half RPC channel regression (67 assertions)
 ```
 

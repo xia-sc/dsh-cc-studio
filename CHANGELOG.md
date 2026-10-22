@@ -2,6 +2,29 @@
 
 `dsh-cc-studio` 的版本变更记录，倒序排列（最新在上）。README 只保留最近几条，完整历史在本文件。
 
+## 0.11.1
+
+**CC 预设对齐 dsh `0.2.1-rc.2` 内置 `standard`：修掉 `tool-ralph` 误启用与四处静默漂移。**
+
+### 修复
+
+- `tool-ralph` 在 standard 里一直是 `disabled`，本预设从 0.3.x 抄过来时漏抄了 `disabled` → CC 模式一直多挂一个实验性长循环工具（已删）。
+- `skill-filesystem` / `tool-skill` 被误关 → CC 模式静默没有技能目录与加载器（已启用）。
+- 删 `tool-subagent` / `-fork` 已下线的 `backgroundMode` 配置键、删 0.2.1 已移除的 codex / claude-code 占位行；`tool-web` 的 `fetch` 改回 `true`；plan-mode 段文本对齐 0.2.1。
+- 补 `time-context` 行（0.1.6 的依赖里也有这个包，旧版不会重复注册）。
+- `dshReleases` 补 `0.2.1-rc.2: compatible`（npm `dsh web` 隔离实测）。
+
+### 有意不跟的两行
+
+`tool-schedule` / `tool-plugin-market` 只在 0.2.x 存在，而这份清单同时喂给 ≤0.1.6 的目录形态 —— 非 disabled 行缺包会让整个预设 broken。理由已写进预设文件注释。
+
+### 测试与生效
+
+- 行集快照更新到 0.2.1 standard；模板读取统一归一化 LF（git `autocrlf` 的 CRLF 会让 `- id: X$` 块匹配失效、把真断言误报成 missing）。
+- 补 CHARX 导入全链路回归（读取 / V2 升级 / 锁与备份 / 超大包）与「按 id 更新世界书条目」回归，共 +28 项断言。
+- 生效：改的是预设清单，**重启 `dsh web`（或桌面端应用）即生效**。
+- 实测：roster 的 `cc` 无 `broken`、`preset-cc` active；`npm test` 全绿（987 项）。
+
 ## 0.11.0
 
 **LLM 创作期间草稿不再被用户「载入」覆盖，并在完成后主动交还编辑权。**

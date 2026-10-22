@@ -192,7 +192,10 @@ const sha256Of = (s) => createHash('sha256').update(String(s), 'utf8').digest('h
 // 存在且名字正确」这类不变量，纯读模板、不依赖本机装了哪个 dsh，所以 CI 上也能跑。
 // 至于「逐行 diff 内置 standard」，那是升级时要做的动作，见 AGENTS.md §4。
 {
-  const tpl = readFileSync(new URL('../presets/cc/agent.cordis.yml', import.meta.url), 'utf8');
+  // 读盘统一成 LF 再按行切：git autocrlf 会在 checkout 时把工作区转成 CRLF，
+  // 而这里的 `- id: X$` 是行尾锚定的 —— 不归一化的话，「块取不到」会伪装成
+  // 「行不存在」，把一条真实的快照断言报成 missing（2026-10 实测踩到）。
+  const tpl = readFileSync(new URL('../presets/cc/agent.cordis.yml', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   const lines = tpl.split('\n');
 
   // 取 `- id: X` 那一个整块（含其后缩进更深的行，遇到同级或更浅的缩进行即结束）
@@ -344,23 +347,25 @@ const sha256Of = (s) => createHash('sha256').update(String(s), 'utf8').digest('h
   check('三个 isolate 组都在（planning / compaction / delegation）',
     ['planMode: true', 'compaction: true', 'workflowEngine: true'].every((k) => patchText.includes(k)), '');
 
-  // 0.3.7：本预设的行集是内置 `standard` 那份 plugins 的副本，有意差异只有一处 ——
-  // `+ cc-agent`（本插件自己的 14 个 Tool 挂在本预设下）。其余每一行都必须与 standard 对齐。
-  //
-  // 漏掉整行的代价（0.3.7 实测）：`command-goal` 从初次拷贝起就缺，而它是 standard 自
-  // `0.1.6-alpha.2` 起一直有的一行 —— 不报错、预设不判 broken、胶囊与工坊全正常，只是
+  // 0.11.0：行集对齐到 dsh **0.2.1-rc.2** 内置 `standard`（此前是 0.1.6-alpha.2 那份）。
+  // 有意差异只有两处，理由写在预设文件末尾的注释块里：
+  //   · `tool-schedule`   —— 0.1.6-alpha.2 的依赖里没有 dsh-tool-schedule，而本清单同时
+  //                          喂给目录形态（旧版）；非 disabled 行解析不到包 = **整个预设 broken**。
+  //   · `tool-plugin-market` —— 0.1.6 没有 dsh-plugin-market 这个包；按家规不拿 disabled 遮掩。
+  // 其余每一行都必须与 standard 对齐。漏掉整行的代价（0.3.7 实测）：`command-goal` 从初次拷贝
+  // 起就缺，而它是 standard 一直有的一行 —— 不报错、预设不判 broken、胶囊与工坊全正常，只是
   // CC 模式会话里没有 `/goal` 斜杠命令。与 0.3.4 补回的 `present`、`modelSelectionSettings`
   // 是同一类「静默少能力」，所以这里把行集钉成显式快照：少一行或多一行都直接红，逼人回到
   // AGENTS.md §4 第 4 步「与目标版本内置 standard 逐行对一遍」，而不是等用户发现少了功能。
   // 升级 dsh 后若 standard 增删了行，先确认它是不是 CC 模式该有的能力，再来改这份快照。
   const rowIds = bodyText.split('\n').filter((l) => /^\s*- id: \S/.test(l)).map((l) => l.trim().replace(/^- id: /, ''));
   const EXPECTED_ROWS = [
-    'persona', 'agent-instructions', 'tool-bash', 'tool-pwsh', 'tool-fs', 'tool-fs-search', 'tool-jobs',
+    'persona', 'agent-instructions', 'time-context', 'tool-bash', 'tool-pwsh', 'tool-fs', 'tool-fs-search', 'tool-jobs',
     'skill-filesystem', 'tool-skill', 'command-goal', 'tool-goal',
     'planning', 'plan-mode',
     'compaction', 'compaction-basic', 'command-compact', 'tool-result-pruner',
     'delegation', 'tool-subagent-control', 'tool-subagent-list-agents', 'tool-subagent', 'tool-subagent-fork',
-    'tool-subagent-codex', 'tool-subagent-claude-code', 'workflow-ptc', 'tool-workflow', 'tool-ralph',
+    'workflow-ptc', 'tool-workflow',
     'tool-ask-user', 'tool-todo', 'tool-web', 'present', 'tool-plugin-manager',
     'cc-agent',
   ];

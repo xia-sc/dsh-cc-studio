@@ -14,7 +14,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 
 | 项目 | 值 |
 | --- | --- |
-| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.11.0` |
+| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.11.1` |
 | 兼容 | DSH `>=0.4.5-rc.4`（含**桌面版**）、Node `>=22`、**零运行依赖**；逐版本实测见 [兼容与权限](#兼容与权限) |
 | 落盘位置 | `<DSH_HOME>/cc-library/`（角色卡）、`<DSH_HOME>/cc-drafts/`（会话草稿；LLM 创作锁 `.lock.json` 与覆盖前备份 `backups/` 也在这里）；`DSH_HOME` 默认 `~/.dsh`，旧位置仍读得到 |
 | 文档 | 用户文档＝本文件；改代码前必读 [AGENTS.md](./AGENTS.md)；完整历史 [CHANGELOG.md](./CHANGELOG.md) |
@@ -42,7 +42,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
    dsh --profile <profile> --dump-config
    期望在 `# == @xia-sc/dsh-cc-studio` 那一层下看到两行：`id: dsh-cc-studio`（宿主行）与 `id: preset-cc`（CC 预设行）。
 4. 告诉用户重启：宿主行只在启动时组合 —— CLI 重启 `dsh web`，桌面版退出并重新打开应用。
-5. 重启后可选自检：在「CC 模式」会话里调任意一个 cc_* 工具，返回里带 "build": "0.11.0" 即说明新代码已加载
+5. 重启后可选自检：在「CC 模式」会话里调任意一个 cc_* 工具，返回里带 "build": "0.11.1" 即说明新代码已加载
    （这也是判断「改了但没重启」的唯一可靠依据）。
 6. 不要做的事：
    - 不要手工把 presets/ 拷进 ~/.dsh/.agent-presets/（dsh >= 0.4.7-alpha.4 已不读该目录，拷了也不生效）；
@@ -58,9 +58,9 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 ```bash
 # 从 npm 安装（推荐）
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.11.0    # 锁定版本
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.11.1    # 锁定版本
 
-# 从 GitHub 源安装（可加 #v0.11.0 / #master 指定 tag / 分支）
+# 从 GitHub 源安装（可加 #v0.11.1 / #master 指定 tag / 分支）
 dsh plugin --profile web add github:xia-sc/dsh-cc-studio
 
 # 从本地仓库安装（开发 / 调试）：装出来是 link:，改 lib/*.js 重启即生效
@@ -180,8 +180,8 @@ dsh plugin --profile web remove @xia-sc/dsh-cc-studio       # 卸载（同时移
 ## 开发与测试
 
 ```bash
-npm test                                    # 24 个文件、959 项断言，全绿才算过
-node tests/tools-contract.test.mjs          # 只跑 CC 工具链契约（113 项）
+npm test                                    # 24 个文件、987 项断言，全绿才算过
+node tests/tools-contract.test.mjs          # 只跑 CC 工具链契约（125 项）
 node tests/group-layer-guard.test.mjs       # 只跑卡组层的耦合守卫（16 项）
 ```
 
@@ -191,6 +191,8 @@ node tests/group-layer-guard.test.mjs       # 只跑卡组层的耦合守卫（1
 ## 更新日志
 
 完整历史见 [CHANGELOG.md](./CHANGELOG.md)。最近几版大多是「另一个 LLM 以工具使用者身份跑回归」挖出来的问题：
+
+- `0.11.1` **CC 预设对齐 dsh `0.2.1-rc.2` 内置 `standard`**：修掉 `tool-ralph` 漏抄 `disabled`（CC 模式一直多挂一个实验性长循环工具）、`skill-filesystem` / `tool-skill` 被误关（模型没有技能目录与加载器）、以及 `backgroundMode` 等已下线的配置键；补 `time-context`、`tool-web` 的 `fetch` 改回 `true`。`dshReleases` 补 `0.2.1-rc.2`（npm `dsh web` 隔离环境实测）。测试补 CHARX 导入全链路与「按 id 改世界书条目」的回归 → **987 项**。**重启 dsh（桌面端重启应用）生效**。
 
 - `0.11.0` **新增 LLM 草稿锁（读写分离）**：LLM 创作期间工坊只读、载入/导入只进只读预览，不再覆盖未保存草稿；`cc_release_draft` 交还编辑权，锁 30 分钟无写入自动失效，设置页可关闭。**修复**：角色卡完成后主动交还锁（persona / `cc_validate` / 首次上锁三处引导）、客户端草稿来源 id 恢复失效；覆盖型载入/导入前自动备份到 `cc-drafts/backups/`。测试 864 → **959 项**。详细见 [CHANGELOG](./CHANGELOG.md)。
 

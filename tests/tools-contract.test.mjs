@@ -610,6 +610,81 @@ r = await call('cc_release_draft', {});
 check('⑬f 无锁再释放幂等成功（released=false，不报错也不乱清东西）',
   r.ok === true && r.released === false && r.draftStatus.lock === null, JSON.stringify({ ok: r.ok, released: r.released }));
 
+// ——————————————————————————————————————————————————————————————
+// ⑭ cc_update_lorebook_entry：按 id 精简单条（33 个工具里此前唯一零测试引用的一个）
+//
+// 它恰好是 P0-1「auto 条目 keys 只有维度名」的**补救路径**：cc_patch_world 在返回里警告
+// 「用 cc_update_lorebook_entry 改成用户会说的实体名」，模型真去改的就是它。契约不钉住，
+// 那句警告就成了「指了一条走不通的路」；而且它是唯一能单条改 keys / constant / priority 的工具。
+// ——————————————————————————————————————————————————————————————
+await call('cc_new_card', { confirm: true });
+await call('cc_add_lorebook_entries', { entries: [
+  { name: '旧校舍', keys: ['旧校舍'], content: '@@depth 4\n旧校舍的窗户永远关不严。', priority: 7 },
+  { name: '广播室', keys: ['广播室'], content: '@@depth 5\n午休时的广播室只放白噪音。' },
+] });
+let ulBook = await call('cc_get_card', { fields: ['character_book'] });
+const ulE1 = ulBook.draft.data.character_book.entries[0];
+const ulE2 = ulBook.draft.data.character_book.entries[1];
+const ulRev = ulBook.draftStatus.rev;
+check('⑭ 两条共创条目已就位（id 由工具分配，下面按 id 更新）',
+  typeof ulE1.id === 'number' && typeof ulE2.id === 'number' && ulE1.id !== ulE2.id, ulE1.id + '/' + ulE2.id);
+
+let ul = await call('cc_update_lorebook_entry', { id: ulE1.id, name: '旧校舍（西楼）', keys: ['旧校舍', '西楼'], content: '@@depth 5\n改过的内容' });
+check('⑭a 按 id 更新：changed 恰为真改动的三个字段，entry 回完整条目（它是单条修复工具，不是 patch 全家桶）',
+  ul.ok === true && ul.changed.slice().sort().join(',') === 'content,keys,name'
+  && ul.entry && ul.entry.id === ulE1.id && ul.entry.name === '旧校舍（西楼）'
+  && ul.entry.keys.join('|') === '旧校舍|西楼' && ul.entry.content === '@@depth 5\n改过的内容',
+  JSON.stringify(ul.changed));
+check('⑭b 更新后 rev 递增、loreCount 不变（改条目不是增删条目）',
+  ul.draftStatus.rev === ulRev + 1 && ul.loreCount === 2,
+  JSON.stringify({ rev: ul.draftStatus.rev, before: ulRev, lore: ul.loreCount }));
+let ulAfter = await call('cc_get_card', { fields: ['character_book'] });
+check('⑭c 只动目标条目：第二条逐字未变、目标条的 insertion_order 保留（不重排）',
+  JSON.stringify(ulAfter.draft.data.character_book.entries[1]) === JSON.stringify(ulE2)
+  && ulAfter.draft.data.character_book.entries[0].insertion_order === ulE1.insertion_order, '');
+
+const ulRev2 = ul.draftStatus.rev;
+let ulNoop = await call('cc_update_lorebook_entry', { id: ulE1.id, name: '旧校舍（西楼）' });
+check('⑭d 同值写入不算改动：changed=[]、不落盘、rev 不涨（N4 家规对单条更新同样成立）',
+  ulNoop.ok === true && Array.isArray(ulNoop.changed) && ulNoop.changed.length === 0 && ulNoop.draftStatus.rev === ulRev2,
+  JSON.stringify({ changed: ulNoop.changed, rev: ulNoop.draftStatus.rev }));
+
+let ulMiss = await call('cc_update_lorebook_entry', { id: 987654321 });
+check('⑭e id 不存在：明确报错且草稿零改动（不静默新建一条）',
+  ulMiss.ok === false && /未找到 id=987654321/.test(String(ulMiss.error || '')) && ulMiss.draftStatus.rev === ulRev2,
+  JSON.stringify({ ok: ulMiss.ok, error: ulMiss.error }));
+
+let ulNl = await call('cc_update_lorebook_entry', { id: ulE2.id, content: '@@depth 5\\n第一行\\n第二行' });
+check('⑭f 字面 \\n 解码为真换行（写类工具统一 textArg，同 ⑫）',
+  ulNl.entry.content === '@@depth 5\n第一行\n第二行', JSON.stringify(ulNl.entry.content));
+
+let ulCap = await call('cc_update_lorebook_entry', { id: ulE2.id, name: 'N'.repeat(80), content: 'C'.repeat(5100) });
+check('⑭g name 截 60 / content 截 5000（与 cc_add_lorebook_entries 的上限一致，防单条撑爆上下文）',
+  ulCap.entry.name.length === 60 && ulCap.entry.content.length === 5000,
+  JSON.stringify({ name: ulCap.entry.name.length, content: ulCap.entry.content.length }));
+
+let ulFlags = await call('cc_update_lorebook_entry', { id: ulE2.id, enabled: false, constant: true, use_regex: true, priority: 9 });
+check('⑭h 布尔/数字字段按类型写入：enabled / constant / use_regex / priority',
+  ulFlags.entry.enabled === false && ulFlags.entry.constant === true
+  && ulFlags.entry.use_regex === true && ulFlags.entry.priority === 9,
+  JSON.stringify({ e: ulFlags.entry.enabled, c: ulFlags.entry.constant, r: ulFlags.entry.use_regex, p: ulFlags.entry.priority }));
+
+let ulStale = await call('cc_update_lorebook_entry', { id: ulE1.id, name: '不该写进去', expectedRev: 1 });
+check('⑭i expectedRev 不符 → staleRev 拒绝（tool() 包装对它同样生效，不能只写在 description 里）',
+  ulStale.ok === false && ulStale.staleRev === true && /草稿已被外部修改/.test(String(ulStale.error || '')),
+  JSON.stringify({ ok: ulStale.ok, staleRev: ulStale.staleRev }));
+
+const ulRt = JSON.parse(JSON.stringify(ul));
+check('⑭j 顶层没有 next/hint/notice/warning 副本（①d 的追加样本），且返回可无损 JSON 化',
+  !['next', 'hint', 'notice', 'warning'].some(f => Object.prototype.hasOwnProperty.call(ul, f))
+  && JSON.stringify(ulRt) === JSON.stringify(ul), Object.keys(ul).join(','));
+
+const ulDef = tools.get('cc_update_lorebook_entry');
+check('⑭k 参数声明：id 必填、9 个字段全部声明、additionalProperties:false（模型传不出未声明字段）',
+  !!ulDef && ulDef.parameters.required.indexOf('id') >= 0 && ulDef.parameters.additionalProperties === false
+  && Object.keys(ulDef.parameters.properties).sort().join(',') === 'constant,content,enabled,expectedRev,id,keys,name,priority,use_regex',
+  ulDef ? Object.keys(ulDef.parameters.properties).join(',') : 'tool missing');
+
 // —— 收尾：清掉临时落盘根 ——
 rmSync(tmpHome, { recursive: true, force: true });
 

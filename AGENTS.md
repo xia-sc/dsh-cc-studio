@@ -20,7 +20,7 @@ lib/draft-lock.js    98 行 ── **草稿锁层**（0.11.0）：锁归一 / TT
 presets/cc.patch.yml     ── 补丁层 2：CC 预设的**声明行**（dsh ≥ 0.1.7-alpha.1 唯一认的形态）
 presets/cc/              ── CC 预设的目录模板（dsh ≤ 0.1.6-alpha.2，挂载时安装到 <DSH_HOME>/.agent-presets/cc）
 cordis.patch.yml         ── 补丁层 1：宿主组合补丁（insert 一个插件行）
-tests/*.test.mjs         ── 24 个测试文件、959 项断言；**不随包发布**
+tests/*.test.mjs         ── 24 个测试文件、987 项断言；**不随包发布**
 dist/*.zip               ── 历史发布包（按版本命名），不是构建产物，不要改
 .github/workflows/       ── CI：打 v* tag 自动发 npm（OIDC）+ 建 Release（正文抽自 CHANGELOG.md）
 .github/scripts/         ── release-notes.mjs：上面那个 Release 正文/标题的抽取脚本，可本地直接跑
@@ -96,6 +96,10 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
 - 预设里 `cordis:group` / `isolate` 的用法有解释性注释，别删。
 - **提示词变量只能用 `provider` / `model`（dsh ≥ 0.2.1-rc.2）**：0.2.1 的 `dsh-system-prompt` 注册表只剩这两个（工作目录改由 working-directory 服务以 runtime context 提供），而段文本插值对未知引用**严格抛错**、且发生在第一个模型请求之前 —— 写一个 `{{cwd}}` 的后果是「CC 模式每一轮都本轮运行失败」，但预设挂载、roster 与 broken 诊断全都正常（0.10.1 用户实机踩到，`--dump-config` 看不出来）。`tests/preset-install.test.mjs` 第 12b 节把白名单钉死：出现白名单外的变量直接红。dsh 以后改注册表，先回来核对这张表，别在线上的模型请求里发现。
 - **模型可见的 JSON 卫生也是契约（0.10.2）**：DSH 的 DeepSeek provider 在流结束对 tool input 严格 `JSON.parse`，失败即 `MALFORMED_RESPONSE`，而默认 `retryableCodes` 不含它 → 模型偶发一个尾逗号就让整轮失败、工具根本不会被调用。persona 与五个写类工具（`cc_patch_character` / `cc_patch_world` / `cc_add_lorebook_entries` / `cc_patch_greetings` / `cc_patch_book_meta`）的 description 因此带着「严格 JSON + 一次 1-3 个字段、长字段分多次写」规则；`tests/tools-contract.test.mjs` ①f 与 `tests/preset-install.test.mjs` 会拦住把它删掉或只改一份的改动。别把这段当废话删掉。
+- **行集与 dsh 内置 `standard` 对齐（0.11.1，当前基线 `0.2.1-rc.2`）**：两份清单的每一行都要与目标版本的 `@deepseek-ai/dsh-web-app/presets/standard.patch.yml` 逐行对得上，**有意差异只允许两处**，且必须写进预设文件末尾的注释块（`tests/preset-install.test.mjs` 第 10 节的行集快照连 `cc-agent` 一起钉死，漏一行/多一行都直接红）：
+  - `tool-schedule` —— `@deepseek-ai/dsh-tool-schedule` 在 dsh ≤ `0.1.6-alpha.2` 的依赖里**不存在**，而这份清单同时喂给目录形态（旧版）；**非 disabled 行解析不到包 = 整个预设 broken**。CC 模式也不需要定时任务。
+  - `tool-plugin-market` —— 0.1.6 没有 `@deepseek-ai/dsh-plugin-market`；按家规「不拿 disabled 遮掩一个已经不存在的包」，同样不带。
+  ⚠️ 历史上真踩过的三种漂移：① **漏抄 `disabled`** —— `tool-ralph` 在 standard 里一直是 `disabled: true`，本预设从 0.3.x 抄过来时丢了它，于是 CC 模式多挂一个实验性长循环工具；② **多写 `disabled`** —— `skill-filesystem` / `tool-skill` 被误关，CC 模式静默没有技能目录与加载器（与 0.3.4 的 `present`、0.3.7 的 `command-goal` 同类）；③ **config 键随版本下线** —— `backgroundMode: continuable` 在 0.2.1 的 `dsh-tool-subagent` 里已不存在。加行前先确认**两个版本**（目标版 + ≤0.1.6 的目录形态）都装了那个包。
 
 ### 2.5 旧版（≤ 0.1.6-alpha.2）的目录安装：绝不静默覆盖用户改动
 
@@ -213,7 +217,7 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
 | `0.1.7-alpha.1` | 正常（0.3.6 起） | **预设机制换代**：目录形态整体下线（新注册表连 `fs` 都不 import，扫目录没有读者），改由组合里的 `@deepseek-ai/dsh-agent-preset` 声明行投递 —— 这就是 `presets/cc.patch.yml` 存在的理由。见 [CHANGELOG 0.3.6](./CHANGELOG.md) |
 | `0.1.7-rc.1` | 正常 | **接口面无变化，无需适配**（RPC 线协议 / 三个 slot / `tools.register` / `inject` 四个服务都没动）。见 [CHANGELOG 0.3.7](./CHANGELOG.md) |
 | `0.2.0-rc.2` | 正常 | **接口面无变化，无需适配**；也是商城 latest-three 窗口里那条精确 `compatible`。⚠️ 信封的 `payload` 只认 `payload.args`。见 [CHANGELOG 0.3.8](./CHANGELOG.md) |
-| `0.2.1-rc.2` | 正常（0.10.1 起） | **prompt 变量表收窄到 `provider` / `model`**：`{{cwd}}` 不再注册（工作目录改走 working-directory 服务的 runtime context），persona 里引用它会让**每一轮**在模型请求前抛 `unknown prompt variable` —— 预设挂载与 roster 全都正常，只有运行失败。两份清单已去掉 `{{cwd}}`。⚠️ `dshReleases` 里那条精确 `compatible` 等重启实测确认后再补（家规：只写实测过的版本）。见 [CHANGELOG 0.10.1](./CHANGELOG.md) |
+| `0.2.1-rc.2` | 正常（0.10.1 起；0.11.x 起 Web 全链路实测） | **prompt 变量表收窄到 `provider` / `model`**：`{{cwd}}` 不再注册（工作目录改走 working-directory 服务的 runtime context），persona 里引用它会让**每一轮**在模型请求前抛 `unknown prompt variable` —— 预设挂载与 roster 全都正常，只有运行失败。两份清单已去掉 `{{cwd}}`。✅ `dshReleases` 已补精确 `compatible`：2026-10-22 用 npm CLI 的 `dsh web`（`@deepseek-ai/dsh@0.2.1-rc.2`，隔离 `DSH_HOME` + `--from-default-profile web`）实测全绿 —— 宿主 RPC 20 端点、三个 slot、`preset-cc` roster 无 broken、草稿锁只读、JSON/PNG/CHARX 导出下载、i18n 切换。**预设行集也已按这一版 standard 对齐**（0.11.1，见 §2.4）。见 [CHANGELOG 0.10.1](./CHANGELOG.md) |
 | `0.1.7-alpha.2` / `0.1.7-rc.2` / `0.2.0-rc.1` / `0.2.1-alpha.1` | **未实测** | 不许写进矩阵 |
 
 **实测手法（可复用）**：宿主半——未知路径 404/405 vs 插件路由 401（证明路由确实注册、围栏是插件自己调的）；客户端半——Client Inspect 读活页面的 Slot 台账（三个挂载点 `active` 且 registrant = 包名）；预设半——隔离 harness 里按 `tools.register` 契约挂 `lib/agent.js`，roster 用活宿主的官方 Remote（`POST /api/agentPresets/list`、`POST /api/pluginInventory/list`，cookie 由 `/?token=…` 换）。
@@ -246,7 +250,7 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
 ## 6. 本地验证
 
 ```bash
-npm test          # 24 个文件：67 + 85 + 51 + 62 + 19 + 32 + 23 + 20 + 31 + 14 + 113 + 34 + 69 + 20 + 75 + 36 + 52 + 6 + 24 + 25 + 22 + 18 + 16 + 45 = 959 项断言，全绿才算过
+npm test          # 24 个文件：67 + 85 + 51 + 62 + 19 + 32 + 23 + 20 + 31 + 14 + 125 + 34 + 69 + 20 + 75 + 36 + 68 + 6 + 24 + 25 + 22 + 18 + 16 + 45 = 987 项断言，全绿才算过
 ```
 
 测试只跑纯函数与源码级守卫（不启动 dsh、不写真实用户目录），所以**还需要手工验证**：
@@ -279,6 +283,7 @@ npm test          # 24 个文件：67 + 85 + 51 + 62 + 19 + 32 + 23 + 20 + 31 + 
 13. **CC 模式偶发「本轮运行失败 `tool input is invalid JSON`」→ 坏的是模型输出，不是卡片数据**（0.10.2，dsh 0.2.1-rc.2 实测）：会话日志（`~/.dsh/sessions/<cwd>/session-*.jsonl.zstd`，**多帧 zstd** —— 按 magic `28 B5 2F FD` 切帧逐帧解压，只解第一帧会得到一行 session 头）里能重建 `tool-call-chunks` 的 `args`；本次是模型生成的 arguments 末尾多了个逗号（`..."tags":[...],}`）。`@deepseek-ai/dsh-llm-deepseek` 在流结束时严格 `JSON.parse`，失败即抛 `MALFORMED_RESPONSE`；`dsh-llm-retry` 默认不重试它。工具根本没被调用、草稿不会被写坏。插件只能改模型可见文本（persona + 写类工具 description 已有「严格 JSON + 分小步写」）；用户侧可把 `MALFORMED_RESPONSE` 加进 `llm-deepseek-account` 行的 `retryPolicy.retryableCodes` 自动重试。**别去找「参数校验 bug」** —— 参数没到工具层。
 14. **卡里的换行变成字面 `\n` → 先怀疑模型多转义了一层，别去改工具的 `String()`**（0.10.3，用户实机报告 P1）：六步全链路 `valid: true`，但 `cc_patch_character` / `cc_patch_greetings` / `cc_patch_world` 写的文本换行落盘成字面 `\` + `n`，导出到 SillyTavern 显示成「说完这句话。\n\n下一段」。取证两件事：① 工具层往返测试（传真换行 → 读回真换行、传字面 `\n` → 原样）证明工具本身不做任何转义；② 会话日志解帧重建 `tool-call-chunks` 的 args —— 模型 18 次调用有 6 次在 JSON 里写成 `\\n`（多转义一层），而 `alternate_greetings` / lorebook 写对了，是**模型输出不一致**。修法是写类工具统一走 `textArg()`（= `decodeEscapedText` + `String()`：字面 `\n` / `\r` / `\t` 解成真字符，多层转义最多收敛 4 轮），**只作用于模型输入的工具参数**；新增写类工具时文本字段一律用 `textArg()`，别用裸 `String()`。工坊保存与导入路径**不要**加这层（那两条本来就是真换行）。
 15. **「LLM 正在创作，工坊怎么点载入都不换卡」不是 bug，是草稿锁**（0.11.0，§2.8）：LLM 写草稿后工坊只读、载入/导入只进只读预览；要恢复编辑得让 LLM 调 `cc_release_draft`，或等锁超过 30 分钟无写入自动失效。排查时先看 `cc_getDraft` 的 `draftStatus.lock`：`active:true` 就是锁着、`stale:true` 就是已超时可编辑。**不要**为了「让它能载入」去删 `.lock.json` 或加用户强制解锁端点 —— 那正是 0.11.0 要修的覆盖事故；设置页的「LLM 创作保护」开关只影响客户端是否尊重锁（关闭后写请求带 `force:true`，等价旧行为）。
+16. **CC 模式「能用但少能力」→ 先 diff 预设行集与 standard**（0.11.1，§2.4）：预设不 broken、roster 里也看得到、胶囊与工坊全正常，只是少了某个工具或命令。三个高发形态都真发生过：`disabled` **抄漏**（`tool-ralph` 在 standard 里是关的，本预设曾启用）、`disabled` **多写**（`skill-filesystem` / `tool-skill` 被误关 → 模型没有技能目录与加载器）、**config 键随版本下线**（`backgroundMode: continuable`）。取证两步：先 `node tests/preset-install.test.mjs` 看第 10 节的行集快照（漏一行/多一行都直接红），再对目标版本的 `@deepseek-ai/dsh-web-app/presets/standard.patch.yml` 逐行比。**别为了对齐就加会 unavailable 的行** —— 这份清单同时喂给 ≤0.1.6 的目录形态，非 disabled 行解析不到包 = 整个预设 broken。
 
 ---
 

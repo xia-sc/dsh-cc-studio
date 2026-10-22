@@ -17,9 +17,10 @@
  * 运行：node tests/st-compat.test.mjs   （全绿退出码 0）
  */
 import { createServer } from 'node:http';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { deflateSync } from 'node:zlib';
 
 // 隔离副作用（同 rpc-channel.test.mjs）：host 半会读 dirs 并可能写草稿 —— HOME/USERPROFILE/DSH_HOME 一起改
 const originalHome = process.env.HOME, originalUserProfile = process.env.USERPROFILE, originalDshHome = process.env.DSH_HOME;
@@ -65,6 +66,54 @@ function zipEntry(bytes, want) {
     off = start + size;
   }
   return null;
+}
+/**
+ * 极简 zip 构造器（STORE / DEFLATE 两种方法）—— 用来造「别人打的包」。
+ *
+ * 不能拿 buildZipCharx 造导入输入：那样等于用被测代码证明被测代码能读自己的输出。
+ * 导入侧真正要防的是「ST/其它打包器的条目顺序与压缩方法」，所以这里故意把 assets 排在
+ * card.json 前面、并对 card.json 用 DEFLATE —— 只认第一个条目、或只认 STORE 的解析器都会挂。
+ */
+function crc32Of(buf) {
+  let c = 0xFFFFFFFF;
+  const tbl = [];
+  for (let n = 0; n < 256; n++) {
+    let x = n;
+    for (let k = 0; k < 8; k++) x = (x & 1) ? (0xEDB88320 ^ (x >>> 1)) : (x >>> 1);
+    tbl[n] = x >>> 0;
+  }
+  for (let i = 0; i < buf.length; i++) c = tbl[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function buildZip(items) {
+  const locals = [];
+  const centrals = [];
+  let off = 0;
+  for (const it of items) {
+    const name = Buffer.from(it.name, 'utf8');
+    const raw = Buffer.isBuffer(it.data) ? it.data : Buffer.from(String(it.data));
+    const payload = it.deflate ? deflateSync(raw) : raw;
+    const crc = crc32Of(raw);
+    const lh = Buffer.alloc(30);
+    lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(0, 6);
+    lh.writeUInt16LE(it.deflate ? 8 : 0, 8); lh.writeUInt32LE(crc, 14);
+    lh.writeUInt32LE(payload.length, 18); lh.writeUInt32LE(raw.length, 22);
+    lh.writeUInt16LE(name.length, 26);
+    const local = Buffer.concat([lh, name, payload]);
+    const ch = Buffer.alloc(46);
+    ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt16LE(20, 4); ch.writeUInt16LE(20, 6);
+    ch.writeUInt16LE(it.deflate ? 8 : 0, 8); ch.writeUInt32LE(crc, 16);
+    ch.writeUInt32LE(payload.length, 20); ch.writeUInt32LE(raw.length, 24);
+    ch.writeUInt16LE(name.length, 28); ch.writeUInt32LE(off, 42);
+    centrals.push(Buffer.concat([ch, name]));
+    locals.push(local);
+    off += local.length;
+  }
+  const central = Buffer.concat(centrals);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0); eocd.writeUInt16LE(items.length, 8); eocd.writeUInt16LE(items.length, 10);
+  eocd.writeUInt32LE(central.length, 12); eocd.writeUInt32LE(off, 16);
+  return Buffer.concat([...locals, central, eocd]);
 }
 
 // —— 测试样本：带装饰器、带 V3 独有字段、带 character_book 的卡 ——
@@ -329,6 +378,145 @@ const CARD = {
     String((clientSrc.match(/res\.value\.upgradedFrom/g) || []).length));
   check('⑧e 客户端不再自己 parse 卡 JSON：三个老错误键（errNotCcJson / errSpecMismatch / errNoData）已删',
     !/store\.errNotCcJson/.test(clientSrc) && !/store\.errSpecMismatch/.test(clientSrc) && !/store\.errNoData/.test(clientSrc), '');
+}
+
+// ⑩ CHARX 导入（补测）：容器是 ZIP，要钉的是「从哪个条目取卡」以及三条导入路径共用的升级/锁/备份
+//
+// 此前只测了导出：`cc_importFromCharx` 一次都没被调用过。而它和 PNG / JSON 两条路径共用
+// normalizeDraft → upgradeCardToV3、锁门禁、覆盖前备份 —— 这三件事任何一条在 CHARX 上分叉，
+// 用户拖进来的 .charx 就会走一条没有保护的路。
+{
+  let route2 = null;
+  const fakeCtx2 = {
+    effect(fn) { fn(); return () => {}; },
+    get(name) { if (name === 'connection') return { requestRejection: () => undefined }; return undefined; },
+    webServer: { register(r) { route2 = r; return () => {}; } },
+  };
+  await host.apply(fakeCtx2);
+  const server2 = createServer((req, res) => {
+    if (route2 && (req.url === route2.path || req.url.startsWith(route2.path + '/'))) { route2.handler(req, res); return; }
+    res.statusCode = 404; res.end('no route');
+  });
+  await new Promise((r) => server2.listen(0, '127.0.0.1', r));
+  const base2 = 'http://127.0.0.1:' + server2.address().port;
+  const rpc2 = async (method, args) => {
+    const res = await fetch(base2 + '/dsh-cc-studio-rpc/' + method, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'client-request', rpcId: 'i-' + method, method, payload: { args } }),
+    });
+    const j = JSON.parse(await res.text());
+    return (j && j.result) || {};
+  };
+  const b64Of = (bytes) => Buffer.from(bytes).toString('base64');
+
+  // 用自家的导出做一次往返（导出侧已在 ⑦ 里钉过；这里验证导入能吃回自己的包）
+  await rpc2('cc_setDraft', { sessionId: 'chx-src', draft: CARD });
+  const ex = await rpc2('cc_exportCharx', { sessionId: 'chx-src' });
+  const chxB64 = String((ex.value || {}).b64 || '');
+  check('⑩ 导出 CHARX 成功（往返样本）', chxB64.length > 0, String(chxB64.length));
+
+  const rt = await rpc2('cc_importFromCharx', { sessionId: 'chx-dst', b64: chxB64 });
+  check('⑩b 往返：卡名 / 条目 / spec 都回来，key 就是传进去的会话 id',
+    rt.ok === true && rt.value.key === 'chx-dst' && rt.value.draft.spec === 'chara_card_v3'
+    && rt.value.draft.data.name === CARD.data.name && rt.value.draft.data.character_book.entries.length === 3,
+    JSON.stringify({ key: rt.value && rt.value.key, name: rt.value && rt.value.draft.data.name }));
+  check('⑩c CCv3 包返回 upgradedFrom=null（界面不该对本来就是 V3 的卡说「已升级」）',
+    rt.value.upgradedFrom === null, JSON.stringify(rt.value.upgradedFrom));
+
+  // 别人打的包：assets 排在 card.json 之前，card.json 用 DEFLATE
+  const stStyle = buildZip([
+    { name: 'assets/ccv3.png', data: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3]) },
+    { name: 'card.json', data: JSON.stringify(CARD), deflate: true },
+    { name: 'assets/icon.png', data: Buffer.from([9, 9, 9]) },
+  ]);
+  const imSt = await rpc2('cc_importFromCharx', { sessionId: 'chx-st', b64: b64Of(stStyle) });
+  check('⑩d 按名字找 card.json（assets 在前也不取第一个条目），DEFLATE 条目能解压',
+    imSt.ok === true && imSt.value.draft.data.name === CARD.data.name, JSON.stringify(imSt.error || ''));
+
+  const foo = buildZip([{ name: 'stuff/foo.json', data: JSON.stringify(CARD) }]);
+  const imFoo = await rpc2('cc_importFromCharx', { sessionId: 'chx-foo', b64: b64Of(foo) });
+  check('⑩e 没有 card.json 时退到「任意 .json」（不同打包器的命名不一）',
+    imFoo.ok === true && imFoo.value.draft.data.name === CARD.data.name, JSON.stringify(imFoo.error || ''));
+
+  const noJson = buildZip([{ name: 'readme.txt', data: 'hi' }]);
+  const imNo = await rpc2('cc_importFromCharx', { sessionId: 'chx-no', b64: b64Of(noJson) });
+  check('⑩f 包里没有任何 JSON → parse-failed「未找到 card.json」（200 + 失败帧，不是 500）',
+    imNo.ok === false && imNo.error.details && imNo.error.details.code === 'parse-failed'
+    && /未找到 card\.json/.test(String(imNo.error.message || '')), JSON.stringify(imNo.error || {}));
+
+  const imGarbage = await rpc2('cc_importFromCharx', { sessionId: 'chx-no', b64: b64Of(Buffer.from('not a zip at all')) });
+  check('⑩g 根本不是 ZIP 的字节同样被 parse-failed 挡住（不把异常抛到外层）',
+    imGarbage.ok === false && imGarbage.error.details.code === 'parse-failed', JSON.stringify(imGarbage.error || {}));
+
+  const imBadJson = await rpc2('cc_importFromCharx', { sessionId: 'chx-no', b64: b64Of(buildZip([{ name: 'card.json', data: '{"spec": ' }])) });
+  check('⑩h card.json 非法 JSON → parse-failed，message 是解析器原文（可读错误而不是内部堆栈）',
+    imBadJson.ok === false && imBadJson.error.details.code === 'parse-failed' && String(imBadJson.error.message || '').length > 0,
+    String(imBadJson.error && imBadJson.error.message));
+
+  const v2 = {
+    spec: 'chara_card_v2', spec_version: '2.0',
+    data: { name: 'V2 装进 CHARX', description: '', personality: 'p', scenario: 's', first_mes: 'f', mes_example: 'e' },
+    creatorcomment: '顶层注释',
+  };
+  const imV2 = await rpc2('cc_importFromCharx', { sessionId: 'chx-v2', b64: b64Of(buildZip([{ name: 'card.json', data: JSON.stringify(v2) }])) });
+  check('⑩i V2 卡装进 CHARX 同样升级（三条导入路径共用 upgradeCardToV3），upgradedFrom 报到界面',
+    imV2.ok === true && imV2.value.upgradedFrom === 'chara_card_v2'
+    && imV2.value.draft.spec === 'chara_card_v3' && imV2.value.draft.data.creator_notes === '顶层注释',
+    JSON.stringify({ from: imV2.value && imV2.value.upgradedFrom }));
+
+  const bare = { spec: 'chara_card_v3', spec_version: '3.0', data: { name: '缺字段的卡' } };
+  const imBare = await rpc2('cc_importFromCharx', { sessionId: 'chx-bare', b64: b64Of(buildZip([{ name: 'card.json', data: JSON.stringify(bare) }])) });
+  const bd = (imBare.value || {}).draft;
+  check('⑩j 缺字段的卡被 normalizeDraft 补齐（前端与工具半不会把 undefined 渲染/序列化出去）',
+    !!bd && Array.isArray(bd.data.alternate_greetings) && Array.isArray(bd.data.group_only_greetings)
+    && Array.isArray(bd.data.tags) && Array.isArray(bd.data.assets) && bd.data.assets.length === 1
+    && !!bd.data.character_book && Array.isArray(bd.data.character_book.entries), JSON.stringify(bd && Object.keys(bd.data)));
+
+  const noB64 = await rpc2('cc_importFromCharx', { sessionId: 'chx-no' });
+  const emptyB64 = await rpc2('cc_importFromCharx', { sessionId: 'chx-no', b64: '' });
+  check('⑩k b64 缺失 / 空串 → invalid-b64（解析之前就拒绝）',
+    noB64.ok === false && noB64.error.details.code === 'invalid-b64'
+    && emptyB64.ok === false && emptyB64.error.details.code === 'invalid-b64',
+    JSON.stringify([noB64.error && noB64.error.details, emptyB64.error && emptyB64.error.details]));
+
+  // 锁 active：解析照做，但**零写入** —— 回 locked + preview，界面只进只读预览
+  const lockKey = 'chx-locked';
+  const nowSec = Math.floor(Date.now() / 1000);
+  host.writeDraftLockSync(lockKey, { owner: 'llm', since: nowSec, updatedAt: nowSec, rev: 1, cardName: 'LLM 正在写的卡' });
+  const imLocked = await rpc2('cc_importFromCharx', { sessionId: lockKey, b64: chxB64 });
+  check('⑩l 锁 active：返回 locked + lock 摘要 + preview（含 upgradedFrom），key 对得上',
+    imLocked.ok === true && imLocked.value.locked === true && imLocked.value.key === lockKey
+    && !!imLocked.value.lock && imLocked.value.lock.cardName === 'LLM 正在写的卡'
+    && !!imLocked.value.preview && !!imLocked.value.preview.draft && imLocked.value.preview.upgradedFrom === null,
+    JSON.stringify(imLocked.value && Object.keys(imLocked.value)));
+  const afterLocked = await rpc2('cc_getDraft', { sessionId: lockKey });
+  check('⑩m 锁期间零写入：草稿槽没有多出这张卡（预览不是导入）',
+    afterLocked.value && afterLocked.value.draft && afterLocked.value.draft.data.name === '',
+    JSON.stringify(afterLocked.value && afterLocked.value.draft && afterLocked.value.draft.data.name));
+
+  // 超时锁视为可写：导入放行、清锁、覆盖前备份
+  const staleKey = 'chx-stale';
+  await rpc2('cc_setDraft', { sessionId: staleKey, draft: { ...CARD, data: { ...CARD.data, name: '被覆盖的旧卡' } } });
+  host.writeDraftLockSync(staleKey, { owner: 'llm', since: 1000, updatedAt: 1000, rev: 1, cardName: '旧锁' });
+  const imStale = await rpc2('cc_importFromCharx', { sessionId: staleKey, b64: chxB64 });
+  check('⑩n 超时锁（stale）视为可写：导入放行并清锁（LLM 崩溃后不会永久锁死）',
+    imStale.ok === true && imStale.value.draft.data.name === CARD.data.name
+    && !existsSync(host.draftLockPath(staleKey)),
+    JSON.stringify({ ok: imStale.ok, lockExists: existsSync(host.draftLockPath(staleKey)) }));
+  const bkp = imStale.value && imStale.value.backup;
+  let bkpName = '';
+  try { bkpName = JSON.parse(readFileSync(bkp.path, 'utf8')).draft.data.name; } catch {}
+  check('⑩o 覆盖前备份：backup 指向 backups/ 里那份，内容是覆盖前那张卡',
+    !!bkp && bkpName === '被覆盖的旧卡' && readdirSync(join(host.draftDir(), 'backups')).length > 0,
+    JSON.stringify({ file: bkp && bkp.file, name: bkpName }));
+
+  // 输入上限：30MB base64 在解码之前就拒绝（否则 ZIP 解压能把内存打爆）
+  const huge = 'A'.repeat(30 * 1024 * 1024 + 1);
+  const imHuge = await rpc2('cc_importFromCharx', { sessionId: 'chx-no', b64: huge });
+  check('⑩p 超过 30MB 的 base64 → too-large（解码前拦下）',
+    imHuge.ok === false && imHuge.error.details.code === 'too-large', JSON.stringify(imHuge.error || {}));
+
+  await new Promise((r) => server2.close(r));
 }
 
 const failed = results.filter((r) => !r.pass);
