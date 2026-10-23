@@ -10,9 +10,9 @@
 ## 1. 仓库结构
 
 ```
-lib/index.js       2563 行 ── 宿主半：RPC 端点 + 草稿落盘 + 草稿锁拦截/备份 + 角色库 + 人物关系分组 + PNG/CHARX + 预设安装（旧版目录形态）
+lib/index.js       2665 行 ── 宿主半：RPC 端点 + 草稿落盘 + 草稿锁拦截/备份 + 角色库 + 人物关系分组 + PNG/CHARX + 预设安装（旧版目录形态）+ 检查更新
 lib/agent.js       3132 行 ── 预设半：CC 模式的 33 个 Tool（只随 CC 预设挂载）
-lib/client.js      3156 行 ── 浏览器半：手写 bundle，胶囊(Capsule) + 工坊(Workshop) + 设置页(SettingsView)
+lib/client.js      3314 行 ── 浏览器半：手写 bundle，胶囊(Capsule) + 工坊(Workshop) + 设置页(SettingsView)
 lib/group-layer.js  624 行 ── **卡组层**（0.10.0）：卡组作用域 / 世界书分段统计 / 检查注册表 —— 纯函数、零 IO，
                               两半都 import 它。这是全仓**唯一一处「不写两份」的实现**（理由与家规见 §2.7）
 lib/draft-lock.js    98 行 ── **草稿锁层**（0.11.0）：锁归一 / TTL / 能不能写的**唯一实现** —— 纯函数、零 IO，
@@ -20,7 +20,7 @@ lib/draft-lock.js    98 行 ── **草稿锁层**（0.11.0）：锁归一 / TT
 presets/cc.patch.yml     ── 补丁层 2：CC 预设的**声明行**（dsh ≥ 0.1.7-alpha.1 唯一认的形态）
 presets/cc/              ── CC 预设的目录模板（dsh ≤ 0.1.6-alpha.2，挂载时安装到 <DSH_HOME>/.agent-presets/cc）
 cordis.patch.yml         ── 补丁层 1：宿主组合补丁（insert 一个插件行）
-tests/*.test.mjs         ── 24 个测试文件、987 项断言；**不随包发布**
+tests/*.test.mjs         ── 25 个测试文件、1041 项断言；**不随包发布**
 dist/*.zip               ── 历史发布包（按版本命名），不是构建产物，不要改
 .github/workflows/       ── CI：打 v* tag 自动发 npm（OIDC）+ 建 Release（正文抽自 CHANGELOG.md）
 .github/scripts/         ── release-notes.mjs：上面那个 Release 正文/标题的抽取脚本，可本地直接跑
@@ -157,7 +157,7 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
 
 ### 3.1 `lib/index.js`（宿主）
 
-- **RPC 端点**：`validate` / `ping` / `cc_isCcMode` / `cc_getDraft` / `cc_setDraft` / `cc_patchDraft` / `cc_validateDraft` / `cc_migrateDraft` / `cc_listLibrary` / `cc_saveToLibrary` / `cc_loadFromLibrary` / `cc_deleteFromLibrary` / `cc_renameInLibrary` / `cc_getLibraryEntry` / `cc_setOrigin` / `cc_importFromJson` / `cc_importFromPng` / `cc_exportPng` / `cc_importFromCharx` / `cc_exportCharx`。未知端点返回 **200 + 失败帧**（`details.code = "unknown-endpoint"`），不是 404。**三条导入路径（JSON/PNG/CHARX）都走 `normalizeDraft` → `upgradeCardToV3`**，返回里带 `upgradedFrom`（V2/V1 卡自动升级，非静默——界面会显示）；`cc_setDraft` **故意不升级**（它是工坊自己那份草稿的镜像，静默变换会让两边不一致）。
+- **RPC 端点**：`validate` / `ping` / `cc_isCcMode` / `cc_getDraft` / `cc_setDraft` / `cc_patchDraft` / `cc_validateDraft` / `cc_migrateDraft` / `cc_listLibrary` / `cc_saveToLibrary` / `cc_loadFromLibrary` / `cc_deleteFromLibrary` / `cc_renameInLibrary` / `cc_getLibraryEntry` / `cc_setOrigin` / `cc_importFromJson` / `cc_importFromPng` / `cc_exportPng` / `cc_importFromCharx` / `cc_exportCharx` / `cc_checkUpdate`（0.11.3 检查更新：`{network:false}` 只回本地版本不联网，默认查 registry `latest` + 8s 超时；失败回 `check-update-failed` 并带本机 `current`）。未知端点返回 **200 + 失败帧**（`details.code = "unknown-endpoint"`），不是 404。**三条导入路径（JSON/PNG/CHARX）都走 `normalizeDraft` → `upgradeCardToV3`**，返回里带 `upgradedFrom`（V2/V1 卡自动升级，非静默——界面会显示）；`cc_setDraft` **故意不升级**（它是工坊自己那份草稿的镜像，静默变换会让两边不一致）。
 - **草稿锁（0.11.0）**：写草稿端点（`cc_setDraft` / `cc_patchDraft` / `cc_migrateDraft` / `cc_setOrigin` / `cc_renderRelations`）在 LLM 锁 active 且未带 `force:true` 时回 `fail("draft-locked")`（真实码在 `details.code`、`details.lock` 带摘要）；`cc_loadFromLibrary` / `cc_importFrom*` 改回 `ok({locked:true, lock, preview, key})` 且**零写入**；`force:true` 清锁放行（覆盖型动作先备份）。`cc_getDraft` 的锁摘要只在 `draftStatus.lock`，**不另开顶层 lock 字段**。详见 §2.8。
 - **草稿槽 key 的不变量**（issue #5 的教训）：同一会话里 **Tools 与浏览器必须算出同一把 key**。Tools 侧是 `exec.agent.session.id`；浏览器侧**必须显式把会话 id 传进来**（RPC 是 HTTP 处理函数，`agents.currentInitiator()` 在那里恒为空 → 回退成 `"default"` → 「模型写 `session-<id>`、工坊读 `default`」两槽并存）。回退时 `source` 如实报 `fallback`（`keySource`），前端据此**不渲染**该槽并告警。新增读写草稿的端点一律走 `draftKeyFrom(ctx, args)`，别自己拼 key。
 - **草稿持久化**：`<主根>/cc-drafts/<session>.json`（`draftDir()` = `dataRoots("cc-drafts")[0]`；读盘经 `findDraftPath()` 回退旧根）。变更即落盘，**内存 miss 时不静默建空**（告警 + 提示恢复）。文件名 `safe(key)-<hash>.json`；`listDraftSlotsOnDisk()` 扫两个根、按文件名去重，用于「当前槽是空壳」时的救回提示。同目录还有两类 sidecar：`<safe>.origin.json`（来源卡 id）与 `<safe>.lock.json`（LLM 创作锁，见 §2.8）；`<draftDir>/backups/` 是覆盖前备份（`listDraftSlotsOnDisk` 只扫顶层，不会误读）。
@@ -199,7 +199,8 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
   - **草稿槽 key 只能来自这个会话 id**：`pullDraft` 没有 key 就一次都不发（不许拿 `default` 顶替），节流按 key、切会话后回来的响应丢弃、主机回的 `key` 与点名的 key 不一致时不渲染只告警。`default` 槽只是「没有会话上下文」时的回退，**不是**当前会话的草稿。
 - 状态在 `store`（`createStore` + `subscribe/getSnapshot`）；设置存 `localStorage:dsh-cc-studio-settings`。
 - **草稿锁（0.11.0）**：锁数据只从 `cc_getDraft` 的 `draftStatus.lock` 读（`{owner,cardName,since,updatedAt,ageSec,ttlSec,stale,active}|null`）。`store` 新增 `lock` / `preview` / `llmDraft` / `llmWorld` / `llmDraftStatus` / `draftLock`；`isLockActive()` = `draftLock && lock?.owner==="llm" && !lock.stale`，`isReadOnly()` = `isLockActive() || !!preview`。**所有写入口（`updateDraft` / `pushDraftToHost` / `clearDraft` / `migrateSlot` / `renderRelationsToCard` / `syncDraftAfterPromote`）先过 `isReadOnly()` 才发 RPC**。载入/导入收到宿主的 `locked:true` → `enterPreview()`（首次进预览时存 `llm*` 快照；连续预览只换卡；退出预览恢复最新 LLM 草稿）；`pullDraft` 在预览期间只更新 `llm*`，**绝不动显示中的草稿**。设置开关关闭时所有写 RPC 带 `force:true`（等价旧行为）。`pushDraftToHost` 收到 `details.code="draft-locked"` 要刷新锁并提示「本次修改未写入」。
-- i18n：文件内 `zh` / `en` 两张表（**各 327 键**，两边键集必须一致），`ctx.locale.register(NS, { zh, en })`，`t = ctx.locale.bind(NS)`。**UI 层不得出现中文字面量**（有守卫测试），新增文案必须同时进 `zh` 和 `en`，并保持 `{n}` 之类的占位符一致。
+- i18n：文件内 `zh` / `en` 两张表（**各 342 键**，两边键集必须一致），`ctx.locale.register(NS, { zh, en })`，`t = ctx.locale.bind(NS)`。**UI 层不得出现中文字面量**（有守卫测试），新增文案必须同时进 `zh` 和 `en`，并保持 `{n}` 之类的占位符一致。
+- **检查更新（0.11.3）**：设置页底部「插件更新」区块。`store.checkUpdate({probe:true})` 在设置页挂载时只问本地版本（`{network:false}`，不打网络，失败静默），点按钮才真的查 npm（宿主 `cc_checkUpdate`）；结果在 `store.update`（`status` / `current` / `latest` / `updateAvailable` / `localNewer` / `installSpec` / `error` / `copied`）。可更新时给 `包名@版本` 与复制按钮（`copyText` 优先 `navigator.clipboard`，失败退回 `textarea + execCommand`），复制反馈走 `markUpdateCopied("ok"|"failed"|null)`。**别在客户端直连 npm、也别硬编码版本号** —— 版本号唯一真源是 `package.json`（宿主 `pluginMeta()`）。回归：`tests/check-update.test.mjs`。
 - 工坊排版（0.4.0 重构）：三列 `200px 1fr 268px`（导航 / 阅读区 / 已存角色，右侧可折叠成 40px 竖条）；原右侧 360px 栏与「融合说明」块已删，实时 CCv3 预览与 CBS 速查改走主区底部 `foldPanel()`（默认全收起）。字段统一走 `field(title, key, opts)`（小号标签 + ⛶ + 无边框控件；`S.readText` 用 `field-sizing:content` 撑高），长文大框走 `setEditingText` 的快照回滚。旧的 `S.card` / `S.field` / `S.mono` / `S.side` 已删。工具条右侧是 **✕ 图标按钮**（30×30，`title`/`aria-label` 取 `action.close`；默认描边、**悬停红底白字 `#e05555`**、hover 走局部 `hoverKey` 不写 store、按下 `stopFocusSteal` 不抢焦点）。
 - 导出入口（0.4.1 归一）：**导出动作只有一套实现**（`store.exportJSON / exportPNG / embedIntoPng / exportCharx`，都长在导出页 `s.cur === 3`），入口只剩两处 —— 左下角那枚（文案键 `step.export`）与已存角色卡片上的「导出」。顶部工具条的「导出 JSON」已删；卡片「导出」只 `store.setCur(3)`，**既不载入也不下载**（旁路 `exportLibraryEntry` 已删）。导出页导出的**永远是工坊里那张卡**（页内 `workshop.export.currentHint` 写明，标题挂卡名）；从卡片跳进来时按钮自己先变（`workshop.library.exportJumped`，6s 后复原）+ 页内琥珀提示（`workshop.export.jumpedOther`）。左下角入口**不做选中态**（曾经与卡片反馈同时发亮 → 「两处看起来像选中」的坑，别再犯）。导航与胶囊都只有 **3 个写作步骤**，`s.cur === 3` 是「不在导航里的第 4 个视图」，页内那枚 `action.validate` 就是全部校验入口。
 - **关系视图（`s.cur === 4`）读的是宿主半 `cc_getGroup` 的返回**：`{ group, members, rev }` —— 节点与边在 `group` **里面**（`group.nodes` / `group.edges`），顶层只有 `members` 与 `rev`。⚠️ 曾经按工具半 `cc_get_relations` 的形状去读顶层，于是界面**永远**显示「关系 · 0」、NPC 区空白（实机截图报的就是这个）。改它时形状两头夹着：**渲染级** `tests/relations-view.test.mjs`（假 React harness）+ **RPC 级** `tests/rpc-channel.test.mjs`。
@@ -217,7 +218,7 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
 | `0.1.7-alpha.1` | 正常（0.3.6 起） | **预设机制换代**：目录形态整体下线（新注册表连 `fs` 都不 import，扫目录没有读者），改由组合里的 `@deepseek-ai/dsh-agent-preset` 声明行投递 —— 这就是 `presets/cc.patch.yml` 存在的理由。见 [CHANGELOG 0.3.6](./CHANGELOG.md) |
 | `0.1.7-rc.1` | 正常 | **接口面无变化，无需适配**（RPC 线协议 / 三个 slot / `tools.register` / `inject` 四个服务都没动）。见 [CHANGELOG 0.3.7](./CHANGELOG.md) |
 | `0.2.0-rc.2` | 正常 | **接口面无变化，无需适配**；也是商城 latest-three 窗口里那条精确 `compatible`。⚠️ 信封的 `payload` 只认 `payload.args`。见 [CHANGELOG 0.3.8](./CHANGELOG.md) |
-| `0.2.1-rc.2` | 正常（0.10.1 起；0.11.x 起 Web 全链路实测） | **prompt 变量表收窄到 `provider` / `model`**：`{{cwd}}` 不再注册（工作目录改走 working-directory 服务的 runtime context），persona 里引用它会让**每一轮**在模型请求前抛 `unknown prompt variable` —— 预设挂载与 roster 全都正常，只有运行失败。两份清单已去掉 `{{cwd}}`。✅ `dshReleases` 已补精确 `compatible`：2026-10-22 用 npm CLI 的 `dsh web`（`@deepseek-ai/dsh@0.2.1-rc.2`，隔离 `DSH_HOME` + `--from-default-profile web`）实测全绿 —— 宿主 RPC 20 端点、三个 slot、`preset-cc` roster 无 broken、草稿锁只读、JSON/PNG/CHARX 导出下载、i18n 切换。**预设行集也已按这一版 standard 对齐**（0.11.1，见 §2.4）。见 [CHANGELOG 0.10.1](./CHANGELOG.md) |
+| `0.2.1-rc.2` | 正常（0.10.1 起；0.11.x 起 Web 全链路实测） | **prompt 变量表收窄到 `provider` / `model`**：`{{cwd}}` 不再注册（工作目录改走 working-directory 服务的 runtime context），persona 里引用它会让**每一轮**在模型请求前抛 `unknown prompt variable` —— 预设挂载与 roster 全都正常，只有运行失败。两份清单已去掉 `{{cwd}}`。✅ `dshReleases` 已补精确 `compatible`：2026-10-22 用 npm CLI 的 `dsh web`（`@deepseek-ai/dsh@0.2.1-rc.2`，隔离 `DSH_HOME` + `--from-default-profile web`）实测全绿 —— 宿主 RPC 21 端点、三个 slot、`preset-cc` roster 无 broken、草稿锁只读、JSON/PNG/CHARX 导出下载、i18n 切换。**预设行集也已按这一版 standard 对齐**（0.11.1，见 §2.4）。见 [CHANGELOG 0.10.1](./CHANGELOG.md) |
 | `0.1.7-alpha.2` / `0.1.7-rc.2` / `0.2.0-rc.1` / `0.2.1-alpha.1` | **未实测** | 不许写进矩阵 |
 
 **实测手法（可复用）**：宿主半——未知路径 404/405 vs 插件路由 401（证明路由确实注册、围栏是插件自己调的）；客户端半——Client Inspect 读活页面的 Slot 台账（三个挂载点 `active` 且 registrant = 包名）；预设半——隔离 harness 里按 `tools.register` 契约挂 `lib/agent.js`，roster 用活宿主的官方 Remote（`POST /api/agentPresets/list`、`POST /api/pluginInventory/list`，cookie 由 `/?token=…` 换）。
@@ -250,7 +251,7 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
 ## 6. 本地验证
 
 ```bash
-npm test          # 24 个文件：67 + 85 + 51 + 62 + 19 + 32 + 23 + 20 + 31 + 14 + 125 + 34 + 69 + 20 + 75 + 36 + 68 + 6 + 24 + 25 + 22 + 18 + 16 + 45 = 987 项断言，全绿才算过
+npm test          # 25 个文件：67 + 85 + 51 + 62 + 19 + 32 + 23 + 20 + 31 + 14 + 125 + 34 + 69 + 20 + 75 + 36 + 68 + 6 + 24 + 25 + 22 + 18 + 16 + 45 + 53 = 1041 项断言，全绿才算过
 ```
 
 测试只跑纯函数与源码级守卫（不启动 dsh、不写真实用户目录），所以**还需要手工验证**：
@@ -284,6 +285,7 @@ npm test          # 24 个文件：67 + 85 + 51 + 62 + 19 + 32 + 23 + 20 + 31 + 
 14. **卡里的换行变成字面 `\n` → 先怀疑模型多转义了一层，别去改工具的 `String()`**（0.10.3，用户实机报告 P1）：六步全链路 `valid: true`，但 `cc_patch_character` / `cc_patch_greetings` / `cc_patch_world` 写的文本换行落盘成字面 `\` + `n`，导出到 SillyTavern 显示成「说完这句话。\n\n下一段」。取证两件事：① 工具层往返测试（传真换行 → 读回真换行、传字面 `\n` → 原样）证明工具本身不做任何转义；② 会话日志解帧重建 `tool-call-chunks` 的 args —— 模型 18 次调用有 6 次在 JSON 里写成 `\\n`（多转义一层），而 `alternate_greetings` / lorebook 写对了，是**模型输出不一致**。修法是写类工具统一走 `textArg()`（= `decodeEscapedText` + `String()`：字面 `\n` / `\r` / `\t` 解成真字符，多层转义最多收敛 4 轮），**只作用于模型输入的工具参数**；新增写类工具时文本字段一律用 `textArg()`，别用裸 `String()`。工坊保存与导入路径**不要**加这层（那两条本来就是真换行）。
 15. **「LLM 正在创作，工坊怎么点载入都不换卡」不是 bug，是草稿锁**（0.11.0，§2.8）：LLM 写草稿后工坊只读、载入/导入只进只读预览；要恢复编辑得让 LLM 调 `cc_release_draft`，或等锁超过 30 分钟无写入自动失效。排查时先看 `cc_getDraft` 的 `draftStatus.lock`：`active:true` 就是锁着、`stale:true` 就是已超时可编辑。**不要**为了「让它能载入」去删 `.lock.json` 或加用户强制解锁端点 —— 那正是 0.11.0 要修的覆盖事故；设置页的「LLM 创作保护」开关只影响客户端是否尊重锁（关闭后写请求带 `force:true`，等价旧行为）。
 16. **CC 模式「能用但少能力」→ 先 diff 预设行集与 standard**（0.11.1，§2.4）：预设不 broken、roster 里也看得到、胶囊与工坊全正常，只是少了某个工具或命令。三个高发形态都真发生过：`disabled` **抄漏**（`tool-ralph` 在 standard 里是关的，本预设曾启用）、`disabled` **多写**（`skill-filesystem` / `tool-skill` 被误关 → 模型没有技能目录与加载器）、**config 键随版本下线**（`backgroundMode: continuable`）。取证两步：先 `node tests/preset-install.test.mjs` 看第 10 节的行集快照（漏一行/多一行都直接红），再对目标版本的 `@deepseek-ai/dsh-web-app/presets/standard.patch.yml` 逐行比。**别为了对齐就加会 unavailable 的行** —— 这份清单同时喂给 ≤0.1.6 的目录形态，非 disabled 行解析不到包 = 整个预设 broken。
+17. **设置页「检查更新」报错 / 看起来没反应**（0.11.3）：先分三种情况，别混成「功能坏了」——① **只重启了一半**：新客户端 + 老宿主（没 `cc_checkUpdate` 端点）时，挂载探测静默（不吓人），点按钮才回 `unknown-endpoint`；② **网络问题**：报 `check-update-failed`，括号里是 registry 错误原文（`fetch` 超时 8s，`ENOTFOUND` / 证书 / 代理拦截都走这条）；③ **npm 上的 latest 比本机旧**：显示「本机 vX 比 npm 上的 vY 更新（开发版本）」，这是**正确**结论（本地版本号还没发布），不是 bug。**别为了「看起来有更新」改成字符串比较、也别把挂载探测改成真联网** —— 探测不联网是设置页秒开的前提，`{network:false}` 也有测试钉住（`tests/check-update.test.mjs`）。
 
 ---
 

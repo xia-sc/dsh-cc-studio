@@ -14,7 +14,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 
 | 项目 | 值 |
 | --- | --- |
-| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.11.2` |
+| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.11.3` |
 | 兼容 | DSH `>=0.1.5-rc.1`（含**桌面版**）、Node `>=22`、**零运行依赖**；逐版本实测见 [兼容与权限](#兼容与权限) |
 | 落盘位置 | `<DSH_HOME>/cc-library/`（角色卡）、`<DSH_HOME>/cc-drafts/`（会话草稿；LLM 创作锁 `.lock.json` 与覆盖前备份 `backups/` 也在这里）；`DSH_HOME` 默认 `~/.dsh`，旧位置仍读得到 |
 | 文档 | 用户文档＝本文件；改代码前必读 [AGENTS.md](./AGENTS.md)；完整历史 [CHANGELOG.md](./CHANGELOG.md) |
@@ -42,7 +42,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
    dsh --profile <profile> --dump-config
    期望在 `# == @xia-sc/dsh-cc-studio` 那一层下看到两行：`id: dsh-cc-studio`（宿主行）与 `id: preset-cc`（CC 预设行）。
 4. 告诉用户重启：宿主行只在启动时组合 —— CLI 重启 `dsh web`，桌面版退出并重新打开应用。
-5. 重启后可选自检：在「CC 模式」会话里调任意一个 cc_* 工具，返回里带 "build": "0.11.2" 即说明新代码已加载
+5. 重启后可选自检：在「CC 模式」会话里调任意一个 cc_* 工具，返回里带 "build": "0.11.3" 即说明新代码已加载
    （这也是判断「改了但没重启」的唯一可靠依据）。
 6. 不要做的事：
    - 不要手工把 presets/ 拷进 ~/.dsh/.agent-presets/（dsh >= 0.1.7-alpha.1 已不读该目录，拷了也不生效）；
@@ -58,9 +58,9 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 ```bash
 # 从 npm 安装（推荐）
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.11.2    # 锁定版本
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.11.3    # 锁定版本
 
-# 从 GitHub 源安装（可加 #v0.11.2 / #master 指定 tag / 分支）
+# 从 GitHub 源安装（可加 #v0.11.3 / #master 指定 tag / 分支）
 dsh plugin --profile web add github:xia-sc/dsh-cc-studio
 
 # 从本地仓库安装（开发 / 调试）：装出来是 link:，改 lib/*.js 重启即生效
@@ -113,13 +113,14 @@ dsh plugin --profile web remove @xia-sc/dsh-cc-studio       # 卸载（同时移
 ### 融合工坊（客户端）
 
 - **布局**：胶囊（CC 模式下常驻）→ `shell.overlay` 全屏工坊；左侧 3 页导航（**5 维世界观 / 角色细化 / 世界书**）+ 左下角「**校验导出**」，中部自适应阅读区，右侧 268px 可折叠「已存角色」（收起成 40px 竖条）。主区底部两块默认收起：实时 `card.json` 预览与 CBS 速查。
-- **导出入口只有两处**（0.4.4 归一）：左下角「校验导出」与卡片上的「导出」，打开的是同一个导出页（`JSON / PNG / 写入PNG / CHARX / 校验`）。导出页导出的**永远是当前工坊里的卡**（标题后带卡名），要导某张已存卡请先「载入」——卡片按钮点下去会先变成「已切到 ✓」，若那张卡尚未载入，页内会给出醒目提示。
+- **导出入口只有两处**（0.4.1 归一）：左下角「校验导出」与卡片上的「导出」，打开的是同一个导出页（`JSON / PNG / 写入PNG / CHARX / 校验`）。导出页导出的**永远是当前工坊里的卡**（标题后带卡名），要导某张已存卡请先「载入」——卡片按钮点下去会先变成「已切到 ✓」，若那张卡尚未载入，页内会给出醒目提示。
 - **文档式阅读排版**：字段是无边框 textarea、按内容自动撑高，点进去即可改；长文点「⛶」开 720px 大框（带打开时快照，「取消」真回滚）。写作是主线，手动编辑是次要入口。
 - **5 维世界观**：年表 / 势力 / 地理 / 力量体系 / 日常 → `autoLorebook` 自动生成带 `@@position / @@depth / @@activate` 的条目（至少 4 条 `constant`；再次调用覆盖旧自动条目、保留手工条目）。
 - **ID 化 CRUD**：`★ 保存当前`（已载入时原地覆盖）/ `＋ 另存为新` / `✎ 重命名` / `＋ 新建` / 载入 / 删除，搜索、高亮当前卡，落盘 `<DSH_HOME>/cc-library/<id>.json`。
 - **LLM 创作保护（草稿锁，0.11.0）**：LLM 每次写草稿都会上锁（`<DSH_HOME>/cc-drafts/<槽>.lock.json`），锁 active 期间工坊只读、载入/导入只进**只读预览**（草稿与来源 id 都不写），退出预览即回到 LLM 的草稿；LLM 调 `cc_release_draft` 交还、或锁 30 分钟无写入自动失效后恢复编辑。设置页可关掉该保护（关闭 = 旧行为）。任何覆盖型动作（载入/导入/迁移/force 覆盖）前都会把当前草稿备份到 `<DSH_HOME>/cc-drafts/backups/`（同槽最多 20 份，空壳与同内容不重复备份）
 - **导入导出**：`⬆ 导入 JSON/PNG/CHARX` 自动识别容器；`⬇ JSON`、`⬇ PNG`（4×4 占位图）、`⬆ 写入 PNG`（写入你上传的任意 PNG，自动剥离旧 `ccv3/chara` 块并重算 CRC32）、`⬇ CHARX`（打包 `card.json`）。
 - **中英双语 + 深浅色**：完整 `zh / en` 词表，跟随 `设置 → 通用 → 语言` 实时切换；配色走 `var(--dsw-alias-*)`，主操作固定品牌紫 `#7c5cff`。
+- **检查更新（0.11.3）**：设置 →「角色卡工坊」→ 插件更新，点一下查 npm 上的最新版本。可更新时列出 `v最新（当前 v本地）`，并给出可一键复制的 `@xia-sc/dsh-cc-studio@版本`（另附 `dsh plugin --profile <配置名> add …` 命令提示）；已是最新、本机是开发版本、检查失败各有对应文案。查询在宿主做（浏览器不直连 npm，省掉 CORS 与代理差异），断网 / registry 异常会如实报错并保留「当前版本」。
 
 ### CC 模式（模型侧 33 个 Tool）
 
@@ -171,16 +172,16 @@ dsh plugin --profile web remove @xia-sc/dsh-cc-studio       # 卸载（同时移
 | 客户端平台 | `dsh.client.platform: "web"` 是**浏览器半**的平台标识，与 profile 名（`web` / `desktop`）不是一回事；两者加载同一份客户端 bundle |
 | 运行依赖 / 生命周期脚本 | **都没有**。`lib/*.js` 只 `import` `node:` 内建与相对路径，随包补丁与预设是静态 YAML |
 | 权限 · 文件 | 只读写 `<DSH_HOME>`（含旧根 `~/.dsh`）下自己的五个目录：`cc-drafts/`、`cc-library/`、`cc-groups/`、`cc-books/`、`.agent-presets/cc/`（最后一个只在 dsh ≤ `0.1.6-alpha.2` 上写），另读自身 `package.json` |
-| 权限 · 网络 / 命令 / 凭据 | 无网络请求、不起子进程、不读也不存任何 token 或 cookie。只读两个环境变量：`DSH_HOME`、`DSH_CC_STUDIO_PRESET_INSTALL`。HTTP 路由复用宿主自己的 cookie 围栏（`connection.requestRejection`），插件不解析凭据 |
+| 权限 · 网络 / 命令 / 凭据 | 网络：**只有**设置页「检查更新」点按钮时的一次出站 HTTPS GET（`https://registry.npmjs.org/@xia-sc%2Fdsh-cc-studio/latest`，8s 超时，只带 `accept` 与 `user-agent: 包名/版本`，不传任何用户数据；设置页打开时的探测 `{network:false}` **不联网**）。不起子进程、不读也不存任何 token 或 cookie。只读两个环境变量：`DSH_HOME`、`DSH_CC_STUDIO_PRESET_INSTALL`。HTTP 路由复用宿主自己的 cookie 围栏（`connection.requestRejection`），插件不解析凭据 |
 
-> **为什么商城不会给它「自动通过」**：STORE 的自动低风险通道要求运行时代码完全不出现文件 / 网络 / 命令 / 凭据四类信号，而本插件的核心功能就是草稿与角色卡落盘（文件信号）并读 `DSH_HOME`（扫描器把任何 `process.env` 读取都算凭据信号）。这两条不会为了迎合扫描器而消除 —— 对这类合法插件，商城的正确档位是 `user-reviewed`。隔离环境下的安装 / 启动 / 卸载证据见 [CHANGELOG.md](./CHANGELOG.md) 的 `0.3.7` 小节。
+> **为什么商城不会给它「自动通过」**：STORE 的自动低风险通道要求运行时代码完全不出现文件 / 网络 / 命令 / 凭据四类信号，而本插件的核心功能就是草稿与角色卡落盘（文件信号）、读 `DSH_HOME`（扫描器把任何 `process.env` 读取都算凭据信号），再加上 0.11.3 起「检查更新」的一次出站请求（网络信号）。这些都不会为了迎合扫描器而消除 —— 对这类合法插件，商城的正确档位是 `user-reviewed`。隔离环境下的安装 / 启动 / 卸载证据见 [CHANGELOG.md](./CHANGELOG.md) 的 `0.3.7` 小节。
 
 ---
 
 ## 开发与测试
 
 ```bash
-npm test                                    # 24 个文件、987 项断言，全绿才算过
+npm test                                    # 25 个文件、1041 项断言，全绿才算过
 node tests/tools-contract.test.mjs          # 只跑 CC 工具链契约（125 项）
 node tests/group-layer-guard.test.mjs       # 只跑卡组层的耦合守卫（16 项）
 ```
@@ -191,6 +192,8 @@ node tests/group-layer-guard.test.mjs       # 只跑卡组层的耦合守卫（1
 ## 更新日志
 
 完整历史见 [CHANGELOG.md](./CHANGELOG.md)。最近几版大多是「另一个 LLM 以工具使用者身份跑回归」挖出来的问题：
+
+- `0.11.3` **设置页新增「检查更新」**：一键查 npm 上的最新版本，可更新时给出可复制的 `@xia-sc/dsh-cc-studio@版本`（直接拿去 `dsh plugin --profile <配置名> add` 更新）。查询走宿主的新 RPC 端点 `cc_checkUpdate`：`{network:false}` 只回本地版本（设置页一打开就显示「当前版本」，不打网络），默认查 registry 的 `/latest` 并带 8s 超时；客户端不直连 npm。版本比较按 SemVer 第 11 条（预发布版小于同号正式版；预发布数字标识符按数值，`rc.2 < rc.10`），脏版本号不会被误报成「有更新」。测试 +53 项（新增 `tests/check-update.test.mjs`）→ **1041 项**。**重启 dsh（桌面端重启应用）+ 刷新页面生效**。
 
 - `0.11.2` **修正中文 README 两处文档错误**：安装引导第 1 步被写成 `4.`；一批 dsh 版本号被写坏成 `0.4.x`（真实范围 `>=0.1.5-rc.1`），兼容范围 / 预设分界 / 实测矩阵已纠正，矩阵补上 `0.2.1-rc.2`。纯文档，无需重启。
 

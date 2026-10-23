@@ -15,7 +15,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 | Item | Value |
 | --- | --- |
 | Package | `@xia-sc/dsh-cc-studio` |
-| Version | `0.11.2` |
+| Version | `0.11.3` |
 | Compatibility & permissions | dsh `>=0.1.5-rc.1`, Node `>=22`, **zero runtime dependencies**; permission bounds in [Compatibility & permissions](#compatibility--permissions) |
 | Host RPC | `/dsh-cc-studio-rpc` (self-owned route, works on dsh ≥ `0.1.5-rc.1`; verified on `0.1.6-alpha.2` / `0.1.7-alpha.1` / `0.1.7-rc.1`) |
 | CC preset | `presets/cc.patch.yml` (dsh ≥ `0.1.7-alpha.1`, a composition declaration row) / `<DSH_HOME>/.agent-presets/cc` (≤ `0.1.6-alpha.2`, the legacy directory) |
@@ -32,7 +32,7 @@ This plugin supports **both `dsh web` (the CLI-launched Web GUI) and DSH Desktop
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
 
 # pin a version
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.11.2
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.11.3
 ```
 
 **Or from GitHub**:
@@ -45,7 +45,7 @@ dsh plugin --profile web add github:xia-sc/dsh-cc-studio
 
 > **Since 0.3.2 the package was renamed from `@dsh-plugins/dsh-cc-studio` to `@xia-sc/dsh-cc-studio`** (the former is not an npm scope this project owns, so it could not be published). If you installed the old name, remove it first as shown in "5. Update and uninstall"; `~/.dsh/cc-library/`, `~/.dsh/cc-drafts/`, `~/.dsh/.agent-presets/cc/` and your plugin settings are unaffected.
 
-- **Pin a version / branch**: `github:xia-sc/dsh-cc-studio#v0.11.2`, `...#master` (see the repo tags).
+- **Pin a version / branch**: `github:xia-sc/dsh-cc-studio#v0.11.3`, `...#master` (see the repo tags).
 - **`allowBuilds` notice**: this plugin has no `prepare` build script, so pnpm's build gate is normally not triggered; if pnpm still prints the notice, add the exact key it prints under `allowBuilds` in `~/.dsh/profiles/web/pnpm-workspace.yaml` and re-run.
 - **When an agent runs it inside a DSH session**: the write target is outside the session workspace, so switch file permissions to `danger-full-access` first. Running it yourself in a terminal has no such limit.
 
@@ -260,6 +260,7 @@ Only two steps differ:
 - **LLM draft lock (0.11.0)**: every write from the LLM locks the draft (`<DSH_HOME>/cc-drafts/<slot>.lock.json`). While active the workshop is read-only; loading/importing another card opens a **read-only preview** (neither the draft nor its source id is written) — exit the preview to get back to the LLM's draft. The LLM hands control back with `cc_release_draft`, or the lock goes stale after **30 minutes** without writes. The protection can be switched off in Settings (off = old behaviour). Before any overwriting action (load / import / migrate / forced overwrite) the current draft is backed up to `<DSH_HOME>/cc-drafts/backups/` (up to 20 per slot; empty drafts and identical content are skipped).
 - **Import / export**: sidebar `⬆ Import JSON/PNG/CHARX` auto-detects the container; on the export page `⬇ JSON` / `⬇ PNG` (1×1 placeholder) / `⬆ Embed into PNG` (writes into any PNG you upload, stripping old `ccv3/chara` chunks and recalculating `CRC32`) / `⬇ CHARX` (packs `card.json`).
 - **Bilingual (zh/en)**: complete `zh / en` dictionaries (`locale: dshCcStudio`) that follow the global `Settings → General → Language` (capsule/workshop/settings refresh instantly, no in-plugin toggle).
+- **Check for updates (0.11.3)**: `Settings → Character Card Studio → Plugin updates` queries the latest version on npm with one click. When an update exists it shows `v<latest> (installed v<current>)` plus a one-click copy of `@xia-sc/dsh-cc-studio@<version>` (with the `dsh plugin --profile <profile> add …` hint); up-to-date, local dev build and failure each get their own message. The lookup runs in the host (the browser never talks to npm, so no CORS/proxy differences) and keeps showing the installed version even when the registry is unreachable.
 - **Adaptive theming**: full `var(--dsw-alias-bg-* / border-l1/l2 / label-primary/secondary)`, primary actions stay brand purple, live on refresh.
 
 ### CC Mode (33 model-side Tools)
@@ -301,7 +302,7 @@ dsh-cc-studio/
 │   └── cc/               # legacy preset directory template (dsh ≤ 0.1.6-alpha.2, installed on mount)
 │       ├── preset.yml
 │       └── agent.cordis.yml
-├── tests/                # 24 files, 987 assertions (not published with the package)
+├── tests/                # 25 files, 1041 assertions (not published with the package)
 │   ├── rpc-channel.test.mjs       # host-half RPC channel regression (fake ctx + real http), 67 assertions incl. the group endpoints, the cc_getGroup reply shape and the draft-lock matrix
 │   ├── preset-install.test.mjs    # install decisions + native hand-off + anti-drift + row contract + prompt-variable whitelist + persona JSON hygiene + DSH STORE listing contract, 85 assertions
 │   ├── cc-detection.test.mjs      # source-level guards for CC Mode detection, 51 assertions
@@ -325,7 +326,8 @@ dsh-cc-studio/
 │   ├── group-checks.test.mjs      # 0.10.0 the check registry: codes unchanged, category filters, byCheck, 22 assertions
 │   ├── group-consistency.test.mjs # 0.10.0 cross-card consistency checks (the fifth card-group feature), 18 assertions
 │   ├── group-layer-guard.test.mjs # 0.10.0 coupling guards: one implementation, no re-reading, no re-counting, 16 assertions
-│   └── data-root.test.mjs         # data roots: DSH_HOME first + read-time fallback to ~/.dsh + lock path parity, 45 assertions
+│   ├── data-root.test.mjs         # data roots: DSH_HOME first + read-time fallback to ~/.dsh + lock path parity, 45 assertions
+│   └── check-update.test.mjs      # 0.11.3 update check: SemVer compare matrix, npm latest endpoint/ envelope, store + settings render, clipboard fallbacks, 53 assertions
 ├── CHANGELOG.md          # full version history (Chinese)
 ├── README.md             # Chinese (default)
 └── README_EN.md          # English
@@ -336,7 +338,7 @@ dsh-cc-studio/
 ## Development and tests
 
 ```bash
-npm test                                   # 24 files, 987 assertions (twenty-four node scripts chained)
+npm test                                   # 25 files, 1041 assertions (twenty-five node scripts chained)
 node tests/rpc-channel.test.mjs            # only the host-half RPC channel regression (67 assertions)
 ```
 
@@ -361,11 +363,11 @@ The listing metadata (`dsh.compatibility`, `engines`, runtime dependencies) and 
 | Runtime dependencies | **none**: `lib/*.js` only imports `node:` builtins and relative paths; the bundled patch/preset files are static YAML with no install-time script |
 | Lifecycle scripts | **none** (`preinstall` / `install` / `postinstall` / `prepare`); only `test` and `prepublishOnly`, which run in this repository and never on an installer |
 | Files | reads its own five directories under `<DSH_HOME>` (plus the legacy `~/.dsh` root): `cc-drafts/`, `cc-library/`, `cc-groups/`, `cc-books/`, `.agent-presets/cc/` (written only on dsh ≤ `0.1.6-alpha.2`), and its own `package.json`. It never writes host config or touches another plugin's data |
-| Network | none: the host half only registers `POST /dsh-cc-studio-rpc/<endpoint>` on the host's `webServer`; the client half only calls same-origin RPC |
+| Network | exactly one outbound request, and only when the user clicks **Check for updates** in the settings page: an HTTPS `GET https://registry.npmjs.org/@xia-sc%2Fdsh-cc-studio/latest` (8s timeout, only `accept` and `user-agent: package/version`, no user data). The settings-page probe (`{network:false}`) never touches the network. Otherwise the host half only registers `POST /dsh-cc-studio-rpc/<endpoint>` on the host's `webServer` and the client half only calls same-origin RPC |
 | Commands | none: no subprocess, no shell |
 | Credentials | reads and stores no token, key or cookie. It reads exactly two environment variables (`DSH_HOME`, `DSH_CC_STUDIO_PRESET_INSTALL`), and its HTTP route reuses the **host's** cookie fence (`connection.requestRejection`) without parsing credentials itself |
 
-> **Why DSH STORE will never auto-approve it:** STORE's automatic low-risk channel (`source-verified`) requires runtime source to contain **no** files, network, commands or credentials signals. This plugin's core feature is persisting character cards and drafts (the files signal), and it must read `DSH_HOME` (the scanner counts any `process.env` read as a credentials signal). Neither will be removed to please a scanner — for a legitimate plugin like this, the correct store tier is `user-reviewed` (it shows the change and asks the user to confirm each install).
+> **Why DSH STORE will never auto-approve it:** STORE's automatic low-risk channel (`source-verified`) requires runtime source to contain **no** files, network, commands or credentials signals. This plugin's core feature is persisting character cards and drafts (the files signal), it must read `DSH_HOME` (the scanner counts any `process.env` read as a credentials signal), and since 0.11.3 the update check makes one outbound request (the network signal). None of this will be removed to please a scanner — for a legitimate plugin like this, the correct store tier is `user-reviewed` (it shows the change and asks the user to confirm each install).
 
 Disposable-Profile install / start / uninstall evidence lives in the `0.3.7` section of [CHANGELOG.md](./CHANGELOG.md): an isolated profile with isolated `DSH_HOME` / `HOME` / `USERPROFILE`, all three client mounts `active`, `cc` present in the preset roster, RPC round-trips identical, PNG / CHARX export→import identical, and the real `~/.dsh` unchanged throughout.
 
@@ -377,6 +379,8 @@ Disposable-Profile install / start / uninstall evidence lives in the `0.3.7` sec
 ## Changelog
 
 Full history lives in [CHANGELOG.md](./CHANGELOG.md) (Chinese). Latest:
+
+- `0.11.3` **"Check for updates" in the settings page**: one click asks npm for the latest version and, when an update exists, hands you a copyable `@xia-sc/dsh-cc-studio@<version>` (ready for `dsh plugin --profile <profile> add`). The lookup is a new host RPC endpoint `cc_checkUpdate`: `{network:false}` returns only the local version (so the settings page shows the installed version without touching the network), the real check queries the registry's `/latest` with an 8s timeout, and the client never calls npm directly (no CORS/proxy differences). Version comparison follows SemVer §11 (a pre-release ranks below the same version without one; numeric identifiers compare numerically, `rc.2 < rc.10`) and dirty version strings are never misreported as an update. Tests +53 (new `tests/check-update.test.mjs`) → **1041**. **Restart dsh (or the desktop app) and reload the page.**
 
 - `0.10.3` **Multiline text was stored as a literal `\n`**: a user end-to-end report (all six workflow steps, `valid: true`) found every string written through `cc_patch_character` / `cc_patch_greetings` / `cc_patch_world` ending up with a literal `\` + `n` instead of a real newline — in SillyTavern the card read "said it.\n\nnext paragraph". Forensics killed the "the tool double-escapes" theory: a tool-layer round-trip keeps real newlines intact, and the session log shows the model writing `\\n` (one JSON escape layer too many) in 6 of 18 calls — while `alternate_greetings` and lorebook `content` came out right, i.e. **inconsistent model output**. Fix: write tools run `textArg()` first, decoding literal `\n` / `\r` / `\t` (multiply-escaped input converges within 4 rounds) for character fields, greetings, lorebook entries, book meta and the shared book; the workshop-save and import paths are untouched. Also fixes the report's P2 (in-card `token_budget` default 1200 → **2400**) and P4 (autoLorebook's "power" entry had a bare `@@activate` → `@@activate 100`). Tests 858 → **864**. **Restart dsh**; fields already broken in saved cards must be re-written.
 

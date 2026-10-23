@@ -2,6 +2,28 @@
 
 `dsh-cc-studio` 的版本变更记录，倒序排列（最新在上）。README 只保留最近几条，完整历史在本文件。
 
+## 0.11.3
+
+**设置页新增「检查更新」：一键查 npm 上的最新版本，可复制 `包名@版本` 去 dsh 更新。**
+
+### 新增
+
+- **设置 →「角色卡工坊」→ 插件更新（客户端）**：点「检查更新」由宿主去 npm registry 取 latest，与本机 `package.json` 的 `version` 比较。可更新时列出 `发现新版本 v最新（当前 v本地）`，并给出可一键复制的 `@xia-sc/dsh-cc-studio@版本`（另附 `dsh plugin --profile <配置名> add …` 命令提示）；已是最新 / 本机是更开发版本 / 检查失败各有对应文案。打开设置页时先用 `{network:false}` 探测一次本地版本，所以「当前版本」立刻可见，且**不打网络**。
+- **新 RPC 端点 `cc_checkUpdate`（宿主半）**：`{ network:false }` 只回 `{ package, current, installSpec, source:"local", latest:null }`；默认查 `https://registry.npmjs.org/@xia-sc%2Fdsh-cc-studio/latest`（一个版本对象，不拉整份 packument），带 `AbortController` 8s 超时（可传 `timeoutMs`，夹在 1–20s）。网络异常 / HTTP 非 2xx / 版本号解析不了一律回 `fail("check-update-failed")`，`details` 仍带本机 `current` 与 `registry` —— 界面在失败时也能显示当前版本。
+
+### 说明（几条设计取舍）
+
+- **浏览器不直连 npm**：查询放在宿主，走插件自己的 RPC 通道（与其它端点同一条 `connection.requestRejection` 鉴权围栏），省掉 CORS 与代理差异；客户端只读宿主的结论，不自己算「有没有更新」。
+- **版本比较是 SemVer 第 11 条那套**（`lib/index.js` 的 `compareVersions`）：数字段按数值、预发布段小于同号正式版（`0.12.0-rc.1 < 0.12.0`）、预发布标识符里数字按数值（`rc.2 < rc.10`）、数字标识符小于字母标识符；`v` 前缀与 `+build` 元数据被容忍。**解析不了的版本号返回 0** —— 宁可看起来「已是最新」，也不要把脏数据误报成常态化的「有更新」。
+- **失败不吓人**：设置页挂载时的探测失败（例如老宿主没有这个端点）静默忽略，`store.update` 保持 `null`，设置页照常渲染。
+- **出站请求只有一次，且必须用户触发**：只有点「检查更新」时才 `GET registry.npmjs.org/.../latest`；设置页一打开的那次探测是 `{network:false}`，一个字都不发。因此 README 的「权限 · 网络」从「无网络请求」改成「一次用户触发的出站请求」（两份 README 已同步）。
+
+### 测试与生效
+
+- 新增 `tests/check-update.test.mjs`（53 项）：版本比较矩阵 + 脏数据、`pluginMeta` 与 `package.json` 同源、端点走真实 HTTP 信封（探测帧零网络请求 / 可更新 / 同版本 / 本机更新 / 5xx / 脏版本号 / 断网）、客户端 store 状态与设置页渲染、`navigator.clipboard` 与 `execCommand` 两条复制路径（含都失败时的提示）。全仓 **25 个文件、1041 项断言**。
+- 顺手补上 0.11.2 事故的回归：`tests/preset-install.test.mjs` 新增「两份 README 里出现的 `0.x` 版本号必须落在 `dshReleases` / 未实测清单 / 插件版本并集内」的守卫 —— 0.11.2 的 `0.4.x` 写坏就是没有测试盯着，一路发到 npm 页面才发现。纯测试，不随包发布。
+- 生效：宿主半新增端点 + 客户端半新增设置区块 —— **重启 `dsh web`（桌面端重启应用）+ 刷新页面**；只刷新页面会 404 `unknown-endpoint`（探测静默、按钮报错）。
+
 ## 0.11.2
 
 **修正中文 README 的两处文档错误（不影响运行时代码）。**

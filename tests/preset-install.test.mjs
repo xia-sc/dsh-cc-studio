@@ -387,6 +387,43 @@ const sha256Of = (s) => createHash('sha256').update(String(s), 'utf8').digest('h
   check('声明层在补丁列表里（插件行 + 预设声明各一层）',
     Array.isArray(patches) && patches.includes('./presets/cc.patch.yml') && patches.includes('./cordis.patch.yml'), JSON.stringify(patches));
 
+  // —— 12c) README 里的版本号守卫（0.11.2 事故：dsh 版本被写坏成 0.4.x） ——
+  //
+  // 事故形态：中文 README 里的一批 dsh 版本号被写成了 `0.4.x`（dsh 从来没有 0.4 系列），
+  // 而文档完全没有测试盯着 —— 错误一路发到 npm 页面（npm 渲染的就是包里的 README.md），
+  // 直到用户读安装引导时才发现。这里把「两份 README 里出现的 0.x 版本号」钉在并集内：
+  //   ① `dshReleases` 的键；② `dsh.compatibility.dsh` 范围里的版本；
+  //   ③ dsh 主版本前缀（正文常简写成「0.1.7 起」「dsh 0.2.1」）；
+  //   ④ 插件自身版本（CHANGELOG 的 `## x.y.z` 标题）；再加明示「未声明」的四个 dsh 版本。
+  // 不在并集里的 0.x token 直接红。非 0 开头（SillyTavern `1.19.0`）与 IP 地址不归本守卫管。
+  {
+    const changelog = readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+    const pluginVersions = (changelog.match(/^## (\d+\.\d+\.\d+)$/gm) || []).map((l) => l.slice(3));
+    const declaredDsh = Object.keys(pkg.dsh.compatibility.dshReleases);
+    const rangeDsh = String(pkg.dsh.compatibility.dsh).match(/\d+\.\d+\.\d+(?:-[A-Za-z]+\.\d+)?/g) || [];
+    const majorPrefixes = [...declaredDsh, ...rangeDsh].map((v) => v.split('-')[0]);
+    const unverified = ['0.1.7-alpha.2', '0.1.7-rc.2', '0.2.0-rc.1', '0.2.1-alpha.1'];
+    const allowedVersions = new Set([...declaredDsh, ...rangeDsh, ...majorPrefixes, ...unverified, ...pluginVersions]);
+
+    const VERSION = /\b\d+\.\d+\.\d+(?:-[A-Za-z]+\.\d+)?\b/g;
+    const IPV4 = /\b\d{1,3}(?:\.\d{1,3}){3}\b/g;
+    const stray = [];
+    for (const file of ['README.md', 'README_EN.md']) {
+      const text = readFileSync(new URL('../' + file, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+      text.split('\n').forEach((raw, i) => {
+        const line = raw.replace(IPV4, '<ip>');
+        for (const m of line.matchAll(VERSION)) {
+          const v = m[0];
+          if (allowedVersions.has(v)) continue;
+          if (!v.startsWith('0.')) continue;   // SillyTavern 1.19.0 之类不归本守卫管
+          stray.push(`${file}:${i + 1} ${v}`);
+        }
+      });
+    }
+    check('README 里的 0.x 版本号都在 dshReleases / 未实测 / 插件版本并集内（0.4.x 那类写坏会红）',
+      stray.length === 0, stray.slice(0, 8).join(' | ') || 'ok');
+  }
+
   // —— DSH STORE 上架契约（issue #1173）——
   // STORE 自动策略（registry/automation-policy.json 的 automaticApproval）里「声明类」门禁是可修的：
   // repository 规范化后必须等于 canonical 仓库、必须有 DSH/Node 兼容声明、不能有运行依赖与生命周期脚本。
