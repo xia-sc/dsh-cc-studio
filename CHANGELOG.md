@@ -2,6 +2,37 @@
 
 `dsh-cc-studio` 的版本变更记录，倒序排列（最新在上）。README 只保留最近几条，完整历史在本文件。
 
+## 0.11.4
+
+**dsh `0.2.1-rc.3` 兼容性实测：接口面零变化，无需改代码；兼容矩阵补 `0.2.1-rc.3`。**
+
+### 目标与现象
+
+dsh 在 2026-10-23 发布 `0.2.1-rc.3`，而插件的 `dsh.compatibility.dshReleases` 只写到 `0.2.1-rc.2`。需要回答「能不能直接用、要不要适配」，并且**没实测过的版本不许先写进矩阵**（§4 家规）。
+
+### 实测结论（2026-10-26，桌面版运行时 `0.2.1-rc.3`）
+
+1. **静态接口 diff（rc.2 的 npm tarball vs rc.3 的 asar，逐字节 sha256）**：插件依赖的契约包运行时**全部字节相同** —— `dsh-host-webserver`、`dsh-client-connection`（宿主 + `client.browser`）、`dsh-tools`、`dsh-system-prompt`、`dsh-agent`、`dsh-agent-preset`、`dsh-agent-preset-registry`、`dsh-client-modules/lib/client.js`、`dsh-client-ui-session`、`dsh-client-ui-settings`、`dsh-api-session-controller`、`dsh-session-projection`、`dsh-app-boot`、`dsh-plugin-manager`、`dsh-agent-loop`、`dsh-persona`、`dsh-base/cordis.patch.yml`。
+2. **rc.3 的真实改动只有 4 处，且都在插件不消费面**：Web 组合新增客户端行 `dsh-client-ui-entry-customization`（rc.3 新包；它多出的 More 按钮也带 `aria-haspopup="menu"`，使客户端 CC 探测注释里「唯一」的说法过时，但探测按 `textContent` 过滤，行为安全）、`dsh-client-ui-conversation` 新增视图 More 菜单与 root 域 slot `conversation.session.header.views.actions`、agent-preset / settings-general 的埋点与内部重构、`dsh-client-modules` 的构建 commit 常量（`332895e` → `be72761`）。
+3. **内置 `standard` 预设逐字节相同**（`@deepseek-ai/dsh-web-app/presets/standard.patch.yml`，sha256 `0d398d2a…c68f5`）：CC 预设两份清单**不需要重新对齐**，与 standard 的有意差异仍恰为 `tool-schedule` / `tool-plugin-market` 两行 + 末尾 `cc-agent`；31 个包名在 rc.3 运行时全部可解析，无 broken 风险。
+4. **prompt 变量仍只有 `provider` / `model`**（注册点 `dsh-agent-loop/lib/index.js:1591-1592`，文件未变）：persona 的 `{{model}}` 合法，不会出现 0.10.1 那种「每轮在模型请求前抛 `unknown prompt variable`」。
+5. **隔离实例 E2E（`0.2.1-rc.3`，`--from-default-profile web`，隔离 `DSH_HOME` / `HOME` / `USERPROFILE`）72/72 项通过**：插件路由的 401 / 405 / 415 围栏、34 个 RPC 端点（含未知端点 `unknown-endpoint` 信封）、草稿锁（active / stale / force / 锁期间载入只读预览且零写入）、JSON / PNG / CHARX 导出与回导（PNG `ccv3` + `chara` 双块、ST 世界书绑定）、roster 里 `cc` 无 broken、`pluginInventory` 中宿主行与预设行 `active`、客户端 bundle `/plugins/??…&rev=` 200 且缺/错 rev 404。
+6. **同一 rc.3 运行时的真实 GUI**：用 Client Inspect 读活页面，三个挂载点 `conversation.input.dock` / `shell.overlay` / `settings.section` 的 occupant 全部 `active` 且 `registrant: "dsh-cc-studio"`；不带 cookie POST 插件路由回 401、未知路径 405（证明路由确实注册、围栏是插件自己调的）。
+7. **`npm test` 全绿**：25 个文件、1041 项断言、0 失败；复跑时三次隔离核对也确认真实 `~/.dsh` 未被写入。
+
+### 变更
+
+- `package.json` 的 `dsh.compatibility.dshReleases` 补 `"0.2.1-rc.3": "compatible"`（`0.2.1-rc.2` 及更早保留）。
+- `README.md` / `README_EN.md` 的逐版本实测矩阵补 `0.2.1-rc.3`；顺手补上英文 README 一直漏写的 `0.2.1-rc.2`。
+- `AGENTS.md` §4 兼容矩阵加 rc.3 行、§2.4 的「当前基线」改为 `0.2.1-rc.3`。
+- `lib/agent.js` 的 `BUILD` 常量随版本号同步为 `0.11.4`（每次工具返回的 `build` 字段，测试 ⑪i 钉住它与 `package.json` 同源）。
+- **运行时代码与预设清单一行未改**：本次没有新增测试，兼容性由既有 1041 项断言 + 上面的外部实测覆盖。
+
+### 生效
+
+- 矩阵与文档是**纯声明**：随本版本发布后对 STORE / 商城可见；已经装在 `0.2.1-rc.3` 上的用户**不需要重装、不需要改预设、不需要动数据**，升级插件只为拿到最新的矩阵与文档。
+- 复核材料：静态 diff 保留了两边原始包与逐字节 sha256 对照脚本；隔离实例 E2E 结果是 72 项逐条带请求/响应证据的清单。
+
 ## 0.11.3
 
 **设置页新增「检查更新」：一键查 npm 上的最新版本，可复制 `包名@版本` 去 dsh 更新。**

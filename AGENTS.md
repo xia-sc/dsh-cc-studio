@@ -96,7 +96,7 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
 - 预设里 `cordis:group` / `isolate` 的用法有解释性注释，别删。
 - **提示词变量只能用 `provider` / `model`（dsh ≥ 0.2.1-rc.2）**：0.2.1 的 `dsh-system-prompt` 注册表只剩这两个（工作目录改由 working-directory 服务以 runtime context 提供），而段文本插值对未知引用**严格抛错**、且发生在第一个模型请求之前 —— 写一个 `{{cwd}}` 的后果是「CC 模式每一轮都本轮运行失败」，但预设挂载、roster 与 broken 诊断全都正常（0.10.1 用户实机踩到，`--dump-config` 看不出来）。`tests/preset-install.test.mjs` 第 12b 节把白名单钉死：出现白名单外的变量直接红。dsh 以后改注册表，先回来核对这张表，别在线上的模型请求里发现。
 - **模型可见的 JSON 卫生也是契约（0.10.2）**：DSH 的 DeepSeek provider 在流结束对 tool input 严格 `JSON.parse`，失败即 `MALFORMED_RESPONSE`，而默认 `retryableCodes` 不含它 → 模型偶发一个尾逗号就让整轮失败、工具根本不会被调用。persona 与五个写类工具（`cc_patch_character` / `cc_patch_world` / `cc_add_lorebook_entries` / `cc_patch_greetings` / `cc_patch_book_meta`）的 description 因此带着「严格 JSON + 一次 1-3 个字段、长字段分多次写」规则；`tests/tools-contract.test.mjs` ①f 与 `tests/preset-install.test.mjs` 会拦住把它删掉或只改一份的改动。别把这段当废话删掉。
-- **行集与 dsh 内置 `standard` 对齐（0.11.1，当前基线 `0.2.1-rc.2`）**：两份清单的每一行都要与目标版本的 `@deepseek-ai/dsh-web-app/presets/standard.patch.yml` 逐行对得上，**有意差异只允许两处**，且必须写进预设文件末尾的注释块（`tests/preset-install.test.mjs` 第 10 节的行集快照连 `cc-agent` 一起钉死，漏一行/多一行都直接红）：
+- **行集与 dsh 内置 `standard` 对齐（0.11.1，当前基线 `0.2.1-rc.3`）**：两份清单的每一行都要与目标版本的 `@deepseek-ai/dsh-web-app/presets/standard.patch.yml` 逐行对得上，**有意差异只允许两处**，且必须写进预设文件末尾的注释块（`tests/preset-install.test.mjs` 第 10 节的行集快照连 `cc-agent` 一起钉死，漏一行/多一行都直接红）：
   - `tool-schedule` —— `@deepseek-ai/dsh-tool-schedule` 在 dsh ≤ `0.1.6-alpha.2` 的依赖里**不存在**，而这份清单同时喂给目录形态（旧版）；**非 disabled 行解析不到包 = 整个预设 broken**。CC 模式也不需要定时任务。
   - `tool-plugin-market` —— 0.1.6 没有 `@deepseek-ai/dsh-plugin-market`；按家规「不拿 disabled 遮掩一个已经不存在的包」，同样不带。
   ⚠️ 历史上真踩过的三种漂移：① **漏抄 `disabled`** —— `tool-ralph` 在 standard 里一直是 `disabled: true`，本预设从 0.3.x 抄过来时丢了它，于是 CC 模式多挂一个实验性长循环工具；② **多写 `disabled`** —— `skill-filesystem` / `tool-skill` 被误关，CC 模式静默没有技能目录与加载器（与 0.3.4 的 `present`、0.3.7 的 `command-goal` 同类）；③ **config 键随版本下线** —— `backgroundMode: continuable` 在 0.2.1 的 `dsh-tool-subagent` 里已不存在。加行前先确认**两个版本**（目标版 + ≤0.1.6 的目录形态）都装了那个包。
@@ -220,6 +220,7 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
 | `0.2.0-rc.2` | 正常 | **接口面无变化，无需适配**；也是商城 latest-three 窗口里那条精确 `compatible`。⚠️ 信封的 `payload` 只认 `payload.args`。见 [CHANGELOG 0.3.8](./CHANGELOG.md) |
 | `0.2.1-rc.2` | 正常（0.10.1 起；0.11.x 起 Web 全链路实测） | **prompt 变量表收窄到 `provider` / `model`**：`{{cwd}}` 不再注册（工作目录改走 working-directory 服务的 runtime context），persona 里引用它会让**每一轮**在模型请求前抛 `unknown prompt variable` —— 预设挂载与 roster 全都正常，只有运行失败。两份清单已去掉 `{{cwd}}`。✅ `dshReleases` 已补精确 `compatible`：2026-10-22 用 npm CLI 的 `dsh web`（`@deepseek-ai/dsh@0.2.1-rc.2`，隔离 `DSH_HOME` + `--from-default-profile web`）实测全绿 —— 宿主 RPC 21 端点、三个 slot、`preset-cc` roster 无 broken、草稿锁只读、JSON/PNG/CHARX 导出下载、i18n 切换。**预设行集也已按这一版 standard 对齐**（0.11.1，见 §2.4）。见 [CHANGELOG 0.10.1](./CHANGELOG.md) |
 | `0.1.7-alpha.2` / `0.1.7-rc.2` / `0.2.0-rc.1` / `0.2.1-alpha.1` | **未实测** | 不许写进矩阵 |
+| `0.2.1-rc.3` | 正常（2026-10-26 实测） | **接口面零变化，无需适配**：插件依赖的契约包与 rc.2 **逐字节相同**（`dsh-host-webserver` / `dsh-client-connection` / `dsh-tools` / `dsh-system-prompt` / `dsh-agent-preset(-registry)` / `dsh-client-modules/lib/client.js` / `dsh-app-boot` / `dsh-agent-loop` / `dsh-persona` 等），内置 `standard` 预设也逐字节相同（行集不用重对齐）。rc.3 的真实改动都在插件不消费面：新增 `dsh-client-ui-entry-customization` 行、新 slot `conversation.session.header.views.actions`、埋点、`dsh-client-modules` 的 commit 常量。隔离实例 E2E **72/72**（34 端点、草稿锁 active/stale/force、JSON/PNG/CHARX 导出回导、roster `cc` 无 broken、客户端 bundle 200），真实 GUI 三 slot occupant 全 `active`。✅ `dshReleases` 已补精确 `compatible`。见 [CHANGELOG 0.11.4](./CHANGELOG.md) |
 
 **实测手法（可复用）**：宿主半——未知路径 404/405 vs 插件路由 401（证明路由确实注册、围栏是插件自己调的）；客户端半——Client Inspect 读活页面的 Slot 台账（三个挂载点 `active` 且 registrant = 包名）；预设半——隔离 harness 里按 `tools.register` 契约挂 `lib/agent.js`，roster 用活宿主的官方 Remote（`POST /api/agentPresets/list`、`POST /api/pluginInventory/list`，cookie 由 `/?token=…` 换）。
 
@@ -251,7 +252,7 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
 ## 6. 本地验证
 
 ```bash
-npm test          # 25 个文件：67 + 85 + 51 + 62 + 19 + 32 + 23 + 20 + 31 + 14 + 125 + 34 + 69 + 20 + 75 + 36 + 68 + 6 + 24 + 25 + 22 + 18 + 16 + 45 + 53 = 1041 项断言，全绿才算过
+npm test          # 25 个文件：67 + 86 + 51 + 62 + 19 + 32 + 23 + 20 + 31 + 14 + 125 + 34 + 69 + 20 + 75 + 36 + 68 + 6 + 24 + 25 + 22 + 18 + 16 + 45 + 53 = 1041 项断言，全绿才算过
 ```
 
 测试只跑纯函数与源码级守卫（不启动 dsh、不写真实用户目录），所以**还需要手工验证**：
