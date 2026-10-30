@@ -2,6 +2,40 @@
 
 `dsh-cc-studio` 的版本变更记录，倒序排列（最新在上）。README 只保留最近几条，完整历史在本文件。
 
+## 0.11.5
+
+**dsh `0.2.1-rc.5` 兼容性实测：接口面零变化，无需改代码；兼容矩阵补 `0.2.1-rc.5`。**
+
+### 目标与现象
+
+dsh 在 2026-10-29 发布 `0.2.1-rc.5`（桌面运行时 commit `d4db512`），而插件的 `dsh.compatibility.dshReleases` 只写到 `0.2.1-rc.3`。需要回答「能不能直接用、要不要适配」，并且没实测过的版本（含跳过测试的 `0.2.1-rc.4`）不许写进矩阵。
+
+### 实测结论（2026-10-30，桌面版运行时 `0.2.1-rc.5`）
+
+1. **静态接口 diff（rc.5 asar 307 包全树 3047 文件 vs npm 上 296 个 `0.2.1-rc.3` tarball，逐个 sha256 + 归一化二次比对）**：插件依赖的契约包运行时**全部字节相同** —— `dsh-host-webserver`、`dsh-client-connection`（宿主 + `client.browser` + `client.node`）、`dsh-tools`、`dsh-system-prompt`、`dsh-agent`、`dsh-agent-loop`、`dsh-persona`、`dsh-agent-preset`、`dsh-agent-preset-registry`、`dsh-app-boot`、`dsh-api-session-controller`、`dsh-client-modules/lib/client.js`、`dsh-client-ui-session/settings`、`dsh-web-app/lib/index.js`。
+2. **rc.5 的真实改动只有 4 处，且都在插件不消费面**：`dsh-client-ui-chat` 新增 `reasoningText()`（剥 `<signature>` 包装）与 `conversation.chat.reasoning.body` 的 `rawText` ownerProps；`dsh-client-ui-conversation` 的 View 标签 tooltip 改为按估算宽度触发并删一个 i18n 键；`dsh-cordis-client-runner` 只改内嵌 slot 目录文档（**无新 slot**）；`dsh-client-modules` 只改构建 commit 常量。其余 40+ 客户端包是 CSS 哈希/构建产物，theme 420 个 token 零增删。
+3. **内置 `standard` 预设、`dsh-web-app` / `dsh-base` 的 `cordis.patch.yml`、`presets/{ptc,cordis,minimal}` 全部逐字节相同**（standard sha256 `0d398d2a…c68f5`）：CC 预设两份清单**不需要重新对齐**，与 standard 的差异仍恰为 `tool-schedule` / `tool-plugin-market` 两行 + 末尾 `cc-agent`；31 个插件行在 rc.5 运行时全部可解析（0 缺失，无 broken 风险）。
+4. **三个挂载点定义逐字相同**：`conversation.input.dock`（注册块 / slot 表 / renderSlot）、`shell.overlay`、`settings.section` 在 rc.5 里与 rc.3 完全一致；`dsh-client-modules` 的 `__ModuleLoader__` 协议与 id 精确匹配未变。
+5. **prompt 变量仍只有 `provider` / `model`**（rc.5 全树 `.variable(` 仅 `dsh-agent-loop:1591-1592`）；persona 的 `{{model}}` 合法，不会出现「每轮运行失败」。
+6. **隔离实例 E2E（`0.2.1-rc.5`，`--from-default-profile web`，隔离 `DSH_HOME` / `HOME` / `USERPROFILE`）72/72 首跑全绿**：34 个 RPC 端点、401/405/415/400 围栏与 `unknown-endpoint` 信封、草稿锁（active / stale / force / 锁期间载入只读预览且草稿与 origin 的 sha256 前后一致=零写入）、JSON / PNG / CHARX 导出与回导（PNG 逐块 CRC、`chara`→`ccv3` 双块、ST 世界书只写导出副本；V2→V3 `upgradedFrom="chara_card_v2"`）、分组/共享书/关系渲染、roster `cc` 无 broken 且 `cc-agent` active、客户端 bundle 200 且缺/错 rev 404。
+7. **客户端半在隔离实例的 DOM 级实测通过**：胶囊渲染、点开全屏工坊、工坊「已存角色」出现本轮宿主 RPC 写入的库卡（证明客户端 RPC 在 rc.5 上真实往返）、设置页「角色卡工坊」完整、i18n EN↔ZH 往返无中文残留、无 `Failed to load plugins`、**整段浏览器会话 console 0 error / 0 warning**。
+8. **同一 rc.5 运行时的真实 GUI**：Client Inspect 读到三个挂载点的 occupant 全部 `active` 且 `registrant: "dsh-cc-studio"`；插件路由不带 cookie 401、未知路径 405。
+9. **`npm test` 全绿**：25 个文件、1041 项断言、0 失败；真实 `~/.dsh` 的 `cc-*` 与 `.agent-presets` 未被写入。
+
+### 变更
+
+- `package.json` 的 `dsh.compatibility.dshReleases` 补 `"0.2.1-rc.5": "compatible"`（`0.2.1-rc.4` 未实测，不写）。
+- `README.md` / `README_EN.md` 的逐版本矩阵补 `0.2.1-rc.5`；版本号三处同步。
+- `AGENTS.md` §4 兼容矩阵加 rc.5 行、§2.4 的「当前基线」改为 `0.2.1-rc.5`；顺手修正 §3.1 的 RPC 端点清单（此前只列 21 个，实际 34 个，补上 13 个分组/共享书端点）。这是一处既有文档漂移，与 rc.5 无关。
+- `lib/agent.js` 的 `BUILD` 常量随版本号同步为 `0.11.5`（每次工具返回的 `build` 字段，测试 ⑪i 钉住它与 `package.json` 同源）。
+- `tests/preset-install.test.mjs` 的 README 版本守卫「未实测」白名单补 `0.2.1-rc.4`（README 现在如实点名它未实测）；只改常量、不新增断言，仍 1041 项。
+- **运行时代码与预设清单一行未改**：本次没有新增测试，兼容性由既有 1041 项断言 + 上面的外部实测覆盖。
+
+### 生效
+
+- 矩阵与文档是**纯声明**：随本版本发布后对 STORE / 商城可见；已经装在 `0.2.1-rc.5` 上的用户**不需要重装、不需要改预设、不需要动数据**，升级插件只为拿到最新的矩阵与文档。
+- 复核材料：静态 diff 保留了两边原始包、3047 文件清单与逐字节 sha256 对照脚本；隔离实例 E2E 是 72 项逐条带请求/响应证据的清单 + 客户端 5 张截图。
+
 ## 0.11.4
 
 **dsh `0.2.1-rc.3` 兼容性实测：接口面零变化，无需改代码；兼容矩阵补 `0.2.1-rc.3`。**

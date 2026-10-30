@@ -15,7 +15,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 | Item | Value |
 | --- | --- |
 | Package | `@xia-sc/dsh-cc-studio` |
-| Version | `0.11.4` |
+| Version | `0.11.5` |
 | Compatibility & permissions | dsh `>=0.1.5-rc.1`, Node `>=22`, **zero runtime dependencies**; permission bounds in [Compatibility & permissions](#compatibility--permissions) |
 | Host RPC | `/dsh-cc-studio-rpc` (self-owned route, works on dsh ≥ `0.1.5-rc.1`; verified on `0.1.6-alpha.2` / `0.1.7-alpha.1` / `0.1.7-rc.1`) |
 | CC preset | `presets/cc.patch.yml` (dsh ≥ `0.1.7-alpha.1`, a composition declaration row) / `<DSH_HOME>/.agent-presets/cc` (≤ `0.1.6-alpha.2`, the legacy directory) |
@@ -32,7 +32,7 @@ This plugin supports **both `dsh web` (the CLI-launched Web GUI) and DSH Desktop
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
 
 # pin a version
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.11.4
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.11.5
 ```
 
 **Or from GitHub**:
@@ -45,7 +45,7 @@ dsh plugin --profile web add github:xia-sc/dsh-cc-studio
 
 > **Since 0.3.2 the package was renamed from `@dsh-plugins/dsh-cc-studio` to `@xia-sc/dsh-cc-studio`** (the former is not an npm scope this project owns, so it could not be published). If you installed the old name, remove it first as shown in "5. Update and uninstall"; `~/.dsh/cc-library/`, `~/.dsh/cc-drafts/`, `~/.dsh/.agent-presets/cc/` and your plugin settings are unaffected.
 
-- **Pin a version / branch**: `github:xia-sc/dsh-cc-studio#v0.11.4`, `...#master` (see the repo tags).
+- **Pin a version / branch**: `github:xia-sc/dsh-cc-studio#v0.11.5`, `...#master` (see the repo tags).
 - **`allowBuilds` notice**: this plugin has no `prepare` build script, so pnpm's build gate is normally not triggered; if pnpm still prints the notice, add the exact key it prints under `allowBuilds` in `~/.dsh/profiles/web/pnpm-workspace.yaml` and re-run.
 - **When an agent runs it inside a DSH session**: the write target is outside the session workspace, so switch file permissions to `danger-full-access` first. Running it yourself in a terminal has no such limit.
 
@@ -356,7 +356,7 @@ The listing metadata (`dsh.compatibility`, `engines`, runtime dependencies) and 
 | Item | Value |
 | --- | --- |
 | DSH range | `>=0.1.5-rc.1` (`dsh.compatibility.dsh` in `package.json`) |
-| Per-release evidence | `dsh.compatibility.dshReleases` marks `0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.1` / `0.1.6-alpha.2` / `0.1.7-alpha.1` / `0.1.7-rc.1` / `0.2.0-rc.2` / `0.2.1-rc.2` / **`0.2.1-rc.3`** as `compatible`. Versions that were **never tested are not written** (`0.1.7-alpha.2`, `0.1.7-rc.2`, `0.2.0-rc.1`, `0.2.1-alpha.1` stay undeclared and show as unknown) instead of being claimed first and tested later |
+| Per-release evidence | `dsh.compatibility.dshReleases` marks `0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.1` / `0.1.6-alpha.2` / `0.1.7-alpha.1` / `0.1.7-rc.1` / `0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3` / **`0.2.1-rc.5`** as `compatible`. Versions that were **never tested are not written** (`0.1.7-alpha.2`, `0.1.7-rc.2`, `0.2.0-rc.1`, `0.2.1-alpha.1`, `0.2.1-rc.4` stay undeclared and show as unknown) instead of being claimed first and tested later |
 | Node.js | `engines.node: ">=22"` (verified on Node v26.9.0) |
 | Host form | `dsh web` (CLI) and **DSH Desktop (DeepSeek Harness Desktop)** are the same host + profile-bundles mechanism, **both supported** (differences and install steps: [7. Desktop](#7-desktop-deepseek-harness-desktop)) |
 | Client platform | `dsh.client.platform: "web"` — that is the **browser-half** platform tag, not the dsh profile name (`web` / `desktop` / …); Desktop and the CLI load the very same client bundle |
@@ -379,6 +379,8 @@ Disposable-Profile install / start / uninstall evidence lives in the `0.3.7` sec
 ## Changelog
 
 Full history lives in [CHANGELOG.md](./CHANGELOG.md) (Chinese). Latest:
+
+- `0.11.5` **dsh `0.2.1-rc.5` compatibility verified: nothing to change**. The contract packages (`dsh-host-webserver` / `dsh-client-connection` / `dsh-tools` / `dsh-system-prompt` / `dsh-agent-preset` / `dsh-client-modules` / `dsh-app-boot` and friends) are **byte-identical** to rc.3, and so are the bundled `standard` preset, the `cordis.patch.yml` compositions and all three mount-point definitions; rc.5's real changes are four spots (chat's `reasoningText()`, the conversation View tooltip, slot-catalog docs, the client-modules commit constant), none on a surface this plugin consumes. An isolated rc.5 instance passed **72/72** E2E checks (34 RPC endpoints, draft lock active/stale/force, JSON/PNG/CHARX export→import, `cc` in the roster with no `broken`, client bundle 200 / rev validation), the client DOM checks covered capsule / workshop / settings plus EN↔ZH with **0 console errors**, and on the real GUI running the same rc.5 runtime all three mount points report an active occupant. `dshReleases` now includes `0.2.1-rc.5`. **No runtime code or preset line changed.**
 
 - `0.11.4` **dsh `0.2.1-rc.3` compatibility verified: nothing to change**. The contract packages (`dsh-host-webserver` / `dsh-client-connection` / `dsh-tools` / `dsh-system-prompt` / `dsh-agent-preset` / `dsh-client-modules` / `dsh-app-boot` and friends) are **byte-identical** to rc.2, and so is the bundled `standard` preset; rc.3's real changes are four spots, none on a surface this plugin consumes. An isolated rc.3 instance passed **72/72** E2E checks (34 RPC endpoints, draft lock active/stale/force, JSON/PNG/CHARX export→import, `cc` in the roster with no `broken`, client bundle 200 / rev validation), and on the real GUI running the same rc.3 runtime all three mount points report an active occupant. `dshReleases` now includes `0.2.1-rc.3`; the README matrix is synced. **No runtime code or preset line changed** — upgrading dsh needs no reinstall and no preset edits.
 

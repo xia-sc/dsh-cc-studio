@@ -402,7 +402,8 @@ const sha256Of = (s) => createHash('sha256').update(String(s), 'utf8').digest('h
     const declaredDsh = Object.keys(pkg.dsh.compatibility.dshReleases);
     const rangeDsh = String(pkg.dsh.compatibility.dsh).match(/\d+\.\d+\.\d+(?:-[A-Za-z]+\.\d+)?/g) || [];
     const majorPrefixes = [...declaredDsh, ...rangeDsh].map((v) => v.split('-')[0]);
-    const unverified = ['0.1.7-alpha.2', '0.1.7-rc.2', '0.2.0-rc.1', '0.2.1-alpha.1'];
+    // 「没实测过、但 README / 矩阵需要如实点名」的版本：只进白名单，不进 dshReleases。
+    const unverified = ['0.1.7-alpha.2', '0.1.7-rc.2', '0.2.0-rc.1', '0.2.1-alpha.1', '0.2.1-rc.4'];
     const allowedVersions = new Set([...declaredDsh, ...rangeDsh, ...majorPrefixes, ...unverified, ...pluginVersions]);
 
     const VERSION = /\b\d+\.\d+\.\d+(?:-[A-Za-z]+\.\d+)?\b/g;

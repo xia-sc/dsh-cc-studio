@@ -14,7 +14,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 
 | 项目 | 值 |
 | --- | --- |
-| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.11.4` |
+| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.11.5` |
 | 兼容 | DSH `>=0.1.5-rc.1`（含**桌面版**）、Node `>=22`、**零运行依赖**；逐版本实测见 [兼容与权限](#兼容与权限) |
 | 落盘位置 | `<DSH_HOME>/cc-library/`（角色卡）、`<DSH_HOME>/cc-drafts/`（会话草稿；LLM 创作锁 `.lock.json` 与覆盖前备份 `backups/` 也在这里）；`DSH_HOME` 默认 `~/.dsh`，旧位置仍读得到 |
 | 文档 | 用户文档＝本文件；改代码前必读 [AGENTS.md](./AGENTS.md)；完整历史 [CHANGELOG.md](./CHANGELOG.md) |
@@ -42,7 +42,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
    dsh --profile <profile> --dump-config
    期望在 `# == @xia-sc/dsh-cc-studio` 那一层下看到两行：`id: dsh-cc-studio`（宿主行）与 `id: preset-cc`（CC 预设行）。
 4. 告诉用户重启：宿主行只在启动时组合 —— CLI 重启 `dsh web`，桌面版退出并重新打开应用。
-5. 重启后可选自检：在「CC 模式」会话里调任意一个 cc_* 工具，返回里带 "build": "0.11.4" 即说明新代码已加载
+5. 重启后可选自检：在「CC 模式」会话里调任意一个 cc_* 工具，返回里带 "build": "0.11.5" 即说明新代码已加载
    （这也是判断「改了但没重启」的唯一可靠依据）。
 6. 不要做的事：
    - 不要手工把 presets/ 拷进 ~/.dsh/.agent-presets/（dsh >= 0.1.7-alpha.1 已不读该目录，拷了也不生效）；
@@ -58,9 +58,9 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 ```bash
 # 从 npm 安装（推荐）
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.11.4    # 锁定版本
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.11.5    # 锁定版本
 
-# 从 GitHub 源安装（可加 #v0.11.4 / #master 指定 tag / 分支）
+# 从 GitHub 源安装（可加 #v0.11.5 / #master 指定 tag / 分支）
 dsh plugin --profile web add github:xia-sc/dsh-cc-studio
 
 # 从本地仓库安装（开发 / 调试）：装出来是 link:，改 lib/*.js 重启即生效
@@ -167,7 +167,7 @@ dsh plugin --profile web remove @xia-sc/dsh-cc-studio       # 卸载（同时移
 
 | 项 | 值 |
 | --- | --- |
-| DSH 兼容范围 | `>=0.1.5-rc.1`；逐版本矩阵里 `0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.1` / `0.1.6-alpha.2` / `0.1.7-alpha.1` / `0.1.7-rc.1` / `0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3` 为 `compatible`。**没实测过的版本不写**（`0.1.7-alpha.2` / `0.1.7-rc.2` / `0.2.0-rc.1` / `0.2.1-alpha.1` 保持未声明） |
+| DSH 兼容范围 | `>=0.1.5-rc.1`；逐版本矩阵里 `0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.1` / `0.1.6-alpha.2` / `0.1.7-alpha.1` / `0.1.7-rc.1` / `0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3` / `0.2.1-rc.5` 为 `compatible`。**没实测过的版本不写**（`0.1.7-alpha.2` / `0.1.7-rc.2` / `0.2.0-rc.1` / `0.2.1-alpha.1` / `0.2.1-rc.4` 保持未声明） |
 | 宿主形态 | `dsh web`（CLI）与 **DSH 桌面版**同一套宿主 + profile bundles 机制，**均支持** |
 | 客户端平台 | `dsh.client.platform: "web"` 是**浏览器半**的平台标识，与 profile 名（`web` / `desktop`）不是一回事；两者加载同一份客户端 bundle |
 | 运行依赖 / 生命周期脚本 | **都没有**。`lib/*.js` 只 `import` `node:` 内建与相对路径，随包补丁与预设是静态 YAML |
@@ -192,6 +192,8 @@ node tests/group-layer-guard.test.mjs       # 只跑卡组层的耦合守卫（1
 ## 更新日志
 
 完整历史见 [CHANGELOG.md](./CHANGELOG.md)。最近几版大多是「另一个 LLM 以工具使用者身份跑回归」挖出来的问题：
+
+- `0.11.5` **dsh `0.2.1-rc.5` 兼容性实测：无需改动**。契约包（`dsh-host-webserver` / `dsh-client-connection` / `dsh-tools` / `dsh-system-prompt` / `dsh-agent-preset` / `dsh-client-modules` / `dsh-app-boot` 等）与 rc.3 **逐字节相同**，内置 `standard` 预设、`cordis.patch.yml` 组合与三个挂载点定义也都逐字节相同；rc.5 的真实改动只有 4 处（chat 的 `reasoningText()`、conversation 的 View tooltip、客户端 slot 目录文档、client-modules 的 commit 常量），都在插件不消费面。隔离实例 E2E **72/72**（34 个 RPC 端点、草稿锁 active/stale/force、JSON/PNG/CHARX 导出回导、roster `cc` 无 broken、客户端 bundle 200/rev），客户端 DOM 实测胶囊/工坊/设置页与 i18n EN↔ZH 全通过、console 0 error；同一 rc.5 运行时的真实 GUI 三个挂载点 occupant 全 active。`dshReleases` 补 `0.2.1-rc.5`。**运行时代码与预设一个字没改**。
 
 - `0.11.4` **dsh `0.2.1-rc.3` 兼容性实测：无需改动**。契约包（`dsh-host-webserver` / `dsh-client-connection` / `dsh-tools` / `dsh-system-prompt` / `dsh-agent-preset` / `dsh-client-modules` / `dsh-app-boot` 等）与 rc.2 **逐字节相同**，内置 `standard` 预设也逐字节相同；rc.3 的真实改动只有 4 处且都在插件不消费面。隔离实例 E2E **72/72** 项通过（34 个 RPC 端点、草稿锁 active/stale/force、JSON/PNG/CHARX 导出回导、roster 里 `cc` 无 broken、客户端 bundle 200/rev 校验），同一 rc.3 运行时的真实 GUI 里三个挂载点 occupant 全部 active。`dshReleases` 补 `0.2.1-rc.3`，README 矩阵同步。**运行时代码与预设一个字没改** —— 升级 dsh 后照常用，无需重装或改预设。
 
