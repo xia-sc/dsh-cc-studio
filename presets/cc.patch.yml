@@ -1,19 +1,14 @@
-# @xia-sc/dsh-cc-studio — 「CC 模式」预设声明层（dsh >= 0.1.7-alpha.1）
+# @xia-sc/dsh-cc-studio — 「CC 模式」预设声明层（dsh >= 0.2.0-rc.2）
 #
-# 为什么单独一层：dsh 0.1.7-alpha.1 起，预设不再是「<DSH_HOME>/.agent-presets/<id>/ 目录」，
-# 而是**组合里的一个声明行** —— 内置的 standard/ptc/minimal/cordis 就是这么发的（见
-# @deepseek-ai/dsh-web-app 的 presets/*.patch.yml）。目录形态在 0.1.7 已经没有任何代码读取，
-# 所以必须随包带一层补丁：插件装进哪个 profile，「CC 模式」就出现在哪个 profile 的 roster 里。
+# 本文件是**唯一**的预设载体：dsh 0.1.7-alpha.1 起，预设不再是「<DSH_HOME>/.agent-presets/<id>/ 目录」，
+# 而是组合里的一个声明行（内置的 standard/ptc/minimal/cordis 就是这么发的）。旧目录形态从 0.1.7 起
+# 就再也没有任何读者；0.12.0 起本插件不再兼容 0.2.0 以下的 dsh，因此连兼容用的目录模板
+# （presets/cc/ 与挂载时安装那套代码）一并删除 —— 这里看不到「两份清单」是刻意的，不是漏了。
 #
 # package.json 的 dsh.bundle.patch 列两层：cordis.patch.yml（宿主插件行）+ 本文件（预设声明）。
+# 插件装进哪个 profile，「CC 模式」就出现在哪个 profile 的 roster 里；插件不再往用户目录写预设文件。
 #
-# ⚠️ 本文件的 plugins 必须与 presets/cc/agent.cordis.yml **同名同序**：
-#   · 本文件（声明行）        → dsh >= 0.1.7-alpha.1
-#   · agent.cordis.yml（目录形态，插件挂载时安装到 <DSH_HOME>/.agent-presets/cc）→ 更老的 dsh
-# tests/preset-install.test.mjs 第 11/12 节把「两份清单不许漂移」钉死了：改一边必须改另一边。
-# 两份清单的行逐字一致，只有上面那两处解释「健康检查」的历史注释按 0.1.7 的事实改写过。
-#
-# 想关掉 CC 模式（>=0.1.7）：不必卸载插件，在自己 profile 的补丁层里按 id 关掉这一行即可 ——
+# 想关掉 CC 模式（>=0.2.0）：不必卸载插件，在自己 profile 的补丁层里按 id 关掉这一行即可 ——
 #   - id: preset-cc
 #     name: '@deepseek-ai/dsh-agent-preset'
 #     disabled: true
@@ -55,8 +50,8 @@
           # ── identity ────────────────────────────────────────────────────────────────
 
           # The preset's own persona, shadowing the deployment default for this agent.
-          # dsh >= 0.1.5-rc.1: the persona row takes `prefix` (required) + optional `suffix`
-          # — the old `text` key was replaced and now fails the config schema.
+          # persona 行只认 `prefix`（必填）+ 可选 `suffix`：旧的 `text` 键在 0.1.5-rc.1 就被替换，
+          # 而下限 0.2.0-rc.2 上只有 prefix 形态。
           #
           # dsh >= 0.2.1-rc.2: only `provider` / `model` are registered prompt
           # variables. The old `cwd` variable is NOT one of them — `dsh-system-prompt`
@@ -89,9 +84,9 @@
             config:
               maxBytes: 65536
 
-          # 0.2.1 对齐：time-context 从 host 层挪进预设行（dsh 0.2.1-rc.2 的内置 standard 有这一行）。
-          # 包 @deepseek-ai/dsh-time-context 在 dsh 0.1.6-alpha.2 的依赖里也存在，
-          # 且那一代 host 层没有挂它，所以旧版目录形态上补这一行不会重复注册、不会 broken。
+          # 0.2.1 起 time-context 从 host 层挪进预设行（0.2.1-rc.2 的内置 standard 有这一行）。
+          # 包 @deepseek-ai/dsh-time-context 在 0.2.0-rc.2 的依赖里也存在，而那一版的 dsh-base 与
+          # dsh-web-app 组合都没有挂它（已核对两层的 cordis.patch.yml），所以补这一行不会重复注册。
           - id: time-context
             name: '@deepseek-ai/dsh-time-context'
 
@@ -149,8 +144,8 @@
           - id: tool-skill
             name: '@deepseek-ai/dsh-tool-skill'
 
-          # 0.3.7 补回：内置 `standard` 自 0.1.6-alpha.2 起就带这一行，本预设初次拷贝时整行漏掉了
-          # （与 0.3.4 补回的 `present` 同类：不报错、不判 broken，只是少了能力）。
+          # 补回：内置 `standard` 一直带这一行，本预设初次拷贝时整行漏掉了 —— 不报错、不判 broken，
+          # 只是 CC 模式会话里没有 `/goal` 斜杠命令（与补回的 `present` 同类「静默少能力」）。
           # 它与下面 `tool-goal` 不是一回事：这行给的是**人**用的 `/goal` 斜杠命令，`tool-goal`
           # 才是给模型的工具。下面「goals」段那条注释说的「`/goal` command 留在宿主面」指的是命令
           # 背后的 goal SERVICE，不是这个声明行 —— 别据此再把它删掉。
@@ -254,7 +249,7 @@
               - id: tool-subagent-list-agents
                 name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
 
-              # 0.3.4 对齐 dsh 0.1.6-alpha.2 内置 standard：spawn 行此前漏抄 modelSelectionSettings。
+              # 对齐内置 standard（0.2.1 与 0.2.0 的这一行一致）：spawn 行此前漏抄 modelSelectionSettings。
               # 该键在 dsh-tool-subagent 里是 `z.boolean().default(false)`，漏掉既不报错也不改 schema，
               # 只是子代理的「指定模型」入口被静默关掉 —— 最难发现的那类漂移。
               # fork 行故意不加：provider/model 必须等于父代理，继承的历史才能继续命中 KV cache。
@@ -271,12 +266,10 @@
                   provider: fork
                   toolName: subagent_fork
 
-              # dsh 0.1.6-alpha.1: `dsh-workflow-worker-thread` is gone from the release;
-              # the workflow engine is now `dsh-workflow-ptc` (sandboxed Node PTC runtime,
-              # host row `ptc-runtime` → `dsh-ptc-runtime-node`).
-              # dsh 0.1.7-alpha.1: 包名取不到的行由 `dsh-agent-preset-registry` 的 mountPreset →
-              # auditRows 判死，落在 record.broken 上 —— roster 里仍看得到「CC 模式」，但带着
-              # 诊断且组不出会话。失败形态变了，结论没变：包名必须与内置 standard 逐行对得上。
+              # 与 dsh 0.2.1-rc.2 内置 standard 对齐：workflow engine 是 dsh-workflow-ptc
+              # （宿主行 ptc-runtime → dsh-ptc-runtime-node）。包名取不到的行会被
+              # dsh-agent-preset-registry 的 mountPreset → auditRows 判死，落在 record.broken 上 ——
+              # roster 里仍看得到「CC 模式」，但带诊断且组不出会话。结论：包名必须与 standard 逐行对得上。
               - id: workflow-ptc
                 name: '@deepseek-ai/dsh-workflow-ptc'
                 config:
@@ -303,30 +296,29 @@
               fetch: true
               searchTimeoutMs: 60000
 
-          # 0.3.4 补回：`present` 是 standard 一直有的行，本预设此前整行漏抄。
+          # 补回：`present` 是 standard 一直有的行，本预设此前整行漏抄。
           # 症状很隐蔽 —— CC 模式下模型没有「把成品登记为交付物」的工具，不报任何错，只是少了能力。
           # 它和下面那行都必须与 dsh 内置 standard 逐行对得上（升级清单见 AGENTS.md §4）。
           - id: present
             name: '@deepseek-ai/dsh-tool-present'
 
-          # dsh 0.1.6-alpha.2 新增行：standard 里就是 disabled（默认关，需要的人自己放开）。
-          # 抄过来是为了让「本预设 vs 内置 standard」的行差以后只剩有意为之的那几处，
-          # 下次升级 diff 时不必再逐个判断「这行是新加的、还是我们漏抄了」。
-          # 保留 disabled 也安全：0.1.7 的注册表对 disabled 行既不 import 也不参与
-          # auditRows 行审计（dsh-agent-preset-registry lib/index.js:199）。
+          # 内置 standard 里就是 disabled（默认关，需要的人自己放开）；
+          # 抄过来是为了让「本预设 vs 内置 standard」的行差只剩有意为之的那两处。
+          # 保留 disabled 也安全：注册表对 disabled 行既不 import 也不参与 auditRows 行审计。
           - id: tool-plugin-manager
             name: '@deepseek-ai/dsh-plugin-manager/tools'
             disabled: true
 
-          # ── 与 dsh 0.2.1-rc.2 内置 standard 的**有意差异**（下次升级 diff 别当成漏抄）──
-          # · `tool-schedule`：0.2.1 standard 有，但 `@deepseek-ai/dsh-tool-schedule` 在
-          #   dsh ≤ 0.1.6-alpha.2 的依赖里不存在，而这份清单同时喂给目录形态（旧版）；
-          #   非 disabled 行解析不到包会让**整个预设 broken**（unresolvableRows），
-          #   所以为兼容旧版不带这一行。CC 模式也不需要定时任务工具。
-          # · `tool-plugin-market`：0.2.1 standard 里是 disabled，但 0.1.6 没有
-          #   `@deepseek-ai/dsh-plugin-market` 这个包；按家规「不拿 disabled 遮掩
-          #   一个已经不存在的包」，同样不带。
-          # 其余行与 standard 逐行对齐；本预设只保留 persona 定制与末尾的 cc-agent 行。
+          # ── 与 dsh 0.2.1 内置 standard 的**有意差异**（下次升级 diff 别当成漏抄）──
+          # 本预设的下限是 0.2.0-rc.2（唯一实测过的 0.2.0），而下面两行指向的包在该版本的
+          # 依赖里都不存在（已对 0.2.0-rc.2 的 dsh / dsh-web-app 包树逐个核对）：
+          # · `tool-schedule`：@deepseek-ai/dsh-tool-schedule 是 0.2.1 才有的包（0.2.0-rc.2 只有
+          #   dsh-schedule）。非 disabled 行解析不到包会让**整个预设 broken**，所以为兼容下限不带。
+          #   CC 模式也不需要定时任务工具。
+          # · `tool-plugin-market`：0.2.0-rc.2 没有 @deepseek-ai/dsh-plugin-market；按家规
+          #   「不拿 disabled 遮掩一个已经不存在的包」，同样不带。
+          # 想把它们补回来，必须先把兼容下限抬到 0.2.1-rc.2（同时改 package.json 与 README 矩阵）。
+          # 其余行与 0.2.1 的 standard 逐行对齐；本预设只保留 persona 定制与末尾的 cc-agent 行。
 
           # ── CC 角色卡工坊（CC 模式专用） ───────────────────────────────────
           - id: cc-agent

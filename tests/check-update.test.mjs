@@ -19,8 +19,8 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-// 隔离副作用：apply() 会把 CC 预设装到 <DSH_HOME>/.agent-presets/cc（见 AGENTS.md §2.6，
-// 三个变量一起改，只改 DSH_HOME 时读盘会回退真实 ~/.dsh）。
+// 隔离副作用：测试会调 apply()（挂 RPC 路由）并读写草稿/角色库（见 AGENTS.md §2.6：
+// 三个变量一起改，只改 DSH_HOME 时读盘会回退真实 ~/.dsh）。0.12.0 起 apply() 不再写预设目录。
 const originalHome = process.env.HOME;
 const originalUserProfile = process.env.USERPROFILE;
 const originalDshHome = process.env.DSH_HOME;

@@ -1,10 +1,11 @@
 /**
  * 落盘根回归测试：草稿与角色库必须「DSH_HOME 优先 + 读时回退 ~/.dsh」（不随插件发布，files 未含 tests）。
  *
- * 背景（0.3.6）：这两处以前写死 homedir()/.dsh，而预设目录走 DSH_HOME —— 同一个插件有两套根。
+ * 背景（0.3.6）：这两处以前写死 homedir()/.dsh，而当时的预设目录走 DSH_HOME —— 同一个插件有两套根。
  * 后果有两个：① 自定义了 DSH_HOME 的用户，预设装在新根、草稿与角色卡却留在旧根；
  * ② 隔离实测（AGENTS.md §6 的推荐做法）只设 DSH_HOME 时，草稿会写进**真实的** ~/.dsh。
  * 现在统一成一套：写主根（DSH_HOME 优先，未设置则 homedir()/.dsh）、读时回退旧根。
+ * （0.12.0 起预设不再落盘 —— 那条投递路径已随 0.2.0 以下兼容删除，本节只覆盖数据目录。）
  *
  * 隔离副作用：进程内改掉 HOME / USERPROFILE / DSH_HOME，末尾校验沙箱外没被写。
  * 运行：node tests/data-root.test.mjs   （全绿退出码 0）
@@ -53,7 +54,8 @@ function writeLibFile(dir, id, name) {
   check('草稿主根 = <DSH_HOME>/cc-drafts', host.draftDirs()[0] === primaryDrafts, host.draftDirs().join(' | '));
   check('候选表 = [主根, 旧根]（顺序即优先级）', eq(host.draftDirs(), [primaryDrafts, legacyDrafts]), host.draftDirs().join(' | '));
   check('角色库同理', eq(host.libDirs(), [primaryLib, legacyLib]), host.libDirs().join(' | '));
-  check('预设根仍走 DSH_HOME（本次未动它）', host.presetTargetRoot() === join(sandboxDsh, '.agent-presets', 'cc'), host.presetTargetRoot());
+  check('预设不再往用户目录写：旧目录投递已删（0.12.0），宿主半不再导出 presetTargetRoot',
+    typeof host.presetTargetRoot === 'undefined', String(host.presetTargetRoot));
   check('所有候选根都落在沙箱内（没有一个指向真实用户目录）',
     host.draftDirs().concat(host.libDirs()).every((d) => d.startsWith(sandboxDsh) || d.startsWith(sandboxHome)),
     host.draftDirs().concat(host.libDirs()).join(' | '));

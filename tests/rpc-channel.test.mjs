@@ -20,9 +20,9 @@ import { mkdtempSync, rmSync, readFileSync, writeFileSync, readdirSync, existsSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-// 隔离副作用：host 半用 homedir() 解析 ~/.dsh/cc-drafts，且 apply() 会把 CC 预设自动装到
-// <DSH_HOME>/.agent-presets/cc —— 必须同时改掉 HOME 与 DSH_HOME，否则会写进真实的用户预设目录
-// （DSH_HOME 优先于 homedir()，只改 HOME 不够）。
+// 隔离副作用：host 半用 homedir() 解析 ~/.dsh/cc-drafts —— 必须同时改掉 HOME 与 DSH_HOME，
+// 否则会写进真实的用户目录（DSH_HOME 优先于 homedir()，只改 HOME 不够）。
+// 0.12.0 起 apply() 不再安装预设，但草稿/角色库仍走这两个根。
 const originalHome = process.env.HOME;
 const originalUserProfile = process.env.USERPROFILE;
 const originalDshHome = process.env.DSH_HOME;

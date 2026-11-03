@@ -14,8 +14,8 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 
 | 项目 | 值 |
 | --- | --- |
-| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.11.5` |
-| 兼容 | DSH `>=0.1.5-rc.1`（含**桌面版**）、Node `>=22`、**零运行依赖**；逐版本实测见 [兼容与权限](#兼容与权限) |
+| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.12.0` |
+| 兼容 | DSH `>=0.2.0-rc.2`（含**桌面版**）、Node `>=22`、**零运行依赖**；逐版本实测见 [兼容与权限](#兼容与权限) |
 | 落盘位置 | `<DSH_HOME>/cc-library/`（角色卡）、`<DSH_HOME>/cc-drafts/`（会话草稿；LLM 创作锁 `.lock.json` 与覆盖前备份 `backups/` 也在这里）；`DSH_HOME` 默认 `~/.dsh`，旧位置仍读得到 |
 | 文档 | 用户文档＝本文件；改代码前必读 [AGENTS.md](./AGENTS.md)；完整历史 [CHANGELOG.md](./CHANGELOG.md) |
 
@@ -42,10 +42,10 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
    dsh --profile <profile> --dump-config
    期望在 `# == @xia-sc/dsh-cc-studio` 那一层下看到两行：`id: dsh-cc-studio`（宿主行）与 `id: preset-cc`（CC 预设行）。
 4. 告诉用户重启：宿主行只在启动时组合 —— CLI 重启 `dsh web`，桌面版退出并重新打开应用。
-5. 重启后可选自检：在「CC 模式」会话里调任意一个 cc_* 工具，返回里带 "build": "0.11.5" 即说明新代码已加载
+5. 重启后可选自检：在「CC 模式」会话里调任意一个 cc_* 工具，返回里带 "build": "0.12.0" 即说明新代码已加载
    （这也是判断「改了但没重启」的唯一可靠依据）。
 6. 不要做的事：
-   - 不要手工把 presets/ 拷进 ~/.dsh/.agent-presets/（dsh >= 0.1.7-alpha.1 已不读该目录，拷了也不生效）；
+   - 不要手工往 ~/.dsh/.agent-presets/ 里拷预设——受支持的 dsh 都不读那个目录（插件用随包声明层投递，拷了也不生效）；
    - 不要手改 ~/.dsh/profiles/*/package.json（dsh plugin 会自己维护 dsh.profile.bundles）；
    - 不要为了「验证」反复重装 —— 装不上先看第 3 步的 dump-config 输出。
 
@@ -58,9 +58,9 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 ```bash
 # 从 npm 安装（推荐）
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.11.5    # 锁定版本
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.12.0    # 锁定版本
 
-# 从 GitHub 源安装（可加 #v0.11.5 / #master 指定 tag / 分支）
+# 从 GitHub 源安装（可加 #v0.12.0 / #master 指定 tag / 分支）
 dsh plugin --profile web add github:xia-sc/dsh-cc-studio
 
 # 从本地仓库安装（开发 / 调试）：装出来是 link:，改 lib/*.js 重启即生效
@@ -71,7 +71,7 @@ dsh plugin --profile web add .
 `dsh plugin` 只是把参数转发给 profile 目录里的 pnpm，装完会把包名自动追加进该 profile 的 `dsh.profile.bundles`，不用手改 `package.json`。
 
 - **桌面版**：应用内左侧「插件」面板搜索 `@xia-sc/dsh-cc-studio` 安装，或用 `dsh plugin --profile desktop add @xia-sc/dsh-cc-studio`；生效方式是**退出并重新打开应用**（窗口里的刷新不足以加载宿主改动）。
-- **CC 预设无需手工操作**：插件会自己把 `CC 模式` 带到 roster 里（≥ `0.1.7-alpha.1` 走随包补丁层 `presets/cc.patch.yml` 的声明行；≤ `0.1.6-alpha.2` 由插件挂载时装到 `<DSH_HOME>/.agent-presets/cc`）。升级 dsh 后若 `CC 模式` 从列表里消失，见下方常见问题。
+- **CC 预设无需手工操作**：`CC 模式` 由随包补丁层 `presets/cc.patch.yml` 的声明行投递（与 dsh 内置 `standard` / `ptc` 同一种机制），插件装进哪个 profile 就出现在哪个 profile 的 roster 里；插件不往用户目录写任何预设文件。升级 dsh 后若 `CC 模式` 从列表里消失，见下方常见问题。
 - **包名迁移**：0.3.2 起由 `@dsh-plugins/dsh-cc-studio` 改为 `@xia-sc/dsh-cc-studio`（旧名不在本项目的 npm scope 下）。装过旧名的先 `remove` 再 `add`；`cc-library/`、`cc-drafts/` 与插件设置都不受影响。
 
 ### 更新与卸载
@@ -167,12 +167,12 @@ dsh plugin --profile web remove @xia-sc/dsh-cc-studio       # 卸载（同时移
 
 | 项 | 值 |
 | --- | --- |
-| DSH 兼容范围 | `>=0.1.5-rc.1`；逐版本矩阵里 `0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.6-alpha.1` / `0.1.6-alpha.2` / `0.1.7-alpha.1` / `0.1.7-rc.1` / `0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3` / `0.2.1-rc.5` 为 `compatible`。**没实测过的版本不写**（`0.1.7-alpha.2` / `0.1.7-rc.2` / `0.2.0-rc.1` / `0.2.1-alpha.1` / `0.2.1-rc.4` 保持未声明） |
+| DSH 兼容范围 | `>=0.2.0-rc.2`；逐版本矩阵里 `0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3` / `0.2.1-rc.5` 为 `compatible`。**`0.1.x` 整条线自 0.12.0 起不再支持**；**没实测过的版本不写**（`0.2.0-rc.1` / `0.2.1-alpha.1` / `0.2.1-rc.4` 保持未声明） |
 | 宿主形态 | `dsh web`（CLI）与 **DSH 桌面版**同一套宿主 + profile bundles 机制，**均支持** |
 | 客户端平台 | `dsh.client.platform: "web"` 是**浏览器半**的平台标识，与 profile 名（`web` / `desktop`）不是一回事；两者加载同一份客户端 bundle |
 | 运行依赖 / 生命周期脚本 | **都没有**。`lib/*.js` 只 `import` `node:` 内建与相对路径，随包补丁与预设是静态 YAML |
-| 权限 · 文件 | 只读写 `<DSH_HOME>`（含旧根 `~/.dsh`）下自己的五个目录：`cc-drafts/`、`cc-library/`、`cc-groups/`、`cc-books/`、`.agent-presets/cc/`（最后一个只在 dsh ≤ `0.1.6-alpha.2` 上写），另读自身 `package.json` |
-| 权限 · 网络 / 命令 / 凭据 | 网络：**只有**设置页「检查更新」点按钮时的一次出站 HTTPS GET（`https://registry.npmjs.org/@xia-sc%2Fdsh-cc-studio/latest`，8s 超时，只带 `accept` 与 `user-agent: 包名/版本`，不传任何用户数据；设置页打开时的探测 `{network:false}` **不联网**）。不起子进程、不读也不存任何 token 或 cookie。只读两个环境变量：`DSH_HOME`、`DSH_CC_STUDIO_PRESET_INSTALL`。HTTP 路由复用宿主自己的 cookie 围栏（`connection.requestRejection`），插件不解析凭据 |
+| 权限 · 文件 | 只读写 `<DSH_HOME>`（含旧根 `~/.dsh`）下自己的四个目录：`cc-drafts/`、`cc-library/`、`cc-groups/`、`cc-books/`，另读自身 `package.json`。**不再写 `.agent-presets/`**（旧目录投递已随 0.2.0 以下兼容删除；残留在那里的文件不会被读写，可手动删除） |
+| 权限 · 网络 / 命令 / 凭据 | 网络：**只有**设置页「检查更新」点按钮时的一次出站 HTTPS GET（`https://registry.npmjs.org/@xia-sc%2Fdsh-cc-studio/latest`，8s 超时，只带 `accept` 与 `user-agent: 包名/版本`，不传任何用户数据；设置页打开时的探测 `{network:false}` **不联网**）。不起子进程、不读也不存任何 token 或 cookie。只读一个环境变量：`DSH_HOME`。HTTP 路由复用宿主自己的 cookie 围栏（`connection.requestRejection`），插件不解析凭据 |
 
 > **为什么商城不会给它「自动通过」**：STORE 的自动低风险通道要求运行时代码完全不出现文件 / 网络 / 命令 / 凭据四类信号，而本插件的核心功能就是草稿与角色卡落盘（文件信号）、读 `DSH_HOME`（扫描器把任何 `process.env` 读取都算凭据信号），再加上 0.11.3 起「检查更新」的一次出站请求（网络信号）。这些都不会为了迎合扫描器而消除 —— 对这类合法插件，商城的正确档位是 `user-reviewed`。隔离环境下的安装 / 启动 / 卸载证据见 [CHANGELOG.md](./CHANGELOG.md) 的 `0.3.7` 小节。
 
@@ -181,17 +181,19 @@ dsh plugin --profile web remove @xia-sc/dsh-cc-studio       # 卸载（同时移
 ## 开发与测试
 
 ```bash
-npm test                                    # 25 个文件、1041 项断言，全绿才算过
+npm test                                    # 25 个文件、1008 项断言，全绿才算过
 node tests/tools-contract.test.mjs          # 只跑 CC 工具链契约（125 项）
 node tests/group-layer-guard.test.mjs       # 只跑卡组层的耦合守卫（16 项）
 ```
 
 - 改 `lib/client.js`：刷新页面即可；改 `lib/index.js` / 预设：**重启 dsh**。
-- 架构与约定（三半分工、RPC 线协议、预设两代投递、落盘根、测试隔离要求、常见坑）都在 [AGENTS.md](./AGENTS.md) —— 动代码前先读它。
+- 架构与约定（三半分工、RPC 线协议、预设的单层声明投递、落盘根、测试隔离要求、常见坑）都在 [AGENTS.md](./AGENTS.md) —— 动代码前先读它。
 
 ## 更新日志
 
 完整历史见 [CHANGELOG.md](./CHANGELOG.md)。最近几版大多是「另一个 LLM 以工具使用者身份跑回归」挖出来的问题：
+
+- `0.12.0` **破坏性变更：兼容下限抬到 dsh `0.2.0-rc.2`**，`0.1.x` 整条线不再支持。预设投递收敛成唯一一份文件 `presets/cc.patch.yml`（声明行，与内置 `standard` / `ptc` 同一种机制）：删掉旧的目录形态模板和「挂载时安装到 `<DSH_HOME>/.agent-presets/cc`」那套代码（`installCcPreset` / `planPresetInstall` / `supportsDeclaredPresets` 与安装记录侧车），`apply()` 不再写盘，`DSH_CC_STUDIO_PRESET_INSTALL` 环境变量与「两份清单必须逐字一致」的维护成本一起消失；权限面从 5 个目录 / 2 个环境变量降到 4 个目录 / 1 个。行为变化：`0.1.x` 上装新版后 `CC 模式` 会从 roster 消失（那代 dsh 不读补丁层声明）；已存在的 `~/.dsh/.agent-presets/cc` 不再被读写，可手动删除。`dshReleases` 只保留实测过的 `0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3` / `0.2.1-rc.5`。测试从 1041 项收敛到 **1008 项**。**重启 dsh（桌面版重启应用）生效**。
 
 - `0.11.5` **dsh `0.2.1-rc.5` 兼容性实测：无需改动**。契约包（`dsh-host-webserver` / `dsh-client-connection` / `dsh-tools` / `dsh-system-prompt` / `dsh-agent-preset` / `dsh-client-modules` / `dsh-app-boot` 等）与 rc.3 **逐字节相同**，内置 `standard` 预设、`cordis.patch.yml` 组合与三个挂载点定义也都逐字节相同；rc.5 的真实改动只有 4 处（chat 的 `reasoningText()`、conversation 的 View tooltip、客户端 slot 目录文档、client-modules 的 commit 常量），都在插件不消费面。隔离实例 E2E **72/72**（34 个 RPC 端点、草稿锁 active/stale/force、JSON/PNG/CHARX 导出回导、roster `cc` 无 broken、客户端 bundle 200/rev），客户端 DOM 实测胶囊/工坊/设置页与 i18n EN↔ZH 全通过、console 0 error；同一 rc.5 运行时的真实 GUI 三个挂载点 occupant 全 active。`dshReleases` 补 `0.2.1-rc.5`。**运行时代码与预设一个字没改**。
 
@@ -199,7 +201,7 @@ node tests/group-layer-guard.test.mjs       # 只跑卡组层的耦合守卫（1
 
 - `0.11.3` **设置页新增「检查更新」**：一键查 npm 上的最新版本，可更新时给出可复制的 `@xia-sc/dsh-cc-studio@版本`（直接拿去 `dsh plugin --profile <配置名> add` 更新）。查询走宿主的新 RPC 端点 `cc_checkUpdate`：`{network:false}` 只回本地版本（设置页一打开就显示「当前版本」，不打网络），默认查 registry 的 `/latest` 并带 8s 超时；客户端不直连 npm。版本比较按 SemVer 第 11 条（预发布版小于同号正式版；预发布数字标识符按数值，`rc.2 < rc.10`），脏版本号不会被误报成「有更新」。测试 +53 项（新增 `tests/check-update.test.mjs`）→ **1041 项**。**重启 dsh（桌面端重启应用）+ 刷新页面生效**。
 
-- `0.11.2` **修正中文 README 两处文档错误**：安装引导第 1 步被写成 `4.`；一批 dsh 版本号被写坏成 `0.4.x`（真实范围 `>=0.1.5-rc.1`），兼容范围 / 预设分界 / 实测矩阵已纠正，矩阵补上 `0.2.1-rc.2`。纯文档，无需重启。
+- `0.11.2` **修正中文 README 两处文档错误**：安装引导第 1 步被写成 `4.`；一批 dsh 版本号被写坏成 `0.4.x`（当时的真实范围是 0.1.x 的 rc 版，现已抬到 `>=0.2.0-rc.2`），兼容范围 / 预设分界 / 实测矩阵已纠正，矩阵补上 `0.2.1-rc.2`。纯文档，无需重启。
 
 - `0.11.1` **CC 预设对齐 dsh `0.2.1-rc.2` 内置 `standard`**：修掉 `tool-ralph` 漏抄 `disabled`（CC 模式一直多挂一个实验性长循环工具）、`skill-filesystem` / `tool-skill` 被误关（模型没有技能目录与加载器）、以及 `backgroundMode` 等已下线的配置键；补 `time-context`、`tool-web` 的 `fetch` 改回 `true`。`dshReleases` 补 `0.2.1-rc.2`（npm `dsh web` 隔离环境实测）。测试补 CHARX 导入全链路与「按 id 改世界书条目」的回归 → **987 项**。**重启 dsh（桌面端重启应用）生效**。
 
@@ -209,7 +211,7 @@ node tests/group-layer-guard.test.mjs       # 只跑卡组层的耦合守卫（1
 
 - `0.10.2` **模型偶发一个 JSON 尾逗号，整轮就没了**：报错是 `本轮运行失败 DeepSeek Messages stream: tool input is invalid JSON`。会话日志解帧取证：模型调 `cc_patch_character` 时生成的 arguments 末尾是 `..."tags":[...],}`（尾逗号）。根因在 provider：`@deepseek-ai/dsh-llm-deepseek` 在流结束时对 tool input 严格 `JSON.parse`，失败即 `MALFORMED_RESPONSE`，而默认 `retryableCodes` 不含它 → 不自动重试；工具从未执行、卡片数据没坏。插件能施加影响的只有模型可见文本，所以给 persona 加「工具参数必须是严格合法 JSON（禁尾逗号/注释/单引号/未转义换行），一次只传 1-3 个字段、长字段分多次写」，五个写类工具的 description 同步这句规则，并用测试钉住（preset-install + tools-contract 各 +1 项）。用户侧可选兜底：在 profile `cordis.patch.yml` 给 `llm-deepseek-account` 配 `retryPolicy.retryableCodes` 含 `MALFORMED_RESPONSE`（详见 CHANGELOG 0.10.2）。测试 856 → **858 项**。**重启 dsh（桌面版重启应用）生效**。
 
-- `0.10.1` **dsh 0.2.1-rc.2 上 CC 模式每轮「本轮运行失败」**：报错 `unknown prompt variable "{{cwd}}" in section "deployment:persona-prefix"; registered variables: provider, model`。0.2.1 的 `dsh-system-prompt` 只注册 `provider` / `model` 两个 prompt 变量（工作目录改由 working-directory 服务以 runtime context 提供），而段文本插值对未知引用**严格抛错**、发生在任何模型请求之前 —— 预设本身挂载正常、roster 里也正常可选，唯独每一轮对话失败。修法：两份预设清单（`presets/cc.patch.yml` + `presets/cc/agent.cordis.yml`）的 persona prefix 删掉「，工作目录 {{cwd}}」、保留 `{{model}}`；把 prompt 变量白名单（只允许 `provider` / `model`、禁止 `{{cwd}}`、两份集合一致、`{{model}}` 仍在）钉进 `tests/preset-install.test.mjs`。测试 852 → **856 项**。**重启 dsh（桌面版重启应用）生效**，无需重装或刷新页面。
+- `0.10.1` **dsh 0.2.1-rc.2 上 CC 模式每轮「本轮运行失败」**：报错 `unknown prompt variable "{{cwd}}" in section "deployment:persona-prefix"; registered variables: provider, model`。0.2.1 的 `dsh-system-prompt` 只注册 `provider` / `model` 两个 prompt 变量（工作目录改由 working-directory 服务以 runtime context 提供），而段文本插值对未知引用**严格抛错**、发生在任何模型请求之前 —— 预设本身挂载正常、roster 里也正常可选，唯独每一轮对话失败。修法：预设清单（当时有两份载体，0.12.0 起已收敛为一份）的 persona prefix 删掉「，工作目录 {{cwd}}」、保留 `{{model}}`；把 prompt 变量白名单（只允许 `provider` / `model`、禁止 `{{cwd}}`、变量集合一致、`{{model}}` 仍在）钉进 `tests/preset-install.test.mjs`。测试 852 → **856 项**。**重启 dsh（桌面版重启应用）生效**，无需重装或刷新页面。
 
 - `0.10.0` **卡组不再是一堆工具的组合，而是一层**：0.9.x 的两轮补丁都打在同一个地方 —— 组级共享世界上线后，`simulate` / `lint` / `group_check` / `preview_export` / `validate` 五个「读数」工具**各自**补了一遍「把共享书算进来」（「改了四个、漏了第五个」）。根因不是手滑，而是同一个语义存在多份实现：卡组数据读取两半各一份、取作用域每个工具各写一遍、卡组级统计与世界书统计平行两套、界面再自己算一遍。修法是立三层并**让两半共用同一个文件** `lib/group-layer.js`（纯函数、零 IO）：**数据层** `readLibrarySnapshot()` + `groupScope()`（来源卡 → 组 → 成员 → 书，唯一入口，支持 `include` / `maxCards` / 传快照避免重复读盘）、**口径层** `groupMetrics()`（所有「多少条 / 多少 token」只在这里产生，五段 + 派生量；`lorebookMetrics` 变薄包装、旧输出逐字不变）、**检查层** `runGroupChecks()` + `GROUP_CHECKS` 注册表（一份清单、一套 issue 形状、一个 `byCheck` 计数）。`checkGroup` 只剩 6 行薄包装（以前 48 行 if 序列），宿主端点、工具与既有测试一行未改。**第五个功能作为验收用例落地**：新增 **cross-card** 类别 —— 跨卡触发词冲突（只报涉及 ≥2 个来源的）、卡内条目与共享书逐字重复、组内五维漂移、成员卡全 auto，外加 **lore-quality**（共享书自身条目质量）；这五项只改了注册表，五个既有工具的口径代码**一行未动**（`tests/group-layer-guard.test.mjs` 钉住）。入口仍是 `cc_group_check` / `cc_groupCheck`（新增 `checks` 参数与 `byCheck`），界面把体检结果从「一行拼接」改成按 error / warn 分组的清单。顺带：组体检读盘 `1+2N` → `1+N`；记录一个已知不可达检查（`type-unknown` —— `normalizeGroup` 早把未知 type 归一到 `other`）。测试 735 → **852 项（22 个文件）**。**需重启 dsh（桌面版重启应用）→ 刷新页面**。
 

@@ -2,6 +2,47 @@
 
 `dsh-cc-studio` 的版本变更记录，倒序排列（最新在上）。README 只保留最近几条，完整历史在本文件。
 
+## 0.12.0
+
+**破坏性变更：兼容下限抬到 dsh `0.2.0-rc.2`，`0.1.x` 整条线不再支持。** 预设投递收敛成唯一一份 `presets/cc.patch.yml`，旧的目录形态模板与「挂载时安装」整套代码删除。
+
+### 目标与现象
+
+插件自 0.3.6 起同时维护两代预设投递：≥ `0.1.7-alpha.1` 走随包补丁层的声明行，≤ `0.1.6-alpha.2` 走挂载时写入 `<DSH_HOME>/.agent-presets/cc`。两代并存的代价是两条长期成本：
+
+1. **两份清单必须逐字同步**（`presets/cc.patch.yml` 与 `presets/cc/agent.cordis.yml`），一次漏改就是两代行为分叉；
+2. **`apply()` 在挂载时写用户目录**，为此要维护安装记录侧车、`planPresetInstall` 四条规则、`supportsDeclaredPresets` 判窄逻辑、`DSH_CC_STUDIO_PRESET_INSTALL` / `config.presetInstall` 两个开关，以及一整套「绝不覆盖用户改动」的不变量测试。
+
+而插件实际声明的最低版本是 `0.1.5-rc.1`，其中 `0.1.7` 起已完全不需要目录形态 —— 也就是说，这套成本只为 `0.1.5` / `0.1.6` 两代存在。
+
+### 决策
+
+从 0.12.0 起**不再兼容 0.2.0 以下的 dsh**，下限取唯一实测过的 `0.2.0-rc.2`。核对过的事实（npm registry 包树 + 内置组合文件）：
+
+- `0.2.0-rc.2` 已是声明行世代（`dsh-agent-preset` / `dsh-agent-preset-registry` 都在 `dsh-web-app` 的依赖里），删掉目录投递不影响任何受支持版本；
+- `0.2.0-rc.2` 的内置 `standard` **没有** `time-context` / `tool-schedule` / `tool-plugin-market` 三行；其 `dsh-base` 与 `dsh-web-app` 组合也没有挂 `time-context` —— 所以现有 `time-context` 行在 0.2.0 上不会重复注册；
+- `@deepseek-ai/dsh-tool-schedule` 与 `@deepseek-ai/dsh-plugin-market` 在 `0.2.0-rc.2` 的依赖里**不存在**（`dsh-tool-schedule@0.2.0-rc.2` 在 npm 上直接 404）——**砍掉 0.1.x 并不能把这两行加回来**，要把它们补回必须把下限抬到 `0.2.1-rc.2`。
+
+### 变更
+
+- **删 `presets/cc/`**（`preset.yml` + `agent.cordis.yml`，旧的目录形态模板，约 350 行重复清单）。`presets/cc.patch.yml` 成为唯一载体，顶部注释与「有意差异」块改写为「下限 0.2.0-rc.2 的依赖里没有这两个包；要加回来先抬下限」。
+- **删宿主半的安装子系统**（`lib/index.js`，约 240 行）：`installCcPreset` / `planPresetInstall` / `supportsDeclaredPresets` / `presetSourceRoot` / `presetTargetRoot` / `sha256` / `PRESET_*` 常量 / 安装记录侧车全部移除；`apply()` 不再调用安装、不再写 `globalThis.__CC_PRESET_INSTALL__`，签名去掉未用的 `config`；导出表同步删 5 个符号，`node:crypto` 的 `createHash` import 一并删除。
+- **文档与注释按单载体重写**：`presets/cc.patch.yml` 里 0.1.x 时代的注释（workflow-worker-thread、alpha.2 新增行、两份清单同步）改成事实陈述 + 保留教训；`README.md` / `README_EN.md` 的兼容矩阵、权限披露（5 目录 / 2 环境变量 → 4 目录 / 1 环境变量）、安装与卸载说明、FAQ 同步；`AGENTS.md` 删 §2.5、重写 §2.4 与 §4 表格、删「改预设必须改两处」等规则。
+- **测试收敛 + 防回流守卫**：`tests/preset-install.test.mjs` 从 85 项降到 53 项（删安装决策/幂等/用户改动/开关/native 让位等 7 节，保留行集快照、prompt 变量白名单、STORE 契约、README 版本守卫），新增两道源码级守卫 —— `lib/index.js` / `lib/agent.js` 不得再出现 `installCcPreset` / `.agent-presets` 等旧标识符，`presets/cc/` 不得复活；`tests/cc-detection.test.mjs` 改为从 `cc.patch.yml` 读预设显示名；`tests/data-root.test.mjs` 改断言「宿主半不再导出 `presetTargetRoot`」。全仓 **1041 → 1008 项**（25 个文件不变）。
+- `package.json`：`version` → `0.12.0`；`dsh.compatibility.dsh` → `>=0.2.0-rc.2`；`dshReleases` 删 6 个 0.1.x 条目，保留 `0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3` / `0.2.1-rc.5`。`lib/agent.js` 的 `BUILD` 同步为 `0.12.0`。
+
+### 行为变化（升级前必读）
+
+- **`0.1.x` 上装新版后 `CC 模式` 会从 roster 消失**：那几代 dsh 不读补丁层声明，插件也不再往目录里写。宿主半其余功能（RPC、草稿、角色库、工坊）在 `0.1.7` 线上仍可用，但已不在支持范围内。
+- **老用户机器上残留的 `<DSH_HOME>/.agent-presets/cc`**：不再被读、也不再被写，插件不会替你删；确认不需要后手动删除即可（README 中英双向都写了命令行）。
+- 用户 profile 里若残留 `config.presetInstall` / `DSH_CC_STUDIO_PRESET_INSTALL`：前者成为未知 config 键（dsh 忽略），后者不再被读取，都可以删掉。
+
+### 生效方式
+
+- **重启 dsh（桌面版退出并重新打开应用）**：宿主半代码与预设行都只在启动时组合。
+- 回退方式：装回 `0.11.5` 即恢复 0.1.x 支持（数据目录不变，无需迁移）。
+- 验证：`npm test` 全绿（25 个文件、1008 项）；建议在 `0.2.0-rc.2` 与 `0.2.1-rc.5` 各跑一遍隔离实例 E2E（roster 里 `cc` 无 broken、三挂载点 active、34 个 RPC 端点），再在真实 GUI 确认 `CC 模式` 可选。
+
 ## 0.11.5
 
 **dsh `0.2.1-rc.5` 兼容性实测：接口面零变化，无需改代码；兼容矩阵补 `0.2.1-rc.5`。**
