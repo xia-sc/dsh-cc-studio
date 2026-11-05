@@ -2,6 +2,38 @@
 
 `dsh-cc-studio` 的版本变更记录，倒序排列（最新在上）。README 只保留最近几条，完整历史在本文件。
 
+## 0.12.2
+
+**品牌视觉：新增插件图标（`icon.svg`）与 README logo。** DSH 设置页「已安装插件」里，本插件此前显示的是宿主默认的蓝色点图标；现在换成自己的「角色卡 + 面具 + 创作火花」图标。
+
+### 目标与现象
+
+用户在 DSH 设置 →「已安装插件」里看到 `@xia-sc/dsh-cc-studio` 用的是默认图标（与同样没图标的 MCP 管理器一样），而同屏的 Decision 3.0（`@xia-sc/dsh-decision`）与语言策略（`@xia-sc/dsh-language-policy`）都显示各自的图标。同时 README 没有任何品牌视觉。
+
+### 机制（已核对）
+
+DSH 的插件图标约定是 **manifest 顶层字段 + 包内文件**，不是 `dsh.*` 子字段：
+
+```json
+{ "icon": "./icon.svg", "files": ["...", "icon.svg"] }
+```
+
+官方 `@deepseek-ai/dsh-experimental-auto-review` 等包即此写法（`icon.svg` 为自包含 SVG，36×36 viewBox）；同作者的 `dsh-decision` / `dsh-language-policy` 也照此发布。缺这个字段就回落到宿主默认图标。
+
+### 变更
+
+- **新增根目录 `icon.svg`**（64×64，自包含、无外部引用）：紫罗兰渐变底 + 白色角色卡（卡头 / 面具 / 正文占位）+ 琥珀创作火花；颜色沿用插件的 UI 主色 `#7c5cff`，与胶囊、设置页的 🎭 语义一致。
+- **`package.json`**：加顶层 `"icon": "./icon.svg"`，`files` 加 `"icon.svg"`（否则 npm 包不带它，图标只在本地生效）。
+- **新增 `assets/branding/`**：三套方案的 SVG（主方案 A、胶囊方案 B、徽章方案 C）、透明底 mark、16–512 全尺寸 PNG、`favicon.ico`、深浅背景预览图，以及可复现的生成脚本（本地渲染服务器 + Playwright 截图 + Pillow 缩放）。**该目录不进 npm 包**。
+- **README.md / README_EN.md**：顶部加居中的 logo（GitHub raw 绝对 URL，保证 GitHub 与 npm 页面都能显示）。
+- 版本号四处同步（`package.json` / `README` / `README_EN` / 本文件），`lib/agent.js` 的 `BUILD` 同步为 `0.12.2`。
+
+### 生效方式
+
+- **图标：重启 dsh（桌面版退出并重新打开应用）** —— 插件清单在启动时读取 manifest。
+- **README：推送后 GitHub 立即可见；npm 页面在发版同步后更新。**
+- 图标本身不影响任何运行时行为；不需要动数据目录或预设。
+
 ## 0.12.1
 
 **dsh `0.2.2-rc.1` 兼容性实测：必须适配 —— CC 模式原本会整份 broken。** 预设删掉已消失的 `list-agents` 子入口行，子代理的「指定模型」键按两代 dsh 双写；兼容矩阵补 `0.2.2-rc.1`。

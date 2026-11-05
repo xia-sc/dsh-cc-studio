@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="CC 角色卡工坊">
+  <defs>
+    <linearGradient id="bgC" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2b1e5c"/>
+      <stop offset=".6" stop-color="#3a2a7a"/>
+      <stop offset="1" stop-color="#4a3596"/>
+    </linearGradient>
+    <linearGradient id="hexC" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#a08bff"/>
+      <stop offset=".5" stop-color="#7c5cff"/>
+      <stop offset="1" stop-color="#5b3df5"/>
+    </linearGradient>
+    <linearGradient id="headC" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7c5cff"/>
+      <stop offset="1" stop-color="#6444f0"/>
+    </linearGradient>
+    <linearGradient id="starC" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffe0a3"/>
+      <stop offset="1" stop-color="#ffb347"/>
+    </linearGradient>
+    <filter id="shadowC" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#120a30" flood-opacity=".55"/>
+    </filter>
+    <radialGradient id="glowC" cx=".5" cy=".2" r=".7">
+      <stop offset="0" stop-color="#8a6bff" stop-opacity=".35"/>
+      <stop offset="1" stop-color="#8a6bff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="116" fill="url(#bgC)"/>
+  <rect width="512" height="512" rx="116" fill="url(#glowC)"/>
+
+  <!-- 工坊徽章外框 -->
+  <path d="M256 88 L401.5 172 L401.5 340 L256 424 L110.5 340 L110.5 172 Z"
+        fill="none" stroke="url(#hexC)" stroke-width="10" stroke-linejoin="round"/>
+
+  <!-- 徽章内的角色卡 -->
+  <g filter="url(#shadowC)">
+    <rect x="196" y="146" width="120" height="174" rx="18" fill="#ffffff"/>
+    <rect x="210" y="160" width="92" height="34" rx="11" fill="url(#headC)"/>
+    <circle cx="228" cy="177" r="9" fill="#ffffff" fill-opacity=".92"/>
+    <rect x="243" y="169" width="44" height="7" rx="3.5" fill="#ffffff" fill-opacity=".88"/>
+
+    <!-- 面具 -->
+    <path d="M214 232 C 214 219 225 212 237 214 L 246 217 L 255 214 C 267 212 278 219 278 232
+             C 278 252 266 272 246 281 C 226 272 214 252 214 232 Z"
+          fill="none" stroke="#3b2a86" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <ellipse cx="231" cy="239" rx="10" ry="7" fill="#3b2a86" transform="rotate(-8 231 239)"/>
+    <ellipse cx="261" cy="239" rx="10" ry="7" fill="#3b2a86" transform="rotate(8 261 239)"/>
+
+    <rect x="214" y="292" width="84" height="8" rx="4" fill="#d9d2f5"/>
+  </g>
+
+  <!-- 创作火花 -->
+  <g transform="translate(330 158)">
+    <path d="M0 -26 C 2.5 -8 8 -2.5 26 0 C 8 2.5 2.5 8 0 26 C -2.5 8 -8 2.5 -26 0 C -8 -2.5 -2.5 -8 0 -26 Z"
+          fill="url(#starC)"/>
+  </g>
+
+  <!-- 工坊刻度 -->
+  <g fill="#a08bff" fill-opacity=".75">
+    <rect x="210" y="352" width="26" height="7" rx="3.5"/>
+    <rect x="243" y="352" width="26" height="7" rx="3.5"/>
+    <rect x="276" y="352" width="26" height="7" rx="3.5"/>
+  </g>
+</svg>
