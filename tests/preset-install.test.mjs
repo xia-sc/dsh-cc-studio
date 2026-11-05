@@ -78,9 +78,16 @@ const blockOf = (id) => {
   check('没有已下线的 workflow-worker-thread 行（0.3.1 事故回归）', !/name:\s*'@deepseek-ai\/dsh-workflow-worker-thread'/.test(patchText), '');
 
   const spawn = blockOf('tool-subagent');
-  check('tool-subagent（spawn）开了 modelSelectionSettings', /modelSelectionSettings:\s*true/.test(spawn), (spawn.split('\n')[0] || 'missing').trim());
+  // 0.2.2-rc.1 把 dsh-tool-subagent 的 `modelSelectionSettings` 拆成
+  // `modelSelection` + `modelDiscovery`（rc.5 及更早只有旧键）。预设必须两个世代**双写**：
+  // 只写旧键在新版上静默少能力，只写新键在老版上同样静默少能力，两种都既不报错也不 broken。
+  check('tool-subagent（spawn）新键 modelSelection + modelDiscovery 都在',
+    /modelSelection:\s*true/.test(spawn) && /modelDiscovery:\s*true/.test(spawn), (spawn.split('\n')[0] || 'missing').trim());
+  check('tool-subagent（spawn）同时保留旧键 modelSelectionSettings（兼容 0.2.0-rc.2 / 0.2.1.x）',
+    /modelSelectionSettings:\s*true/.test(spawn), (spawn.split('\n')[0] || 'missing').trim());
   const fork = blockOf('tool-subagent-fork');
-  check('tool-subagent-fork 不加 modelSelectionSettings（须与父代理同 provider/model）', fork !== '' && !/modelSelectionSettings/.test(fork), (fork.split('\n')[0] || 'missing').trim());
+  check('tool-subagent-fork 不加任何 modelSelection 键（须与父代理同 provider/model）',
+    fork !== '' && !/modelSelection|modelDiscovery/.test(fork), (fork.split('\n')[0] || 'missing').trim());
 
   const present = blockOf('present');
   check('present 行存在且指向 dsh-tool-present（0.3.4 补回）', /name:\s*'@deepseek-ai\/dsh-tool-present'/.test(present), (present.split('\n')[1] || 'missing').trim());
@@ -105,7 +112,7 @@ const blockOf = (id) => {
     'skill-filesystem', 'tool-skill', 'command-goal', 'tool-goal',
     'planning', 'plan-mode',
     'compaction', 'compaction-basic', 'command-compact', 'tool-result-pruner',
-    'delegation', 'tool-subagent-control', 'tool-subagent-list-agents', 'tool-subagent', 'tool-subagent-fork',
+    'delegation', 'tool-subagent-control', 'tool-subagent', 'tool-subagent-fork',
     'workflow-ptc', 'tool-workflow',
     'tool-ask-user', 'tool-todo', 'tool-web', 'present', 'tool-plugin-manager',
     'cc-agent',

@@ -15,7 +15,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 | Item | Value |
 | --- | --- |
 | Package | `@xia-sc/dsh-cc-studio` |
-| Version | `0.12.0` |
+| Version | `0.12.1` |
 | Compatibility & permissions | dsh `>=0.2.0-rc.2`, Node `>=22`, **zero runtime dependencies**; permission bounds in [Compatibility & permissions](#compatibility--permissions) |
 | Host RPC | `/dsh-cc-studio-rpc` (self-owned route — the official `connection.rpc.handle()` is unusable by an outside plugin; re-verified on every declared 0.2.x release) |
 | CC preset | `presets/cc.patch.yml` — a `@deepseek-ai/dsh-agent-preset` declaration row, the same delivery the built-in `standard` / `ptc` presets use (the only carrier since 0.12.0) |
@@ -32,7 +32,7 @@ This plugin supports **both `dsh web` (the CLI-launched Web GUI) and DSH Desktop
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
 
 # pin a version
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.12.0
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.12.1
 ```
 
 **Or from GitHub**:
@@ -45,7 +45,7 @@ dsh plugin --profile web add github:xia-sc/dsh-cc-studio
 
 > **Since 0.3.2 the package was renamed from `@dsh-plugins/dsh-cc-studio` to `@xia-sc/dsh-cc-studio`** (the former is not an npm scope this project owns, so it could not be published). If you installed the old name, remove it first as shown in "5. Update and uninstall"; `~/.dsh/cc-library/`, `~/.dsh/cc-drafts/` and your plugin settings are unaffected.
 
-- **Pin a version / branch**: `github:xia-sc/dsh-cc-studio#v0.12.0`, `...#master` (see the repo tags).
+- **Pin a version / branch**: `github:xia-sc/dsh-cc-studio#v0.12.1`, `...#master` (see the repo tags).
 - **`allowBuilds` notice**: this plugin has no `prepare` build script, so pnpm's build gate is normally not triggered; if pnpm still prints the notice, add the exact key it prints under `allowBuilds` in `~/.dsh/profiles/web/pnpm-workspace.yaml` and re-run.
 - **When an agent runs it inside a DSH session**: the write target is outside the session workspace, so switch file permissions to `danger-full-access` first. Running it yourself in a terminal has no such limit.
 
@@ -238,7 +238,7 @@ dsh-cc-studio/
 │                         #   5D echo, large editors, JSON/PNG/CHARX import/export/embed, lock banners + preview)
 ├── presets/
 │   └── cc.patch.yml      # patch layer 2: the CC preset declaration row (the only carrier since 0.12.0)
-├── tests/                # 25 files, 1008 assertions (not published with the package)
+├── tests/                # 25 files, 1009 assertions (not published with the package)
 │   ├── rpc-channel.test.mjs       # host-half RPC channel regression (fake ctx + real http), 67 assertions incl. the group endpoints, the cc_getGroup reply shape and the draft-lock matrix
 │   ├── preset-install.test.mjs    # single-carrier preset contract: row set snapshot, package names, prompt-variable whitelist, persona JSON hygiene, anti-relapse source guards, DSH STORE listing contract, 53 assertions
 │   ├── cc-detection.test.mjs      # source-level guards for CC Mode detection, 51 assertions
@@ -274,7 +274,7 @@ dsh-cc-studio/
 ## Development and tests
 
 ```bash
-npm test                                   # 25 files, 1008 assertions (twenty-five node scripts chained)
+npm test                                   # 25 files, 1009 assertions (twenty-five node scripts chained)
 node tests/rpc-channel.test.mjs            # only the host-half RPC channel regression (67 assertions)
 ```
 
@@ -292,7 +292,7 @@ The listing metadata (`dsh.compatibility`, `engines`, runtime dependencies) and 
 | Item | Value |
 | --- | --- |
 | DSH range | `>=0.2.0-rc.2` (`dsh.compatibility.dsh` in `package.json`). **The whole 0.1.x line is unsupported since 0.12.0** |
-| Per-release evidence | `dsh.compatibility.dshReleases` marks `0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3` / **`0.2.1-rc.5`** as `compatible`. Versions that were **never tested are not written** (`0.2.0-rc.1`, `0.2.1-alpha.1`, `0.2.1-rc.4` stay undeclared and show as unknown) instead of being claimed first and tested later |
+| Per-release evidence | `dsh.compatibility.dshReleases` marks `0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3` / `0.2.1-rc.5` / **`0.2.2-rc.1`** as `compatible`. Versions that were **never tested are not written** (`0.2.0-rc.1`, `0.2.1-alpha.1`, `0.2.1-rc.4` stay undeclared and show as unknown) instead of being claimed first and tested later |
 | Node.js | `engines.node: ">=22"` (verified on Node v26.9.0) |
 | Host form | `dsh web` (CLI) and **DSH Desktop (DeepSeek Harness Desktop)** are the same host + profile-bundles mechanism, **both supported** (differences and install steps: [7. Desktop](#7-desktop-deepseek-harness-desktop)) |
 | Client platform | `dsh.client.platform: "web"` — that is the **browser-half** platform tag, not the dsh profile name (`web` / `desktop` / …); Desktop and the CLI load the very same client bundle |
@@ -315,6 +315,8 @@ Disposable-Profile install / start / uninstall evidence lives in the `0.3.7` sec
 ## Changelog
 
 Full history lives in [CHANGELOG.md](./CHANGELOG.md) (Chinese). Latest:
+
+- `0.12.1` **dsh `0.2.2-rc.1` compatibility verified — adaptation required.** `@deepseek-ai/dsh-tool-subagent-control` dropped its `./list-agents` subpath in 0.2.2 (the `list_agents` tool now lives in the main entry), so the preset row `tool-subagent-list-agents` made the **whole CC preset `broken`** (visible in the roster, but selecting it could not build a session); in the same release `dsh-tool-subagent` split `modelSelectionSettings` into `modelSelection` + `modelDiscovery`. Fix: drop the dead row and write **both generations** of the model-selection keys (the old key serves 0.2.0/0.2.1, the new ones serve 0.2.2+; schemastery is non-strict, so the unknown key on either side is harmless). Every other contract change is a backward-compatible addition (webserver `resource`, client-modules `require.asset`, two system-prompt section orders, the base composition's `tool-executor` rows); `dsh-client-connection` is byte-identical. An isolated 0.2.2-rc.1 instance passed **32/32** E2E checks, and the client DOM checks covered the capsule, the full-screen workshop and the settings page with **0 console errors**. `dshReleases` now includes `0.2.2-rc.1`. **Restart dsh (or the desktop app) to apply.**
 
 - `0.12.0` **Breaking: the compatibility floor is now dsh `0.2.0-rc.2`**; the whole 0.1.x line is unsupported. Preset delivery collapsed into a single file, `presets/cc.patch.yml` (a declaration row, the same mechanism the built-in `standard` / `ptc` presets use): the legacy directory template and the "install into `<DSH_HOME>/.agent-presets/cc` on mount" code (`installCcPreset` / `planPresetInstall` / `supportsDeclaredPresets` plus the install-record sidecar) are gone, `apply()` no longer writes anything at mount, and both the `DSH_CC_STUDIO_PRESET_INSTALL` switch and the "two lists must stay byte-identical" maintenance burden went with them. Permission surface shrinks from 5 directories / 2 env vars to 4 / 1. Behaviour: on an unsupported dsh generation `CC Mode` simply does not appear (those generations never read declaration rows); an existing `~/.dsh/.agent-presets/cc` is no longer read or written and can be deleted by hand. `dshReleases` keeps only the tested `0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3` / `0.2.1-rc.5`. **Restart dsh (or the desktop app).**
 

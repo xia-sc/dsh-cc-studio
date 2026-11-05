@@ -14,7 +14,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 
 | 项目 | 值 |
 | --- | --- |
-| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.12.0` |
+| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.12.1` |
 | 兼容 | DSH `>=0.2.0-rc.2`（含**桌面版**）、Node `>=22`、**零运行依赖**；逐版本实测见 [兼容与权限](#兼容与权限) |
 | 落盘位置 | `<DSH_HOME>/cc-library/`（角色卡）、`<DSH_HOME>/cc-drafts/`（会话草稿；LLM 创作锁 `.lock.json` 与覆盖前备份 `backups/` 也在这里）；`DSH_HOME` 默认 `~/.dsh`，旧位置仍读得到 |
 | 文档 | 用户文档＝本文件；改代码前必读 [AGENTS.md](./AGENTS.md)；完整历史 [CHANGELOG.md](./CHANGELOG.md) |
@@ -42,7 +42,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
    dsh --profile <profile> --dump-config
    期望在 `# == @xia-sc/dsh-cc-studio` 那一层下看到两行：`id: dsh-cc-studio`（宿主行）与 `id: preset-cc`（CC 预设行）。
 4. 告诉用户重启：宿主行只在启动时组合 —— CLI 重启 `dsh web`，桌面版退出并重新打开应用。
-5. 重启后可选自检：在「CC 模式」会话里调任意一个 cc_* 工具，返回里带 "build": "0.12.0" 即说明新代码已加载
+5. 重启后可选自检：在「CC 模式」会话里调任意一个 cc_* 工具，返回里带 "build": "0.12.1" 即说明新代码已加载
    （这也是判断「改了但没重启」的唯一可靠依据）。
 6. 不要做的事：
    - 不要手工往 ~/.dsh/.agent-presets/ 里拷预设——受支持的 dsh 都不读那个目录（插件用随包声明层投递，拷了也不生效）；
@@ -58,9 +58,9 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 ```bash
 # 从 npm 安装（推荐）
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.12.0    # 锁定版本
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.12.1    # 锁定版本
 
-# 从 GitHub 源安装（可加 #v0.12.0 / #master 指定 tag / 分支）
+# 从 GitHub 源安装（可加 #v0.12.1 / #master 指定 tag / 分支）
 dsh plugin --profile web add github:xia-sc/dsh-cc-studio
 
 # 从本地仓库安装（开发 / 调试）：装出来是 link:，改 lib/*.js 重启即生效
@@ -167,7 +167,7 @@ dsh plugin --profile web remove @xia-sc/dsh-cc-studio       # 卸载（同时移
 
 | 项 | 值 |
 | --- | --- |
-| DSH 兼容范围 | `>=0.2.0-rc.2`；逐版本矩阵里 `0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3` / `0.2.1-rc.5` 为 `compatible`。**`0.1.x` 整条线自 0.12.0 起不再支持**；**没实测过的版本不写**（`0.2.0-rc.1` / `0.2.1-alpha.1` / `0.2.1-rc.4` 保持未声明） |
+| DSH 兼容范围 | `>=0.2.0-rc.2`；逐版本矩阵里 `0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3` / `0.2.1-rc.5` / `0.2.2-rc.1` 为 `compatible`。**`0.1.x` 整条线自 0.12.0 起不再支持**；**没实测过的版本不写**（`0.2.0-rc.1` / `0.2.1-alpha.1` / `0.2.1-rc.4` 保持未声明） |
 | 宿主形态 | `dsh web`（CLI）与 **DSH 桌面版**同一套宿主 + profile bundles 机制，**均支持** |
 | 客户端平台 | `dsh.client.platform: "web"` 是**浏览器半**的平台标识，与 profile 名（`web` / `desktop`）不是一回事；两者加载同一份客户端 bundle |
 | 运行依赖 / 生命周期脚本 | **都没有**。`lib/*.js` 只 `import` `node:` 内建与相对路径，随包补丁与预设是静态 YAML |
@@ -181,7 +181,7 @@ dsh plugin --profile web remove @xia-sc/dsh-cc-studio       # 卸载（同时移
 ## 开发与测试
 
 ```bash
-npm test                                    # 25 个文件、1008 项断言，全绿才算过
+npm test                                    # 25 个文件、1009 项断言，全绿才算过
 node tests/tools-contract.test.mjs          # 只跑 CC 工具链契约（125 项）
 node tests/group-layer-guard.test.mjs       # 只跑卡组层的耦合守卫（16 项）
 ```
@@ -192,6 +192,8 @@ node tests/group-layer-guard.test.mjs       # 只跑卡组层的耦合守卫（1
 ## 更新日志
 
 完整历史见 [CHANGELOG.md](./CHANGELOG.md)。最近几版大多是「另一个 LLM 以工具使用者身份跑回归」挖出来的问题：
+
+- `0.12.1` **dsh `0.2.2-rc.1` 兼容性实测：必须适配**。`@deepseek-ai/dsh-tool-subagent-control` 在 0.2.2 删掉了 `./list-agents` 子入口（`list_agents` 并进主模块），预设里那行 `tool-subagent-list-agents` 于是让**整份 CC 预设 broken**（roster 里看得到、选它组不出会话）；同时 `tool-subagent` 的 `modelSelectionSettings` 被拆成 `modelSelection` + `modelDiscovery`。修法：删该行、模型选择键两代双写（旧键对 0.2.0/0.2.1 生效，新键对 0.2.2+ 生效）。其余契约包变化都是向后兼容的新增（webserver `resource`、client-modules `require.asset`、system-prompt 两个段序、base 的 `tool-executor` 行）。隔离实例 E2E **32/32**、客户端胶囊/工坊/设置页 DOM 全通过、console 0 error。`dshReleases` 补 `0.2.2-rc.1`。**重启 dsh（桌面版重启应用）生效**。
 
 - `0.12.0` **破坏性变更：兼容下限抬到 dsh `0.2.0-rc.2`**，`0.1.x` 整条线不再支持。预设投递收敛成唯一一份文件 `presets/cc.patch.yml`（声明行，与内置 `standard` / `ptc` 同一种机制）：删掉旧的目录形态模板和「挂载时安装到 `<DSH_HOME>/.agent-presets/cc`」那套代码（`installCcPreset` / `planPresetInstall` / `supportsDeclaredPresets` 与安装记录侧车），`apply()` 不再写盘，`DSH_CC_STUDIO_PRESET_INSTALL` 环境变量与「两份清单必须逐字一致」的维护成本一起消失；权限面从 5 个目录 / 2 个环境变量降到 4 个目录 / 1 个。行为变化：`0.1.x` 上装新版后 `CC 模式` 会从 roster 消失（那代 dsh 不读补丁层声明）；已存在的 `~/.dsh/.agent-presets/cc` 不再被读写，可手动删除。`dshReleases` 只保留实测过的 `0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3` / `0.2.1-rc.5`。测试从 1041 项收敛到 **1008 项**。**重启 dsh（桌面版重启应用）生效**。
 

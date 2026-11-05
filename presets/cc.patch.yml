@@ -246,18 +246,20 @@
               - id: tool-subagent-control
                 name: '@deepseek-ai/dsh-tool-subagent-control'
 
-              - id: tool-subagent-list-agents
-                name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
-
-              # 对齐内置 standard（0.2.1 与 0.2.0 的这一行一致）：spawn 行此前漏抄 modelSelectionSettings。
-              # 该键在 dsh-tool-subagent 里是 `z.boolean().default(false)`，漏掉既不报错也不改 schema，
-              # 只是子代理的「指定模型」入口被静默关掉 —— 最难发现的那类漂移。
+              # 0.2.2-rc.1 把 dsh-tool-subagent 的 `modelSelectionSettings` 拆成
+              # `modelSelection` + `modelDiscovery`（rc.5 及更早只有旧键）。schemastery 非 strict，
+              # 未知键保留但不生效 —— 只写旧键在新版上「指定模型」入口静默消失，
+              # 只写新键在老版上同样消失。所以两个世代**新旧双写**：各自的旧/新键在对面
+              # 版本里只是无害的未知键，不报错、不 broken。漏这批键是最难发现的那类漂移
+              # （漏了既不报错也不改 schema，只是子代理的「指定模型」入口被静默关掉）。
               # fork 行故意不加：provider/model 必须等于父代理，继承的历史才能继续命中 KV cache。
               - id: tool-subagent
                 name: '@deepseek-ai/dsh-tool-subagent'
                 config:
                   provider: spawn
                   toolName: subagent
+                  modelSelection: true
+                  modelDiscovery: true
                   modelSelectionSettings: true
 
               - id: tool-subagent-fork

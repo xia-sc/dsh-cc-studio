@@ -2,6 +2,60 @@
 
 `dsh-cc-studio` 的版本变更记录，倒序排列（最新在上）。README 只保留最近几条，完整历史在本文件。
 
+## 0.12.1
+
+**dsh `0.2.2-rc.1` 兼容性实测：必须适配 —— CC 模式原本会整份 broken。** 预设删掉已消失的 `list-agents` 子入口行，子代理的「指定模型」键按两代 dsh 双写；兼容矩阵补 `0.2.2-rc.1`。
+
+### 目标与现象
+
+dsh 在 2026-11 发布 `0.2.2-rc.1`（本机桌面运行时实测版本号即 `0.2.2-rc.1`），而插件的 `dshReleases` 只写到 `0.2.1-rc.5`。按 AGENTS §4 的升级清单逐项实测后，发现这不是「接口面零变化」的例行版本：
+
+- **CC 模式在 roster 里可见，但带 broken 诊断，选它组不出会话**。`POST /api/agentPresets/list` 的实测返回是
+  `{"id":"cc","broken":"tool-subagent-list-agents (@deepseek-ai/dsh-tool-subagent-control/list-agents): never started"}`。
+  胶囊、工坊与设置页都正常，唯独 CC 模式本身挂不起来 —— 这正是 0.3.1 那类「一行写错 = 整个预设不能用」。
+
+### 根因
+
+`@deepseek-ai/dsh-tool-subagent-control@0.2.2-rc.1` 的 `package.json` **exports 已删掉 `./list-agents` 子路径**（只剩 `.`）：`list_agents` 工具被并进主入口，由 `lib/index.js` 里的 `registerListAgents()` 在挂载主模块时注册。dsh 自己的 `dsh-base/cordis.patch.yml` 与内置 `standard.patch.yml` 也同步删掉了 `tool-subagent-list-agents` 这一行。
+
+插件预设仍保留该行 → `dsh-agent-preset-registry` 的 `auditRows` 解析不到包 → 行判 failed → `mountPreset` 抛错 → `record.broken`。**能力没有丢**（主模块照常注册 `list_agents`），丢的是整份预设的可用性。
+
+### 修法（预设两处，运行时代码零改动）
+
+1. **删 `tool-subagent-list-agents` 行**（对齐 0.2.2 的 base / standard）：`list_agents` 能力由 `tool-subagent-control` 主行提供，不需要子入口。
+2. **`tool-subagent`（spawn）的模型选择键两代双写**：0.2.2-rc.1 把 `modelSelectionSettings: z.boolean().default(false)` 拆成 `modelSelection` + `modelDiscovery`；0.2.0-rc.2 / 0.2.1.x 只认旧键（已核对 rc.2 包源码 `const Config = z.object({ ... modelSelectionSettings ... })`）。schemastery 非 strict，**未知键保留但不生效**，所以三个键同时写是安全的：新版只认新键、老版只认旧键，漏写任一代都只是「子代理指定模型入口静默消失」。
+3. `tool-fs` 的 `applyPatch: false` **不用写**：0.2.2-rc.1 里默认值就是 `false`，不写等价；`tool-plugin-manager` 写死 `disabled: true` 也可接受（standard 改成了条件表达式，只差一个工具，不 broken）。
+4. `tool-schedule` / `tool-plugin-market` 保持原有的**有意差异**：两个包在 0.2.0-rc.2 里不存在，加回来会让下限版本整份 broken。
+
+### 实测结论（2026-11-05，桌面运行时 `0.2.2-rc.1`）
+
+1. **静态契约 diff（rc.5 npm tarball vs rc.1 asar 运行时逐文件 sha256）**：`dsh-client-connection`（宿主 + client）**逐字节相同**；`dsh-host-webserver`、`dsh-tools`、`dsh-system-prompt`、`dsh-client-modules`、`dsh-persona`、`dsh-agent-preset`、`dsh-agent-preset-registry`、`dsh-app-boot`、三个 UI 包与两个组合补丁都有改动，但全是**向后兼容的新增**：
+   - `host-webserver` 新增 Fetch `resource` 形态（`register` 的 handler、`registerFallback` 均可给 `{resource}`），既有 handler 路径不变；
+   - `client-modules` 的 `__ModuleLoader__.load({id, factory})` 协议与 id 精确匹配不变，只新增 `require.asset` / `resolveAsset`；
+   - `system-prompt` 新增 `TOOL_APPLY_PATCH` / `TOOL_SCHEDULE` 段序并把 `tools` 放进 `assemble()` 返回值（插件不消费 `assemble`）；prompt 变量仍只有 `provider` / `model`；
+   - `agent-preset-registry` 的 broken 判定（`auditRows`）不变，改的是投影句柄与 `select()` 的内部取数；
+   - 三个挂载点 `conversation.input.dock` / `shell.overlay` / `settings.section` 定义与 `ctx.slots.inject/register` 形态不变；
+   - `dsh-base` 新增 `tool-executor-native` / `tool-executor-ptc` 行、`fs-observation-policy` 置 `disabled: true`，并把 `tool-fs` 的 `applyPatch: false` 写进组合 —— 宿主自带，插件不需要感知。
+2. **隔离实例 E2E（`0.2.2-rc.1`，隔离 `DSH_HOME` / `HOME` / `USERPROFILE`）32/32 首跑全绿**：401/400/手法不匹配/`unknown-endpoint` 围栏、34 个 RPC 端点全部路由、草稿锁 active/stale/force（锁期间写入被拦且 `draftStatus.lock` 摘要正确）、PNG/CHARX 导出（PNG magic + `chara`/`ccv3` 双块、ZIP magic）、库保存/列出/重命名/载入、分组建组/组体检/共享书、客户端 bundle 200 且缺 `rev` 404。
+3. **客户端 DOM 实测**：Playwright 打开隔离实例 → 预设选择器里「CC 模式」可选中（无 broken）→ 输入框上方胶囊出现（`🎭 角色卡工坊 · 0 lore · 已导出`，证明 `conversation.input.dock` 挂载与 CC 探测生效）→ 点开全屏工坊（`shell.overlay`：五维/世界书/关系分组/共享世界书/实时 CCv3 预览/已存角色）→ 设置页「角色卡工坊」含「插件更新 · 当前版本 v0.12.0」与「LLM 创作保护」区块；整段会话 console **0 error / 0 warning**，无 `Failed to load plugins`。
+4. **修复前后对照**：同一隔离实例，改预设前 roster 里 `cc` 带上述 broken 诊断；改后 `cc` 无 broken，`pluginInventory` 里 `dsh-cc-studio` 与 `preset-cc` 两行均 `active`，且无「enabled 却未 active」的行。
+5. **`npm test` 全绿**：25 个文件、**1009 项断言**、0 失败；真实 `~/.dsh` 的 `cc-*` 未被写入。
+
+### 变更
+
+- `presets/cc.patch.yml`：删 `tool-subagent-list-agents` 行；`tool-subagent`（spawn）config 增 `modelSelection: true` / `modelDiscovery: true`，保留 `modelSelectionSettings: true`（两代双写），并补注释说明为什么必须同时写。
+- `tests/preset-install.test.mjs`：行集快照删 `tool-subagent-list-agents`；第 2 节断言从「只认 modelSelectionSettings」改为「新键两个都在 + 旧键保留」，fork 行断言改为「任何 modelSelection 键都不加」。测试 1008 → **1009 项**。
+- `package.json`：`version` → `0.12.1`；`dsh.compatibility.dshReleases` 补 `"0.2.2-rc.1": "compatible"`。
+- `README.md` / `README_EN.md`：逐版本矩阵补 `0.2.2-rc.1`；版本号与最近更新小节同步。
+- `AGENTS.md`：§2.4 的「当前基线」改为 `0.2.2-rc.1`，§4 矩阵加行并记录「exports 删除子入口 → 整份预设 broken」这个新坑。
+- `lib/agent.js` 的 `BUILD` 同步为 `0.12.1`（每次工具返回的 `build` 字段，测试钉住它与 `package.json` 同源）。
+
+### 生效方式
+
+- **重启 dsh（桌面版退出并重新打开应用）**：预设行只在启动时组合。只刷新页面不会修好 broken 的预设。
+- 升级后 `CC 模式` 立刻恢复可用；不需要改数据目录、不需要重装、不需要手动改 profile。
+- 复核材料：静态 diff 保留了两边包与逐文件 sha256 清单；隔离实例 E2E 是 32 项逐条结果，客户端有胶囊/工坊截图。
+
 ## 0.12.0
 
 **破坏性变更：兼容下限抬到 dsh `0.2.0-rc.2`，`0.1.x` 整条线不再支持。** 预设投递收敛成唯一一份 `presets/cc.patch.yml`，旧的目录形态模板与「挂载时安装」整套代码删除。

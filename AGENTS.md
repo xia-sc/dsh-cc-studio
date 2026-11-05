@@ -19,7 +19,7 @@ lib/draft-lock.js    98 行 ── **草稿锁层**（0.11.0）：锁归一 / TT
                               两半 import 它（锁文件 IO 仍由两半各一份；理由与家规见 §2.8）
 presets/cc.patch.yml     ── 补丁层 2：CC 预设的**声明行**（0.12.0 起是唯一载体；插件不往磁盘写预设）
 cordis.patch.yml         ── 补丁层 1：宿主组合补丁（insert 一个插件行）
-tests/*.test.mjs         ── 25 个测试文件、1008 项断言；**不随包发布**
+tests/*.test.mjs         ── 25 个测试文件、1009 项断言；**不随包发布**
 dist/*.zip               ── 历史发布包（按版本命名），不是构建产物，不要改
 .github/workflows/       ── CI：打 v* tag 自动发 npm（OIDC）+ 建 Release（正文抽自 CHANGELOG.md）
 .github/scripts/         ── release-notes.mjs：上面那个 Release 正文/标题的抽取脚本，可本地直接跑
@@ -83,16 +83,16 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
 
 改动前必读：
 
-- **唯一载体，改行就改快照**：`tests/preset-install.test.mjs` 第 3 节的行集快照把 31 行连 `cc-agent` 一起钉死，漏一行/多一行都直接红。`disabled` 行在注册表里既不 import 也不参与 `auditRows`，不会因为包没了被判死 —— 但**不要**靠 `disabled` 遮掩一个已经不存在的包。
+- **唯一载体，改行就改快照**：`tests/preset-install.test.mjs` 第 3 节的行集快照把 30 行连 `cc-agent` 一起钉死，漏一行/多一行都直接红。`disabled` 行在注册表里既不 import 也不参与 `auditRows`，不会因为包没了被判死 —— 但**不要**靠 `disabled` 遮掩一个已经不存在的包。
 - **一行坏掉的后果**：落在 `record.broken`（roster 里**仍看得到**「CC 模式」，但带诊断且组不出会话）。结论：**写错一个包名 = CC 模式不能用**。
-- **行集与 dsh 内置 `standard` 对齐（0.11.1 起，当前基线 `0.2.1-rc.5`）**：每一行都要与目标版本的 `@deepseek-ai/dsh-web-app/presets/standard.patch.yml` 逐行对得上，**有意差异只允许两处**，且必须写进预设文件末尾的注释块：
+- **行集与 dsh 内置 `standard` 对齐（0.11.1 起，当前基线 `0.2.2-rc.1`）**：每一行都要与目标版本的 `@deepseek-ai/dsh-web-app/presets/standard.patch.yml` 逐行对得上，**有意差异只允许两处**，且必须写进预设文件末尾的注释块：
   - `tool-schedule` —— `@deepseek-ai/dsh-tool-schedule` 是 0.2.1 才有的包；兼容下限 `0.2.0-rc.2` 只有 `dsh-schedule`，没有 tool 包 → 非 disabled 行解析不到包 = **整个预设 broken**。CC 模式也不需要定时任务。
   - `tool-plugin-market` —— `0.2.0-rc.2` 没有 `@deepseek-ai/dsh-plugin-market`；按家规「不拿 disabled 遮掩一个已经不存在的包」，同样不带。
   ⚠️ 想把这两行加回来，必须先把兼容下限抬到 `0.2.1-rc.2`（`package.json` 的 `dsh.compatibility` + `dshReleases` + README 矩阵 + 本文档 §4 一起改），别只改预设。
 - 预设里 `cordis:group` / `isolate` 的用法有解释性注释，别删。
 - **提示词变量只能用 `provider` / `model`（dsh ≥ 0.2.1-rc.2）**：0.2.1 的 `dsh-system-prompt` 注册表只剩这两个（工作目录改由 working-directory 服务以 runtime context 提供），而段文本插值对未知引用**严格抛错**、且发生在第一个模型请求之前 —— 写一个 `{{cwd}}` 的后果是「CC 模式每一轮都本轮运行失败」，但预设挂载、roster 与 broken 诊断全都正常（0.10.1 用户实机踩到，`--dump-config` 看不出来）。`tests/preset-install.test.mjs` 第 4 节把白名单钉死：出现白名单外的变量直接红。dsh 以后改注册表，先回来核对这张表，别在线上的模型请求里发现。
 - **模型可见的 JSON 卫生也是契约（0.10.2）**：DSH 的 DeepSeek provider 在流结束对 tool input 严格 `JSON.parse`，失败即 `MALFORMED_RESPONSE`，而默认 `retryableCodes` 不含它 → 模型偶发一个尾逗号就让整轮失败、工具根本不会被调用。persona 与五个写类工具（`cc_patch_character` / `cc_patch_world` / `cc_add_lorebook_entries` / `cc_patch_greetings` / `cc_patch_book_meta`）的 description 因此带着「严格 JSON + 一次 1-3 个字段、长字段分多次写」规则；`tests/tools-contract.test.mjs` ①f 与 `tests/preset-install.test.mjs` 会拦住把它删掉或只改一份的改动。别把这段当废话删掉。
-- ⚠️ 历史上真踩过的三种漂移：① **漏抄 `disabled`** —— `tool-ralph` 在 standard 里一直是 `disabled: true`，本预设从 0.3.x 抄过来时丢了它，于是 CC 模式多挂一个实验性长循环工具；② **多写 `disabled`** —— `skill-filesystem` / `tool-skill` 被误关，CC 模式静默没有技能目录与加载器（与 0.3.4 的 `present`、0.3.7 的 `command-goal` 同类）；③ **config 键随版本下线** —— `backgroundMode: continuable` 在 0.2.1 的 `dsh-tool-subagent` 里已不存在。加行前先对目标版本的 standard。
+- ⚠️ 历史上真踩过的**四种**漂移：① **漏抄 `disabled`** —— `tool-ralph` 在 standard 里一直是 `disabled: true`，本预设从 0.3.x 抄过来时丢了它，于是 CC 模式多挂一个实验性长循环工具；② **多写 `disabled`** —— `skill-filesystem` / `tool-skill` 被误关，CC 模式静默没有技能目录与加载器（与 0.3.4 的 `present`、0.3.7 的 `command-goal` 同类）；③ **config 键随版本下线** —— `backgroundMode: continuable` 在 0.2.1 的 `dsh-tool-subagent` 里已不存在；④ **上游删掉包子入口** —— 0.2.2-rc.1 把 `dsh-tool-subagent-control/list-agents` 并进主模块，`exports` 里连子路径都删了，预设里留着那一行 → `auditRows` 判 failed → **整份 CC 预设 broken**（0.12.1 修的；能力其实还在主模块里）。加行前先对目标版本的 standard，并确认 `package.json` 的 `exports` 还认这个子路径。
 
 ### 2.5 不写盘的底线：旧的目录安装已删除，别再带回来
 
@@ -205,6 +205,7 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
 | `0.2.0-rc.1` / `0.2.1-alpha.1` / `0.2.1-rc.4` | **未实测** | 不许写进矩阵（README 版本守卫的白名单里点名，断言数不变） |
 | `0.2.1-rc.3` | 正常（2026-10-26 实测） | **接口面零变化，无需适配**：插件依赖的契约包与 rc.2 **逐字节相同**（`dsh-host-webserver` / `dsh-client-connection` / `dsh-tools` / `dsh-system-prompt` / `dsh-agent-preset(-registry)` / `dsh-client-modules/lib/client.js` / `dsh-app-boot` / `dsh-agent-loop` / `dsh-persona` 等），内置 `standard` 预设也逐字节相同（行集不用重对齐）。rc.3 的真实改动都在插件不消费面：新增 `dsh-client-ui-entry-customization` 行、新 slot `conversation.session.header.views.actions`、埋点、`dsh-client-modules` 的 commit 常量。隔离实例 E2E **72/72**（34 端点、草稿锁 active/stale/force、JSON/PNG/CHARX 导出回导、roster `cc` 无 broken、客户端 bundle 200），真实 GUI 三 slot occupant 全 `active`。✅ `dshReleases` 已补精确 `compatible`。见 [CHANGELOG 0.11.4](./CHANGELOG.md) |
 | `0.2.1-rc.5` | 正常（2026-10-30 实测） | **接口面零变化，无需适配**：rc.5 asar 307 包全树 vs rc.3 npm tarball 逐个 sha256 —— 契约包、`standard` 预设、两个 `cordis.patch.yml`、三个挂载点定义全部**逐字节相同**；包清单零增删（31 个插件行全部可解析）；prompt 变量仍只有 `provider` / `model`。rc.5 的真实改动只有 4 处且都在插件不消费面（chat 的 `reasoningText()` 与 `reasoning.body.rawText`、conversation 的 View tooltip、slot 目录文档、client-modules 的 commit 常量）。隔离实例 E2E **72/72** + 客户端 DOM/i18n、真实 GUI 三 slot occupant 全 `active`。✅ `dshReleases` 已补精确 `compatible`（`0.2.1-rc.4` 未实测，不写）。见 [CHANGELOG 0.11.5](./CHANGELOG.md) |
+| `0.2.2-rc.1` | **必须适配**（0.12.1 起） | **上游删包子入口 → 整份预设 broken**：`@deepseek-ai/dsh-tool-subagent-control` 的 `exports` 删掉 `./list-agents`（`list_agents` 并进主模块 `lib/index.js` 的 `registerListAgents()`），预设里留着 `tool-subagent-list-agents` 行 → `auditRows` 判 failed → `record.broken`（roster 里看得到「CC 模式」、带诊断、组不出会话）。同时 `dsh-tool-subagent` 把 `modelSelectionSettings` 拆成 `modelSelection` + `modelDiscovery` → 预设**两代双写**。其余契约变化均为向后兼容新增：`dsh-client-connection` 逐字节相同；`host-webserver` 新增 Fetch `resource`、`client-modules` 新增 `require.asset`、`system-prompt` 新增两个段序并把 `tools` 放进 `assemble()`、`base` 新增 `tool-executor-native|ptc` 行、内置 `standard` 删 list-agents 行并给 `tool-fs` 写 `applyPatch: false`。隔离实例 E2E **32/32** + 客户端胶囊/工坊/设置页 DOM 实测。✅ `dshReleases` 已补精确 `compatible`。见 [CHANGELOG 0.12.1](./CHANGELOG.md) |
 
 > 0.1.x 整条线（含 0.1.5 / 0.1.6 / 0.1.7 各代）自 0.12.0 起不再支持；历史证据留在 CHANGELOG（0.2.22 / 0.3.1 / 0.3.4 / 0.3.6 / 0.3.7 / 0.12.0），不再进矩阵。
 
@@ -219,7 +220,7 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
 ## 5. 日常改动规则
 
 - **改任何 bug 都要补回归测试**，并在 `CHANGELOG.md` 顶部写一条：**现象 → 根因 → 修法 → 生效方式**（重启 `dsh web` / 刷新页面 / 两者），这是本仓库既有的写法，照抄。
-- **改预设行只改一处，但必须同步行集快照**：唯一载体是 `presets/cc.patch.yml` 的 `plugins`；`tests/preset-install.test.mjs` 第 3 节的行集快照钉死 31 行，改行/加行都要一起改快照（见 2.4）。**不要**再引入第二份清单或任何目录形态模板。
+- **改预设行只改一处，但必须同步行集快照**：唯一载体是 `presets/cc.patch.yml` 的 `plugins`；`tests/preset-install.test.mjs` 第 3 节的行集快照钉死 30 行，改行/加行都要一起改快照（见 2.4）。**不要**再引入第二份清单或任何目录形态模板。
 - **改落盘路径必须两半同步**：`dataRoots()` / `safeDraftFile()` 在 `lib/index.js` 与 `lib/agent.js` 各有一份同构实现；`tests/data-root.test.mjs` 校验两半输出一致 + 源码里不再有写死的 `homedir()/.dsh/cc-*`（见 2.6）。
 - **卡组相关（分组 / 共享书 / 组体检 / 组统计）的改动只动 `lib/group-layer.js`**：取数据走 `groupScope`、取数字走 `groupMetrics`、加检查往 `GROUP_CHECKS` 加一项 —— 别再往工具里塞 `readBookRaw` / 自己的 `for` 求和 / 自己 `issues.push` 体检结论（见 §2.7；`tests/group-layer-guard.test.mjs` 会拦下来）。**唯一仍需两半同步的是 IO**（`readLibrarySnapshot` / `groupScope` 的读盘编排 / 落盘根）。
 - `package.json` 的 `version`、`README`/`README_EN` 里的「当前版本」、`CHANGELOG.md` 顶部小节三者同步。
@@ -238,7 +239,7 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
 ## 6. 本地验证
 
 ```bash
-npm test          # 25 个文件：67 + 53 + 51 + 62 + 19 + 32 + 23 + 20 + 31 + 14 + 125 + 34 + 69 + 20 + 75 + 36 + 68 + 6 + 24 + 25 + 22 + 18 + 16 + 45 + 53 = 1008 项断言，全绿才算过
+npm test          # 25 个文件：67 + 54 + 51 + 62 + 19 + 32 + 23 + 20 + 31 + 14 + 125 + 34 + 69 + 20 + 75 + 36 + 68 + 6 + 24 + 25 + 22 + 18 + 16 + 45 + 53 = 1009 项断言，全绿才算过
 ```
 
 测试只跑纯函数与源码级守卫（不启动 dsh、不写真实用户目录），所以**还需要手工验证**：
