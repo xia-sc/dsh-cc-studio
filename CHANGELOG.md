@@ -2,6 +2,108 @@
 
 `dsh-cc-studio` 的版本变更记录，倒序排列（最新在上）。README 只保留最近几条，完整历史在本文件。
 
+## 0.12.4
+
+**0.12.3 只修对了判定层：胶囊仍然不消失。** 第二轮用真实 GUI 取证，定位到**渲染层订阅时序** —— `store.isCcMode` 已经是 false，胶囊组件却停在首帧的旧快照上。
+
+### 现象（0.12.3 之后仍可复现）
+
+进入 CC 会话（「测试cc模式草稿锁」）→ 胶囊出现；切到非 CC 会话（「角色卡工坊添加检查更新」）→ 胶囊**仍在**（4 秒后仍不消失）；再切一次才消失。与 0.12.3 修之前完全一样。
+
+### 取证方法（这次不靠推理）
+
+用本地 GUI 的浏览器会话（对本地 `~/.dsh` 的 browser-session 签名密钥生成 `dsh-auth-*` cookie，注入 Playwright）进真机，再从胶囊 DOM 上的 React fiber 读 `Capsule` 的 props / store / hook 链：
+
+- `store.getSnapshot()` = `{isCcMode:false, ccSessionId:<新会话>, ccSource:'projection'}` —— **判定层是对的**；
+- `Capsule` 的 `useState` 快照（fiber hook 链里那个 storeSnapshot）= `{isCcMode:true, currentSessionId:<旧 CC 会话>}` —— **组件没跟上**；
+- 在页面里手动调一次 `store.setSlotWarn(null)`（纯 emit、不改判定）→ 胶囊**立即消失** —— 订阅本身是好的，只是错过了那次 emit。
+
+### 根因
+
+React 的 passive effect 按**声明顺序**执行，而 `Capsule` 里 `useCcPreset` 的 effect 排在 `store.subscribe` 的 effect **之前**：
+
+1. 切会话 → 组件重渲染，首帧 `useState(function(){ return store.getSnapshot(); })` 拿到的是**切换前**的 store 快照（仍是旧 CC 会话的 `true`）；
+2. commit 后 effect 依次跑：`useCcPreset` 先写 store（`setSessionId(新)` 把 `isCcMode` 清成 false → emit），**此时订阅还没建立**，这次 emit 被丢掉；
+3. 订阅随后建立，但之后不再有 emit（会话投影已经稳定，主机确认也只写一次）→ 组件永远停在首帧的 `{true, 旧会话}` 上，胶囊不消失；
+4. 下一次切会话时组件重新挂载，首帧快照恰好已是正确的 `false` → 这就是「再切一次才消失」。
+
+（0.12.3 修的是「判定什么时候该翻成 false」；这一层修的是「判定翻成 false 之后界面怎么知道」。）
+
+### 一并包含 0.12.3 的判定层修复（该版本未单独发布，已包含在本版）
+
+- **状态带会话归属**：`store` 新增 `ccSessionId` / `ccSource`，`setSessionId()` 在会话 id 变化时立刻把 `isCcMode` 清成 false（并允许传 `null` 清空会话上下文）；
+- **两个写入口**：会话域 `applyCcVerdict(sessionId, isCc, source)`（结论必须归属当前会话，晚到的跨会话响应丢弃）、根域 `applyChromeCc(isCc)`（只能在无会话上下文时表态）；
+- **判定改三态**：`ccPresetOfValue()` 区分「未知（`undefined`）/ 确定没有预设（`null`）/ 有值」，未知时**必须**查主机 `cc_isCcMode`（带查询序号 + 归属校验），不再靠保持旧值把状态粘住；
+- **投影来源**：优先 `props.useProjection('agentPreset')`（dsh ≥ 0.2.2），回退 `useSessions().byId[id].projectionValues.agentPreset`。
+
+### 修法（`lib/client.js`）
+
+- 新增 `useStoreSnapshot(store)`：优先 `React.useSyncExternalStore(store.subscribe, store.getSnapshot)` —— 渲染时读最新快照，并在（layout 阶段的）订阅建立后**主动复查**，把订阅前错过的更新补上；老 React / 测试 harness 没有这个 API 时退回原来的 `useState + 订阅`。
+- `Capsule` / `Workshop` / `SettingsView` 全部改用它；`Capsule` / `Workshop` 里把它放在 `useCcPreset` **之前**（订阅先于写入，双保险）。
+- `Capsule` 的渲染条件加**会话一致性**：`sameSession = !!currentId && s.currentSessionId === currentId`，只有 `(!s.isCcMode || !sameSession) && !s.panelOpen` 才隐藏 —— 切会话那一帧的旧快照（属于上一个会话的 `true`）不会再点亮胶囊。
+
+### 变更
+
+- `lib/client.js`：`useStoreSnapshot` + 三个组件改造 + `Capsule` 的会话一致性判断。
+- `tests/cc-detection.test.mjs`：96 → **101** 项；新增渲染层源码守卫（`useStoreSnapshot` 存在且优先 `useSyncExternalStore`、Capsule/Workshop 先订阅后探测、渲染条件带会话一致性、不再手写 `useState(store.getSnapshot)` + `store.subscribe`），假 React harness 补 `useSyncExternalStore`。
+- `tests/draft-slot-sync.test.mjs`：假 React harness 同补 `useSyncExternalStore`。
+- 版本 0.12.3 → 0.12.4；`AGENTS.md` §3.3 增补渲染层家规；测试总数 1054 → **1059**。
+
+### 生效方式
+
+**只改客户端：刷新页面即可**（客户端 bundle 走内容哈希，刷新就会重新加载 `lib/client.js`）。宿主半与预设半没有改动。
+
+### 实测（真实 GUI，dsh 0.2.2-rc.1）
+
+- 同工作区 CC ↔ 非 CC 来回 **3 轮**：每次切换后 **+150ms 内胶囊正确消失**，进入 CC 会话后正确出现；
+- **跨工作区**切换（CC 会话 → 创造模式会话 → 切回）：同样正确；
+- 修复前对照（0.12.3）：切到非 CC 会话后 **4 秒**胶囊仍在。
+
+## 0.12.3
+
+**修 CC 模式的显示判定：切到非 CC 模式的会话后，胶囊不再「赖着不走」。** 判定逻辑重写成「带会话归属的三态状态机」——会话一换旧结论立刻作废，本地投影拿不到时**必须**问主机；不再出现「再切一次才消失」。
+
+### 现象
+
+用户实机复现：进入一个有 CC 模式的会话（「角色卡工坊」）→ 胶囊出现；切换到非 CC 模式的会话 → 胶囊**不消失**；再切一次非 CC 模式的会话 → 才消失。
+
+### 根因
+
+不是「投影字段读错」那类老问题（issue #5 已经修过），而是 CC 模式状态本身没有归属：
+
+1. **`store.isCcMode` 只是一个全局布尔，没有「它属于哪个会话」**。切会话时 `setSessionId()` 只改 `currentSessionId`、从不清 `isCcMode`，于是新会话直接继承了上一个会话的「是 CC 模式」。
+2. 旧判定 `decideCcMode()` 在「有会话、但会话投影还没到」时返回 `prevIsCc ? true : null` —— 一旦为 true 就**粘住**；投影什么时候到取决于列表/控制帧的时序，用户看到的就是「时好时坏」。
+3. 唯一的权威补救（`cc_isCcMode`）写在 `if(!isCcMode)` 分支里：只有「当前认为不是 CC」才去问主机。**从「是」切到「不是」这条路径永远问不到主机**，只能等下一次切换时投影恰好可用 —— 这正是「再切一次才消失」。
+4. `checkIsCcMode()` 的响应既没有会话归属校验、也没有查询序号：切会话期间晚到的回包会把上一个会话的结论写到新会话上；而 `_ccCheckInflight` 还会直接丢掉「同会话的第二次请求」。
+5. 切到新会话页（此时没有会话）时 `setSessionId()` 从不写 `null`，`currentSessionId` 永远停在上一个会话，根域实例一直拿旧会话判定，新会话页的预设芯片永远接管不了。
+
+### 修法（`lib/client.js`，重写 CC 模式探测）
+
+- **状态带归属**：store 新增 `ccSessionId` / `ccSource`（结论属于哪个会话、来自哪个来源），`isCcMode` 只当显示位。
+- **写入口只有两个，组件层不许直接写**：会话域 `store.applyCcVerdict(sessionId, isCc, source)`（结论必须归属于当前会话，跨会话/晚到的响应一律丢弃）与根域 `store.applyChromeCc(isCc)`（只能在「没有会话上下文」时表态，且「熄灭」只熄自己点亮的 `source === "dom"`）。
+- **会话切换 = 旧结论立刻作废**：`setSessionId()` 在 id 变化时把 `isCcMode` 清成 false、`ccSessionId` 清成 null；并允许传 `null`（会话域实例卸载 = 切到新会话页）。
+- **三态判定**：`ccPresetOfValue()` 把投影值分成「未知（`undefined`）/ 确定没有预设（`null`）/ 有值（`string`）」，`decideCcVerdict()` 据此出结论；未知时返回 `verdict:null` 并**必须**发起主机确认 —— 不再靠「保持旧值」掩盖。
+- **主机确认重写**：`checkIsCcMode()` 加查询序号 + 当前会话归属双重校验，查询失败一律不写；会话切换后本地投影不可用就 `force` 查询，并带 700 / 2000 / 4500ms 三次重试（等主机 `composedPreset` 就绪）。
+- **投影来源优先会话自身投影**：`props.useProjection("agentPreset")`（dsh ≥ 0.2.2，随会话自动跟随），回退 `useSessions().byId[id].projectionValues.agentPreset`（全版本）。
+- **`Capsule` 的 `inject` 显式带 `sessionId`**，不再只依赖 framework props。
+- 删掉 `sess.preset / presetId / agentPreset / mode` 那层「兜底」：那几个字段在 dsh 里从来不存在（`mode` 还是别的语义），只会制造假结论。
+
+### 变更
+
+- `lib/client.js`：CC 模式探测段整体重写（`decideCcMode` → `decideCcVerdict`，新增 `ccPresetOfValue` / `isCcPresetId` / `applyCcVerdict` / `applyChromeCc`）。
+- `tests/cc-detection.test.mjs`：从源码级守卫扩写成三层（纯函数判定表 + 假 React/假 RPC 的运行时切会话回归 + 源码守卫），51 → **96** 项断言；新增「CC 会话 → 非 CC 会话立刻变 false」「投影未知必须问主机」「晚到的跨会话响应被丢弃」「卸载后清空会话 id、新会话页芯片接管」「只靠 useProjection 也能判定」等回归。
+- `tests/draft-slot-sync.test.mjs`：根域实例的防闪退用例改用真实路径（`setSessionId` + `applyCcVerdict`）造状态。
+- `AGENTS.md` §3.3 重写 CC 模式探测的家规；测试总数 1009 → **1054**。
+- `package.json` / `README.md` / `README_EN.md` / `lib/agent.js` 的 `BUILD` 同步 0.12.3。
+
+### 生效方式
+
+**只改客户端：刷新页面即可**（重启 dsh 不是必需，但客户端 bundle 带内容哈希，硬刷新最稳）。宿主半与预设半没有改动。
+
+### 测试
+
+`npm test` 全绿：25 个文件、**1054 项断言**、0 失败。
+
 ## 0.12.2
 
 **品牌视觉：新增插件图标（`icon.svg`）与 README logo。** DSH 设置页「已安装插件」里，本插件此前显示的是宿主默认的蓝色点图标；现在换成自己的「角色卡 + 面具 + 创作火花」图标。

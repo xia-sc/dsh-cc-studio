@@ -18,7 +18,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 
 | 项目 | 值 |
 | --- | --- |
-| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.12.2` |
+| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.12.4` |
 | 兼容 | DSH `>=0.2.0-rc.2`（含**桌面版**）、Node `>=22`、**零运行依赖**；逐版本实测见 [兼容与权限](#兼容与权限) |
 | 落盘位置 | `<DSH_HOME>/cc-library/`（角色卡）、`<DSH_HOME>/cc-drafts/`（会话草稿；LLM 创作锁 `.lock.json` 与覆盖前备份 `backups/` 也在这里）；`DSH_HOME` 默认 `~/.dsh`，旧位置仍读得到 |
 | 文档 | 用户文档＝本文件；改代码前必读 [AGENTS.md](./AGENTS.md)；完整历史 [CHANGELOG.md](./CHANGELOG.md) |
@@ -46,7 +46,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
    dsh --profile <profile> --dump-config
    期望在 `# == @xia-sc/dsh-cc-studio` 那一层下看到两行：`id: dsh-cc-studio`（宿主行）与 `id: preset-cc`（CC 预设行）。
 4. 告诉用户重启：宿主行只在启动时组合 —— CLI 重启 `dsh web`，桌面版退出并重新打开应用。
-5. 重启后可选自检：在「CC 模式」会话里调任意一个 cc_* 工具，返回里带 "build": "0.12.2" 即说明新代码已加载
+5. 重启后可选自检：在「CC 模式」会话里调任意一个 cc_* 工具，返回里带 "build": "0.12.4" 即说明新代码已加载
    （这也是判断「改了但没重启」的唯一可靠依据）。
 6. 不要做的事：
    - 不要手工往 ~/.dsh/.agent-presets/ 里拷预设——受支持的 dsh 都不读那个目录（插件用随包声明层投递，拷了也不生效）；
@@ -62,9 +62,9 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 ```bash
 # 从 npm 安装（推荐）
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.12.2    # 锁定版本
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.12.4    # 锁定版本
 
-# 从 GitHub 源安装（可加 #v0.12.2 / #master 指定 tag / 分支）
+# 从 GitHub 源安装（可加 #v0.12.4 / #master 指定 tag / 分支）
 dsh plugin --profile web add github:xia-sc/dsh-cc-studio
 
 # 从本地仓库安装（开发 / 调试）：装出来是 link:，改 lib/*.js 重启即生效
@@ -196,6 +196,10 @@ node tests/group-layer-guard.test.mjs       # 只跑卡组层的耦合守卫（1
 ## 更新日志
 
 完整历史见 [CHANGELOG.md](./CHANGELOG.md)。最近几版大多是「另一个 LLM 以工具使用者身份跑回归」挖出来的问题：
+
+- `0.12.4` **接着修 CC 模式探测：0.12.3 判定层对了，但胶囊仍然不消失 —— 根因在渲染层**。真实 GUI 取证（用浏览器会话 cookie 进本地 GUI，从 React fiber 读组件的 store 快照）：`store.isCcMode` 已经是 `false`，但 `Capsule` 的 `useState` 快照仍停在首帧的 `true`；手动 emit 一次就消失 → 订阅错过了那次更新。原因是 React 的 passive effect 按声明顺序执行，`useCcPreset` 的写入 effect 排在 `store.subscribe` 之前：切会话时它先清掉 `isCcMode`（emit），订阅还没建立 → 更新被丢，之后不再有 emit → 胶囊停在旧快照，直到下一次切换重挂载。修法：组件统一走 `useStoreSnapshot`（`useSyncExternalStore` 优先，订阅建立后会复查快照），并把它放在 `useCcPreset` 之前；`Capsule` 渲染条件再加会话一致性（`s.currentSessionId === currentId`），切会话那一帧的旧快照不再点亮胶囊。真实 GUI 实测：同工作区 CC ↔ 非 CC 来回 3 轮、跨工作区切换，**+150ms 内都正确消失/出现**。测试 1054 → **1059 项**。**只改客户端：刷新页面生效**。
+
+- `0.12.3` **修 CC 模式探测：切到非 CC 会话后胶囊不再「赖着不走」**。现象是「进入 CC 会话（胶囊出现）→ 切到非 CC 会话（胶囊不消失）→ 再切一次才消失」。根因不是投影字段读错，而是状态没有会话归属：`isCcMode` 是全局布尔，切会话时从不清空；旧判定在「有会话但投影未到」时返回「保持 true」而粘住；唯一的主机确认又写在 `if(!isCcMode)` 分支里，**从「是」切到「不是」永远问不到主机**。修法：状态带 `ccSessionId` / `ccSource`，切会话即作废旧结论；判定改成三态（未知 / 确定没有预设 / 有值），未知时必须查 `cc_isCcMode`（带查询序号 + 会话归属校验，晚到的跨会话响应直接丢弃）；投影优先 `useProjection('agentPreset')`，回退 `useSessions` 列表投影。测试 1009 → **1054 项**（`cc-detection` 51 → 96，含假 React 的切会话运行时回归）。**只改客户端：刷新页面生效**（硬刷新最稳）。
 
 - `0.12.1` **dsh `0.2.2-rc.1` 兼容性实测：必须适配**。`@deepseek-ai/dsh-tool-subagent-control` 在 0.2.2 删掉了 `./list-agents` 子入口（`list_agents` 并进主模块），预设里那行 `tool-subagent-list-agents` 于是让**整份 CC 预设 broken**（roster 里看得到、选它组不出会话）；同时 `tool-subagent` 的 `modelSelectionSettings` 被拆成 `modelSelection` + `modelDiscovery`。修法：删该行、模型选择键两代双写（旧键对 0.2.0/0.2.1 生效，新键对 0.2.2+ 生效）。其余契约包变化都是向后兼容的新增（webserver `resource`、client-modules `require.asset`、system-prompt 两个段序、base 的 `tool-executor` 行）。隔离实例 E2E **32/32**、客户端胶囊/工坊/设置页 DOM 全通过、console 0 error。`dshReleases` 补 `0.2.2-rc.1`。**重启 dsh（桌面版重启应用）生效**。
 

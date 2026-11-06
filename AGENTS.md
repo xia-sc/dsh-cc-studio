@@ -12,14 +12,14 @@
 ```
 lib/index.js       2499 行 ── 宿主半：RPC 端点 + 草稿落盘 + 草稿锁拦截/备份 + 角色库 + 人物关系分组 + PNG/CHARX + 检查更新
 lib/agent.js       3132 行 ── 预设半：CC 模式的 33 个 Tool（只随 CC 预设挂载）
-lib/client.js      3314 行 ── 浏览器半：手写 bundle，胶囊(Capsule) + 工坊(Workshop) + 设置页(SettingsView)
+lib/client.js      3478 行 ── 浏览器半：手写 bundle，胶囊(Capsule) + 工坊(Workshop) + 设置页(SettingsView)
 lib/group-layer.js  624 行 ── **卡组层**（0.10.0）：卡组作用域 / 世界书分段统计 / 检查注册表 —— 纯函数、零 IO，
                               两半都 import 它。这是全仓**唯一一处「不写两份」的实现**（理由与家规见 §2.7）
 lib/draft-lock.js    98 行 ── **草稿锁层**（0.11.0）：锁归一 / TTL / 能不能写的**唯一实现** —— 纯函数、零 IO，
                               两半 import 它（锁文件 IO 仍由两半各一份；理由与家规见 §2.8）
 presets/cc.patch.yml     ── 补丁层 2：CC 预设的**声明行**（0.12.0 起是唯一载体；插件不往磁盘写预设）
 cordis.patch.yml         ── 补丁层 1：宿主组合补丁（insert 一个插件行）
-tests/*.test.mjs         ── 25 个测试文件、1009 项断言；**不随包发布**
+tests/*.test.mjs         ── 25 个测试文件、1059 项断言；**不随包发布**
 dist/*.zip               ── 历史发布包（按版本命名），不是构建产物，不要改
 .github/workflows/       ── CI：打 v* tag 自动发 npm（OIDC）+ 建 Release（正文抽自 CHANGELOG.md）
 .github/scripts/         ── release-notes.mjs：上面那个 Release 正文/标题的抽取脚本，可本地直接跑
@@ -179,9 +179,12 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
   - `conversation.input.dock` → `Capsule`（会话域；CC 模式下常驻）
   - `shell.overlay` → `Workshop`（根域；全屏/侧边工坊）
   - `settings.section` → `SettingsView`（设置页「角色卡工坊」）
-- **CC 模式探测**只有一份实现：`useCcPreset()`，优先级 **① 会话投影（`ccSessionIdOfProps(props)` 取到的会话 id 去 `useSessions().byId[id].projectionValues.agentPreset`）→ ② 预设芯片 DOM（`button[aria-haspopup="menu"]`）→ ③ 主机 RPC**，新会话页另有 1s 本地轮询兜底。**别再写第二份探测**（`tests/cc-detection.test.mjs` 有源码级守卫）。
-  - **`SessionListState` 没有 `current`**（字段集是 `ids` / `byId` / `phase`，后来的版本又加了 `projectionsBySession`）—— 本插件只准读这三个。会话 id 只能从 slot props 取：`props.sessionId` → `props.session.sessionId` → 对象兜底（用 `current` 会让投影权威失效，issue #5）。
-  - **两个挂载点共用一份 `store`**：`Capsule` 在会话域（有会话 id），`Workshop` 在根域（`shell.overlay`，**拿不到会话 id**）。根域实例只准把结论改成「是」，**不准写 `false`**（否则它每秒的 `evaluate()` 会把会话域刚判定的状态清掉，胶囊一闪一闪）。
+- **CC 模式探测**只有一份实现：`useCcPreset()`（0.12.3 重构）。**状态必须带会话归属**：`store` 里 `isCcMode` 只是显示位，真正记着「这个结论属于哪个会话」的是 `ccSessionId` / `ccSource`。真相来源按优先级：**① 会话自身投影**（`props.useProjection("agentPreset")`，dsh ≥ 0.2.2；`undefined` = 宿主没这个能力）→ **② 会话列表投影**（`useSessions().byId[id].projectionValues.agentPreset`，全版本）→ **③ 主机 RPC** `cc_isCcMode`（本地投影拿不到时**必须**查，不再被 `!isCcMode` 门住）。新会话页（没有会话上下文）只认预设芯片 DOM（`button[aria-haspopup="menu"]`），另有 1s 本地轮询兜底。**别再写第二份探测**（`tests/cc-detection.test.mjs` 有源码级守卫：纯函数判定表 + 假 React harness 的切会话运行时回归 + 源码守卫）。
+  - **判定是三态，不是布尔**：`ccPresetOfValue()` 把投影值分成「未知（`undefined`）/ 确定没有预设（`null`）/ 有值（`string`）」，`decideCcVerdict()` 据此出结论；**未知时绝不沿用上一个会话的结论**（返回 `verdict:null` 并去问主机）。旧代码在「有会话、投影未到」时返回 `prevIsCc ? true : null`，一旦为 true 就粘住 —— 那正是 0.12.3 修的 bug（进入 CC 会话 → 切到非 CC 会话胶囊不消失 → 再切一次才消失）。
+  - **会话切换 = 旧结论立刻作废**：`store.setSessionId(id)` 在 id 变化时把 `isCcMode` 清成 false、`ccSessionId` 清成 null（source=`pending`），由投影或主机重新确认；**允许传 `null`**（会话域实例卸载 = 切到新会话页，必须清掉，否则根域永远拿上一个会话判定、新会话页的预设芯片永远接管不了）。宁可短暂不显示，也不显示错的。
+  - **写入口只有两个**：会话域 `store.applyCcVerdict(sessionId, isCc, source)`（结论必须归属于**当前会话** —— 切会话期间晚到的 `cc_isCcMode` 响应会被丢弃）与根域 `store.applyChromeCc(isCc)`（只能在「没有会话上下文」时表态；「熄灭」只熄根域自己点亮的 `source === "dom"`）。**组件层不许直接写 `isCcMode`** —— 旧代码靠调用点的 `canConclude` 变量绕，正是 issue #5「胶囊一闪一闪」的温床。
+  - **组件读 store 必须走 `useStoreSnapshot()`（0.12.4）**：`useSyncExternalStore` 优先（订阅建立后会**复查**快照，补上订阅前错过的 emit），老 React / 测试 harness 退回 `useState + 订阅`；**且必须放在 `useCcPreset` 之前** —— React 的 passive effect 按声明顺序执行，反了就会丢掉「切会话时清 `isCcMode`」那次 emit：判定已经变 false、组件却停在首帧旧快照上，胶囊不消失（真实 bug，见 CHANGELOG 0.12.4）。`Capsule` 的渲染条件还要求**结论归属本会话**（`s.currentSessionId === currentId`），切会话那一帧的旧快照不许点亮胶囊。`tests/cc-detection.test.mjs` 有源码守卫（顺序、会话一致性、不许手写 `useState(store.getSnapshot)` + `subscribe`）。
+  - **`SessionListState` 没有 `current`**（字段集是 `ids` / `byId` / `phase`，后来的版本又加了 `projectionsBySession`）—— 本插件只准读这三个。会话 id 只能从 slot props 取：`props.sessionId` → `props.session.sessionId` → 对象兜底（用 `current` 会让投影权威失效，issue #5）；`Capsule` 的 `inject` 也显式把 `sessionId` 放进 props（不只依赖 framework props）。
   - **草稿槽 key 只能来自这个会话 id**：`pullDraft` 没有 key 就一次都不发（不许拿 `default` 顶替），节流按 key、切会话后回来的响应丢弃、主机回的 `key` 与点名的 key 不一致时不渲染只告警。`default` 槽只是「没有会话上下文」时的回退，**不是**当前会话的草稿。
 - 状态在 `store`（`createStore` + `subscribe/getSnapshot`）；设置存 `localStorage:dsh-cc-studio-settings`。
 - **草稿锁（0.11.0）**：锁数据只从 `cc_getDraft` 的 `draftStatus.lock` 读（`{owner,cardName,since,updatedAt,ageSec,ttlSec,stale,active}|null`）。`store` 新增 `lock` / `preview` / `llmDraft` / `llmWorld` / `llmDraftStatus` / `draftLock`；`isLockActive()` = `draftLock && lock?.owner==="llm" && !lock.stale`，`isReadOnly()` = `isLockActive() || !!preview`。**所有写入口（`updateDraft` / `pushDraftToHost` / `clearDraft` / `migrateSlot` / `renderRelationsToCard` / `syncDraftAfterPromote`）先过 `isReadOnly()` 才发 RPC**。载入/导入收到宿主的 `locked:true` → `enterPreview()`（首次进预览时存 `llm*` 快照；连续预览只换卡；退出预览恢复最新 LLM 草稿）；`pullDraft` 在预览期间只更新 `llm*`，**绝不动显示中的草稿**。设置开关关闭时所有写 RPC 带 `force:true`（等价旧行为）。`pushDraftToHost` 收到 `details.code="draft-locked"` 要刷新锁并提示「本次修改未写入」。
@@ -239,7 +242,7 @@ const inject = ["webServer", "connection", "agents", "agentPresets"];
 ## 6. 本地验证
 
 ```bash
-npm test          # 25 个文件：67 + 54 + 51 + 62 + 19 + 32 + 23 + 20 + 31 + 14 + 125 + 34 + 69 + 20 + 75 + 36 + 68 + 6 + 24 + 25 + 22 + 18 + 16 + 45 + 53 = 1009 项断言，全绿才算过
+npm test          # 25 个文件：67 + 54 + 101 + 62 + 19 + 32 + 23 + 20 + 31 + 14 + 125 + 34 + 69 + 20 + 75 + 36 + 68 + 6 + 24 + 25 + 22 + 18 + 16 + 45 + 53 = 1059 项断言，全绿才算过
 ```
 
 测试只跑纯函数与源码级守卫（不启动 dsh、不写真实用户目录），所以**还需要手工验证**：

@@ -19,7 +19,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 | Item | Value |
 | --- | --- |
 | Package | `@xia-sc/dsh-cc-studio` |
-| Version | `0.12.2` |
+| Version | `0.12.4` |
 | Compatibility & permissions | dsh `>=0.2.0-rc.2`, Node `>=22`, **zero runtime dependencies**; permission bounds in [Compatibility & permissions](#compatibility--permissions) |
 | Host RPC | `/dsh-cc-studio-rpc` (self-owned route — the official `connection.rpc.handle()` is unusable by an outside plugin; re-verified on every declared 0.2.x release) |
 | CC preset | `presets/cc.patch.yml` — a `@deepseek-ai/dsh-agent-preset` declaration row, the same delivery the built-in `standard` / `ptc` presets use (the only carrier since 0.12.0) |
@@ -36,7 +36,7 @@ This plugin supports **both `dsh web` (the CLI-launched Web GUI) and DSH Desktop
 dsh plugin --profile web add @xia-sc/dsh-cc-studio
 
 # pin a version
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.12.2
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.12.4
 ```
 
 **Or from GitHub**:
@@ -49,7 +49,7 @@ dsh plugin --profile web add github:xia-sc/dsh-cc-studio
 
 > **Since 0.3.2 the package was renamed from `@dsh-plugins/dsh-cc-studio` to `@xia-sc/dsh-cc-studio`** (the former is not an npm scope this project owns, so it could not be published). If you installed the old name, remove it first as shown in "5. Update and uninstall"; `~/.dsh/cc-library/`, `~/.dsh/cc-drafts/` and your plugin settings are unaffected.
 
-- **Pin a version / branch**: `github:xia-sc/dsh-cc-studio#v0.12.2`, `...#master` (see the repo tags).
+- **Pin a version / branch**: `github:xia-sc/dsh-cc-studio#v0.12.4`, `...#master` (see the repo tags).
 - **`allowBuilds` notice**: this plugin has no `prepare` build script, so pnpm's build gate is normally not triggered; if pnpm still prints the notice, add the exact key it prints under `allowBuilds` in `~/.dsh/profiles/web/pnpm-workspace.yaml` and re-run.
 - **When an agent runs it inside a DSH session**: the write target is outside the session workspace, so switch file permissions to `danger-full-access` first. Running it yourself in a terminal has no such limit.
 
@@ -319,6 +319,10 @@ Disposable-Profile install / start / uninstall evidence lives in the `0.3.7` sec
 ## Changelog
 
 Full history lives in [CHANGELOG.md](./CHANGELOG.md) (Chinese). Latest:
+
+- `0.12.4` **CC-mode detection, part two: the 0.12.3 fix corrected the decision layer but the capsule still lingered — the root cause was the render layer.** Real-GUI forensics (a browser session cookie into the local GUI; reading the component's store snapshot through its React fiber) showed `store.isCcMode === false` while `Capsule`'s `useState` snapshot was still the first frame's `true`; a manual no-op emit made the capsule disappear, proving the subscription had missed that update. React runs passive effects in declaration order, so `useCcPreset`'s write effect (which clears `isCcMode` and emits) ran before `store.subscribe` existed: the emit was lost, no later emit came, and the capsule stayed on the stale snapshot until the next session switch remounted the component. Fix: components read snapshots through `useStoreSnapshot` (`useSyncExternalStore` preferred — it re-checks after subscribing), placed **before** `useCcPreset`; `Capsule`'s render condition also requires session consistency (`s.currentSessionId === currentId`) so the old session's `true` cannot light the capsule during the switch frame. Verified on the real GUI: three CC ↔ non-CC rounds in the same workspace and a cross-workspace switch — the capsule disappears/appears correctly **within +150 ms**. Tests 1054 → **1059**. **Client only: refresh the page.**
+
+- `0.12.3` **CC-mode detection rework: the capsule no longer lingers after switching to a non-CC session.** Symptom: enter a CC session (capsule appears) → switch to a non-CC session (capsule stays) → switch again and it finally disappears. The cause was not a wrong projection field but the missing **session ownership** of the state: `isCcMode` was one global boolean and `setSessionId()` never cleared it, so the new session inherited the previous answer; the old decision kept `true` whenever the projection had not arrived yet; and the only authoritative fallback (`cc_isCcMode`) sat behind `if(!isCcMode)`, so the «is → is not» path could never ask the host. Now the state carries `ccSessionId` / `ccSource`, switching sessions invalidates the old answer immediately, the decision is three-valued (unknown / definitely no preset / a preset id) and **must** ask the host when unknown (query sequence + session ownership checks drop late cross-session replies), and projections prefer `useProjection('agentPreset')` with a `useSessions` list fallback. Tests 1009 → **1054** (`cc-detection` 51 → 96, including a fake-React session-switch regression). **Client only: refresh the page** (a hard refresh is safest).
 
 - `0.12.1` **dsh `0.2.2-rc.1` compatibility verified — adaptation required.** `@deepseek-ai/dsh-tool-subagent-control` dropped its `./list-agents` subpath in 0.2.2 (the `list_agents` tool now lives in the main entry), so the preset row `tool-subagent-list-agents` made the **whole CC preset `broken`** (visible in the roster, but selecting it could not build a session); in the same release `dsh-tool-subagent` split `modelSelectionSettings` into `modelSelection` + `modelDiscovery`. Fix: drop the dead row and write **both generations** of the model-selection keys (the old key serves 0.2.0/0.2.1, the new ones serve 0.2.2+; schemastery is non-strict, so the unknown key on either side is harmless). Every other contract change is a backward-compatible addition (webserver `resource`, client-modules `require.asset`, two system-prompt section orders, the base composition's `tool-executor` rows); `dsh-client-connection` is byte-identical. An isolated 0.2.2-rc.1 instance passed **32/32** E2E checks, and the client DOM checks covered the capsule, the full-screen workshop and the settings page with **0 console errors**. `dshReleases` now includes `0.2.2-rc.1`. **Restart dsh (or the desktop app) to apply.**
 

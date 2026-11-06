@@ -40,6 +40,8 @@ const React = {
   useEffect(fn) { effectQueue.push(fn); },
   useMemo(fn) { return fn(); },
   useRef(init) { return { current: init }; },
+  // 0.12.4：组件快照走 useSyncExternalStore（生产路径）；测试里只需返回当前快照。
+  useSyncExternalStore(subscribe, getSnapshot) { return getSnapshot(); },
 };
 
 // —— 全局替身：定时器全部收集起来不触发（否则 1.2s 的重试会掺进断言里）——
@@ -136,19 +138,29 @@ function capsProps(sid, preset) {
 check('① apply() 之后一次 cc_getDraft 都没发（旧代码会发 args={} → 主机回退 default 槽）',
   callsOf('cc_getDraft').length === 0, JSON.stringify(calls));
 
-// —— 2) 根域实例（shell.overlay）无权把 CC 状态清成 false ——
+// —— 2) 根域实例（shell.overlay）无权把会话域的结论清成 false ——
 {
-  store.setIsCcMode(true);
+  // 0.12.3：CC 模式的结论现在带会话归属（ccSessionId），所以这里用真实路径造状态：
+  // 先发布会话，再让「会话域」下结论 —— 而不是直接 setIsCcMode(true)（那只是根域的受限入口）。
+  const WARM = 'session-warmup';
+  store.setSessionId(WARM);
+  store.applyCcVerdict(WARM, true, 'projection');
+  const before = calls.length;
   const r = render(overlay.comp, { store, t });   // 根域：没有 sessionId / session / useSessions
   run(r.effects);
   check('② 根域实例渲染后 isCcMode 保持 true（旧代码在这里写成 false → 胶囊闪退）',
     store.getSnapshot().isCcMode === true, String(store.getSnapshot().isCcMode));
+  check('②c 根域实例自己的 evaluate 是纯本地判定（不发任何 RPC）',
+    calls.length === before, String(calls.length - before));
   // 1s DOM 轮询也要走同一判定
   const polls = intervals.slice();
   polls.forEach((x) => { try { x.fn(); } catch (e) {} });
   check('②b 根域实例的 1s 轮询也不会把 isCcMode 清成 false',
     store.getSnapshot().isCcMode === true, String(store.getSnapshot().isCcMode));
-  check('②c 没有会话上下文时不会去拉草稿', callsOf('cc_getDraft').length === 0, String(callsOf('cc_getDraft').length));
+  // 复位：② 里的轮询会触发全局 cc-mode-poll 的草稿拉取（CC 会话的正常行为），
+  // 它不属于根域实例，也不该干扰后面的计数。
+  store.setSessionId(null);
+  calls.length = 0;
 }
 
 // —— 3) 会话域实例：会话 id 来自 slot props，拉草稿必须带上它 ——
