@@ -83,7 +83,7 @@ const contractProbe = [
   ['cc_patch_character', { name: '契约探针' }],
   ['cc_patch_world', { timeline: '很久很久以前，这里还没有名字。', geo: '旧校舍、天台与西侧楼梯。' }],
   ['cc_add_lorebook_entries', { entries: [{ name: '旧校舍', keys: ['旧校舍'], content: '@@depth 4\n旧校舍的窗户永远关不严。' }] }],
-  ['cc_patch_greetings', { first_mes: '你来了。' }],
+  ['cc_patch_greetings', { first_mes: '[时间：2026-11-09 08:00]\n你来了。' }],
 ];
 let contractBad = [];
 for (const [n, a] of contractProbe) {
@@ -135,7 +135,7 @@ r = await call('cc_get_card');
 check('②f 补 1 条共创条目后 step=5（世界书完成态 = ≥5 条且 ≥1 条共创）',
   r.workflow.step === 5 && r.workflow.manualLoreCount === 1, 'step=' + r.workflow.step + ' manual=' + r.workflow.manualLoreCount);
 
-r = await call('cc_patch_greetings', { first_mes: '黄昏的教室只剩下你们两个人。', alternate_greetings: ['早晨的值日表', '天台的夜巡'], group_only_greetings: ['白天的面具'] });
+r = await call('cc_patch_greetings', { first_mes: '[时间：2026-11-09 17:30]\n黄昏的教室只剩下你们两个人。', alternate_greetings: ['早晨的值日表', '天台的夜巡'], group_only_greetings: ['白天的面具'] });
 check('②g 问候语齐 → step=6 且 readyToValidate=true', r.workflow.step === 6 && r.workflow.readyToValidate === true, 'step=' + r.workflow.step);
 
 r = await call('cc_validate');
@@ -357,7 +357,7 @@ await call('cc_add_lorebook_entries', { entries: [
   { name: '第二条', keys: ['天台'], content: '@@depth 4\n天台风大' },
   { name: '第三条', keys: ['广播'], content: '@@depth 4\n广播室' },
 ] });
-await call('cc_patch_greetings', { first_mes: '你来了。', alternate_greetings: ['一', '二'], group_only_greetings: ['群聊'] });
+await call('cc_patch_greetings', { first_mes: '[时间：2026-11-09 08:00]\n你来了。', alternate_greetings: ['一', '二'], group_only_greetings: ['群聊'] });
 r = await call('cc_validate');
 check('⑨i R1：校验通过后 hint 与 next 同源（hint 不再说「下一步必须 cc_validate」，也不再写 6/6）',
   r.workflow.step === 7 && /7\/7/.test(r.workflow.hint) && !/必须 cc_validate/.test(r.workflow.hint),

@@ -4,6 +4,32 @@
 
 格式：最新版本按「新增 / 修复」写；更早的小节按现象 → 根因 → 修法 → 生效方式。
 
+## 0.16.0
+
+**时间锚定（防时间漂移）：强制写入 System Prompt 与历史后置指令。** 反馈：LLM 写卡/续写时没有时间观念 —— 上一段还是早晨，下一段就把事情推到晚上。
+
+### 新增
+
+- CC 模式制作角色卡时**强制**写入 `data.system_prompt`（时间规则）与 `data.post_history_instructions`（生成前时间自检）：
+  - `system_prompt` 要求每段回复以 `[时间：YYYY-MM-DD HH:MM]` 开头、时间只能向前、推进幅度与剧情匹配、不得无过渡跳时段，并保留了 ST 默认的基础句；
+  - `post_history_instructions` 要求生成前依次检查「上一段时间戳 → 本段经过多久 → 是否跨时段」，不输出自检过程，最后以新时间戳开头。
+- **工具兜底**：`cc_patch_character` 在模型没传两个字段时**自动写入模板**（显式传了就以调用方为准）；`cc_patch_greetings` 新增 `startTime`，`first_mes` 缺时间戳时自动补 `[时间：…]` 前缀。
+- `cc_validate` 新增三条 error（缺 system_prompt 时间锚定 / 缺 post_history 时间自检 / first_mes 无时间戳），并提示「system_prompt 会替换 ST 的 Main Prompt」。
+- 导出层零改动：两个字段是 V2/V3 标准字段，PNG（chara/ccv3）、JSON、CHARX 原样携带；ST 默认 `prefer_character_prompt` / `prefer_character_jailbreak` 开启，导入即生效。
+
+### 说明（有效性）
+
+提示词约束是**软约束**：能显著降低「早晨→夜晚」式漂移（每段时间戳进入对话历史，下一轮有显式锚点；post-history 注入在生成点附近），但**不能保证 100%** —— 上下文截断、模型忽略指令、剧情需要大幅跳时仍可能漂移。更强的运行时方案（ST 变量宏 `{{getvar}}/{{setvar}}`、Character's Note/depth_prompt、世界书 constant 时间条目）列为后续，不进本期默认。
+
+### 测试
+
+- 新增 `tests/time-anchor.test.mjs`（14 项）：模板与正则、自动写入且不覆盖定制、`startTime` 补前缀且不重复、validate 三条 error 与补齐后通过、V2 投影保留两个字段。
+- `tests/tools-contract.test.mjs` / `tests/shared-book.test.mjs` 的 seed 卡补 `first_mes` 时间戳（强制校验的预期变化）。
+
+### 生效方式
+
+**宿主 + 预设都有改动：重启 `dsh web`（预设行）并刷新页面。**
+
 ## 0.15.1
 
 **一键导入本机 SillyTavern；修复 JPG/WebP 封面导入失败与错误误报。**

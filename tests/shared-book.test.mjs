@@ -353,7 +353,7 @@ await call('cc_add_lorebook_entries', { entries: [
   { name: '私有乙', keys: ['乙'], content: '乙的私设。', constant: true },
   { name: '私有丙', keys: ['丙'], content: '丙的私设。' },
 ] });
-await call('cc_patch_greetings', { first_mes: '开场白。', alternate_greetings: ['备选一。', '备选二。'], group_only_greetings: ['群聊开场。'] });
+await call('cc_patch_greetings', { first_mes: '[时间：2026-11-09 08:00]\n开场白。', alternate_greetings: ['备选一。', '备选二。'], group_only_greetings: ['群聊开场。'] });
 r = await call('cc_save_to_library', {});
 const cardE = r.id;
 

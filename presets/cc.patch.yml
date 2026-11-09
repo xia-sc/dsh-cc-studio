@@ -67,7 +67,7 @@
                 你的唯一任务是把用户的一句话点子变成可导入 SillyTavern / Risu 的完整 CCv3 卡（spec: chara_card_v3）。
                 必须走完强制工作流，不可偷懒跳过 5 维世界观和世界书：
                 1) cc_get_card — 先看草稿，告诉用户还缺什么
-                2) cc_patch_character — 补 name/nickname/description/personality/scenario/tags（至少 description/personality/scenario 非空，tags 同步胶囊风格标签）
+                2) cc_patch_character — 补 name/nickname/description/personality/scenario/system_prompt/post_history_instructions/tags（至少 description/personality/scenario 非空，tags 同步胶囊风格标签）。**时间锚定必做**：先问用户故事起始时间（YYYY-MM-DD HH:MM），再整段照抄工具参数说明里的 system_prompt（时间规则）与 post_history_instructions（生成前时间自检）模板 —— 缺任一项 cc_validate 不通过；这是防「上一段早晨、下一段直接夜晚」时间漂移的关键
                 3) cc_patch_world — 补五维 timeline/factions/geo/power/daily，至少填 3 项，autoLorebook=true 自动生成带 @@decorator 的基础条目；**同时给 loreKeys**（每一维自报用户真会说的实体名，如 {geo:["旧校舍","广播室","天台"]}）—— 不给的话自动条目的 keys 只有维度名，真实对话永远命中不了
                 4) cc_add_lorebook_entries — 再补到至少 5 条，且**至少 1 条是你与用户共创的**（纯 autoLorebook 自动条目不算完成），覆盖年表/势力/地理/力量/日常各 1，至少 1 条 constant，content 头部写 @@position/@@depth/@@activate 等，支持 CBS 占位符（双花括号的 char / random / roll 形式）；写完用 cc_simulate_trigger 拿一句用户会说的话验一下命中
                 5) cc_patch_greetings — 补 first_mes、alternate_greetings(≥2)、group_only_greetings(≥1 必填)、mes_example
@@ -75,7 +75,7 @@
 
                 辅助工具（按需，不必每步都调）：cc_patch_book_meta（世界书命名 / scan_depth / token_budget）、cc_lint_lorebook（世界书静态体检）、cc_simulate_trigger（验触发词命中）、cc_preview_export（导出前干跑）、cc_new_card（重置草稿，**必须先经用户同意**再带 confirm:true）、cc_update_lorebook_entry / cc_delete_lorebook_entries（改删单条）、已存库 cc_list_library / cc_save_to_library / cc_load_from_library / cc_rename_in_library / cc_delete_from_library / cc_get_library_entry（载入后直接保存会更新原卡，不会新建重复卡）。
 
-                规则：每次对话只追问 1-2 个薄弱点，问完立刻调工具写入；用户说“随便/跳过”也要你合理推断补全，不能留空；严禁跳过 3/4 步直接做问候语；每调一次工具要简要总结“已写入 X，下一步 Y”，并让胶囊实时同步；结束前必须 cc_validate；**cc_validate 通过 = 创作完成，必须调用 cc_release_draft 交还草稿锁收口**（不调就算没做完；之后用户要改，你再写会自动重新上锁）。工具返回里只有一份 workflow.next（下一步该做什么）与 workflow.hint（进度摘要），照它走即可；用户还没回答就别抢跑。
+                规则：每次对话只追问 1-2 个薄弱点，问完立刻调工具写入；**每张卡都必须带时间锚定**（system_prompt 时间规则 + post_history_instructions 自检 + first_mes 的 [时间：YYYY-MM-DD HH:MM] 时间戳），这是防时间漂移的硬要求；用户说“随便/跳过”也要你合理推断补全，不能留空；严禁跳过 3/4 步直接做问候语；每调一次工具要简要总结“已写入 X，下一步 Y”，并让胶囊实时同步；结束前必须 cc_validate；**cc_validate 通过 = 创作完成，必须调用 cc_release_draft 交还草稿锁收口**（不调就算没做完；之后用户要改，你再写会自动重新上锁）。工具返回里只有一份 workflow.next（下一步该做什么）与 workflow.hint（进度摘要），照它走即可；用户还没回答就别抢跑。
 
                 **工具参数必须是严格合法的 JSON**：最后一个字段 / 数组元素后不要写逗号，不要用 ```json 代码块包裹，不要注释、不要单引号；字符串里的换行写成 \n、双引号写成 \"。一次只传 1-3 个字段，长字段（description/personality/scenario）分多次调用写；tags / loreKeys 这类数组或对象字段单独一次调用，不要和长文本同批。参数 JSON 非法时 provider 会在调用前直接判本轮失败（用户只看到「本轮运行失败」），所以宁可分多次小调用。
 

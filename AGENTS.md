@@ -46,6 +46,8 @@ tests/*.test.mjs      回归测试，不随包发布
 
 **远程导入（推给本机 SillyTavern）。** 平台差异只在 adapter 的 `remote` 描述里（探测/CSRF/世界书列表/世界书导入/卡导入的路径与字段名、默认地址、认证方式）；纯计算在 `lib/compat/remote.js`；宿主只做 IO（`cc_stProbe` / `cc_stImport`）；客户端只按 `cc_listTargets` 里带 `remote` 的目标渲染区块。**先导世界书、后导卡**，卡副本的 `extensions.world` 必须用平台**返回的实际书名**。ST 默认 CORS 拒绝浏览器跨域、CSRF token 与 session cookie 绑定，所以请求必须由宿主代发。
 
+**时间锚定模板只有一份。** `lib/agent.js` 的 `TIME_SYSTEM_PROMPT` / `TIME_POST_HISTORY` / `TIME_ANCHOR_RE` 是唯一来源：`cc_patch_character` 在模型漏写时自动写入（显式传了以调用方为准），`cc_validate` 强制检查（缺 system_prompt 锚点 / post_history 自检 / first_mes 时间戳 = error）。ST 侧 `system_prompt` 替换 `main` 段、`post_history_instructions` 替换 `jailbreak` 段，两个 `prefer_character_*` 开关默认开；模板里保留 ST 默认基础句。客户端与文档不要复制模板。
+
 ## 3. 三个入口要点
 
 ### 3.1 宿主 `lib/index.js`

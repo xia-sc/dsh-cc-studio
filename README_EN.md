@@ -8,7 +8,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 
 | Item | Value |
 | --- | --- |
-| Package / version | `@xia-sc/dsh-cc-studio` `0.15.1` |
+| Package / version | `@xia-sc/dsh-cc-studio` `0.16.0` |
 | Compatibility | DSH `>=0.2.0-rc.2` (incl. Desktop), Node `>=22`, **zero runtime dependencies**; see [Compatibility & permissions](#compatibility--permissions) |
 | Storage | `<DSH_HOME>/cc-library/` (cards), `cc-drafts/` (session drafts + creation lock + backups), `cc-groups/` (relationship groups), `cc-books/` (group shared lorebook); `DSH_HOME` defaults to `~/.dsh` |
 | Docs | This file; read [AGENTS.md](./AGENTS.md) before changing code; history in [CHANGELOG.md](./CHANGELOG.md) |
@@ -33,8 +33,8 @@ Manual install / update:
 
 ```bash
 dsh plugin --profile web add @xia-sc/dsh-cc-studio          # install / update
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.15.1   # pin a version
-dsh plugin --profile web add github:xia-sc/dsh-cc-studio#v0.15.1  # from a GitHub tag
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.16.0   # pin a version
+dsh plugin --profile web add github:xia-sc/dsh-cc-studio#v0.16.0  # from a GitHub tag
 dsh plugin --profile web remove @xia-sc/dsh-cc-studio        # uninstall
 ```
 
@@ -85,6 +85,14 @@ Six-step workflow with co-creation rules (every step asks first; a complete lore
 | Shared lorebook | `cc_get_shared_book` / `cc_patch_shared_book` / `cc_promote_shared_entries` / `cc_apply_shared_book` |
 | Saved library | `cc_list_library` / `cc_save_to_library` / `cc_load_from_library` / `cc_delete_from_library` / `cc_rename_in_library` / `cc_get_library_entry` |
 
+### Time anchoring (anti time-drift, 0.16.0)
+
+The usual failure is "previous scene in the morning, next scene at night". CC Mode now writes two ST fields into every card (`cc_validate` refuses without them):
+
+- `system_prompt`: every reply must start with `[时间：YYYY-MM-DD HH:MM]`; time only moves forward, matches what happened, and never jumps between times of day without a transition; an explicit user instruction ("the next day") wins. The template keeps ST's default base sentence.
+- `post_history_instructions`: a pre-generation check — what was the previous timestamp, how long did this scene take, does it cross a time period; the check itself is not printed, only the new timestamp.
+
+`first_mes` also carries a starting timestamp (`cc_patch_greetings` can fill it from `startTime`). ST has `prefer_character_prompt` / `prefer_character_jailbreak` on by default, so it works right after import; **if you customised the Main Prompt in ST, the card's system_prompt replaces it** (the template keeps the base sentence). This is a soft constraint: it greatly reduces drift, but cannot guarantee 100%.
 ### Relationships & shared lorebook
 
 - **Relationships**: direction × type × strength; nodes are saved cards or in-card NPCs; group membership lives in the library entry's `meta.groupId`. Rendered into the `<!-- cc-relations:begin … -->` marker section, idempotent and previewable.
@@ -118,6 +126,7 @@ npm test    # all test files, serial; must be green
 
 Full history: [CHANGELOG.md](./CHANGELOG.md) (0.12.0 onwards).
 
+- `0.16.0` **Time anchoring (anti drift)**: every card gets a `system_prompt` (replies start with `[时间：…]`, time only moves forward) and `post_history_instructions` (pre-generation check), plus a starting timestamp in `first_mes`; validation fails without them.
 - `0.15.1` **Added**: one-click import into a local SillyTavern from the export dialog (host does the CSRF session → lorebook first → bind by the returned name → PNG card; same-name books are skipped, existing cards are never overwritten; optional cover and Basic auth). **Fixed**: JPG/WebP covers are converted to PNG, and a non-PNG cover / unknown error no longer masquerades as "SillyTavern not detected".
 - `0.14.2` A saved card's shared book follows that card's own `meta.groupId` (fetched with `cc_getBook`, shown with a group badge).
 - `0.14.1` Export is decoupled from loading: a card-row Export exports that saved card (`cardId`).
