@@ -6,7 +6,7 @@
 
 ## 0.15.1
 
-**新增：一键导入本机 SillyTavern。修复：选 JPG/WebP 封面导入失败、错误还被误报成「未检测到 SillyTavern」。**
+**一键导入本机 SillyTavern；修复 JPG/WebP 封面导入失败与错误误报。**
 
 ### 新增
 
