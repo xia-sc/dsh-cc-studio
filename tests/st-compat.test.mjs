@@ -275,6 +275,14 @@ const CARD = {
   check('⑦c 返回给客户端的 draft 里**没有**这个 ST 专有字段（草稿不动，同「并入本卡」家规）',
     withWorld.value && withWorld.value.draft && withWorld.value.draft.data.extensions.world === undefined,
     JSON.stringify(withWorld.value && withWorld.value.draft && withWorld.value.draft.data.extensions.world));
+  // 0.13.0：卡内世界书的装饰器必须翻译成 ST 读取的 extensions.*（ST 的 convertCharacterBook 不解析 content）
+  check('⑦c2 导出副本的卡内世界书写入 extensions.position（@@position after_desc → 1），content 保留原注解',
+    ccv3 && ccv3.json.data.character_book.entries[0].extensions
+    && ccv3.json.data.character_book.entries[0].extensions.position === 1
+    && ccv3.json.data.character_book.entries[0].content.startsWith('@@position'),
+    JSON.stringify(ccv3 && ccv3.json.data.character_book.entries[0].extensions));
+  check('⑦c3 原卡（CARD）没有被加 extensions（只在导出副本上做）',
+    CARD.data.character_book.entries[0].extensions.position === undefined, '');
 
   const noWorld = await rpc('cc_exportPng', { sessionId: 'st-1' });
   const ccv3No = pngTextChunks(Buffer.from((noWorld.value || {}).b64 || '', 'base64')).find((c) => c.keyword === 'ccv3');
@@ -364,15 +372,15 @@ const CARD = {
 // ⑧ 客户端半：绑定是「导出时算、只在副本上写」
 {
   const hasKey = (k) => clientSrc.indexOf('"' + k + '"') >= 0;
-  check('⑧ 客户端半有 stWorldName 与 export.stWorldBound 词条（zh/en 各一份，四处导出都用它）',
-    /function stWorldName\(\)/.test(clientSrc)
+  check('⑧ 客户端半有 exportWorldName 与 export.stWorldBound 词条（zh/en 各一份，四处导出都用它；0.14.2 跟随导出作用域）',
+    /function exportWorldName\(\)/.test(clientSrc)
     && (clientSrc.match(/"export\.stWorldBound":/g) || []).length === 2
     && (clientSrc.match(/t\("export\.stWorldBound"/g) || []).length === 4,
     'keys=' + (clientSrc.match(/"export\.stWorldBound":/g) || []).length + ' uses=' + (clientSrc.match(/t\("export\.stWorldBound"/g) || []).length);
-  check('⑧b 三个 RPC 导出（PNG / 写入 PNG / CHARX）都传 stWorld',
-    (clientSrc.match(/args\.stWorld=bound/g) || []).length === 3, String((clientSrc.match(/args\.stWorld=bound/g) || []).length));
-  check('⑧c JSON 导出也在导出副本上写绑定（out===state.draft 时先深拷贝）',
-    /if\(out===state\.draft\) out=JSON\.parse\(JSON\.stringify\(state\.draft\)\);/.test(clientSrc), '');
+  check('⑧b 四处导出（JSON / PNG / 写入 PNG / CHARX）都传 stWorld',
+    (clientSrc.match(/args\.stWorld=bound/g) || []).length === 4, String((clientSrc.match(/args\.stWorld=bound/g) || []).length));
+  check('⑧c JSON 导出收口到宿主 cc_exportJson（0.13.0：绑定/投影只在宿主 compat/adapters 一处实现）',
+    /rpc\("cc_exportJson"/.test(clientSrc), '');
   check('⑧d 三条导入路径都把 upgradedFrom 交给提示（JSON / PNG / CHARX），JSON 走宿主 cc_importFromJson',
     (clientSrc.match(/res\.value\.upgradedFrom/g) || []).length === 3 && /cc_importFromJson/.test(clientSrc),
     String((clientSrc.match(/res\.value\.upgradedFrom/g) || []).length));

@@ -1,371 +1,130 @@
-<div align="right">
-
-[中文](./README.md) | English
-
-</div>
-
-<div align="center">
-  <img src="https://raw.githubusercontent.com/xia-sc/dsh-cc-studio/master/assets/branding/png/logo-256.png" width="112" height="112" alt="CC Character Card Studio">
-</div>
-
 # dsh-cc-studio · CCv3 Character Card Studio
 
 [![npm version](https://img.shields.io/npm/v/@xia-sc/dsh-cc-studio?color=%237c5cff)](https://www.npmjs.com/package/@xia-sc/dsh-cc-studio)
 
-> From a one-line idea to an importable `chara_card_v3` for SillyTavern / Risu. Built for "only an idea, weak worldbuilding".
+> From a one-line idea to a `chara_card_v3` you can import into SillyTavern / Risu. Built for "I have the idea, the world is thin".
 
-A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen fusion workshop, and the `CC Mode` preset turns 33 LLM Tools into a **ask-first, co-create** workflow that ends in a one-click `JSON / PNG / CHARX` export.
+A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen studio where the `CC Mode` preset drives 33 LLM Tools to **ask first, then write**, and finish with `JSON / PNG / CHARX` export — or a **one-click push into a local SillyTavern**.
 
 | Item | Value |
 | --- | --- |
-| Package | `@xia-sc/dsh-cc-studio` |
-| Version | `0.12.4` |
-| Compatibility & permissions | dsh `>=0.2.0-rc.2`, Node `>=22`, **zero runtime dependencies**; permission bounds in [Compatibility & permissions](#compatibility--permissions) |
-| Host RPC | `/dsh-cc-studio-rpc` (self-owned route — the official `connection.rpc.handle()` is unusable by an outside plugin; re-verified on every declared 0.2.x release) |
-| CC preset | `presets/cc.patch.yml` — a `@deepseek-ai/dsh-agent-preset` declaration row, the same delivery the built-in `standard` / `ptc` presets use (the only carrier since 0.12.0) |
-| Client mounts | `conversation.input.dock` (capsule) + `shell.overlay` (workshop) + `settings.section` |
-| Persistence | `<DSH_HOME>/cc-library/` (cards), `<DSH_HOME>/cc-drafts/` (per-session drafts), `<DSH_HOME>/cc-groups/` (relationship graphs), `<DSH_HOME>/cc-books/` (group shared lorebooks); `DSH_HOME` defaults to `~/.dsh`. Since 0.3.6 `DSH_HOME` is honoured, and the old `~/.dsh` location is **still read** (read-time fallback). The preset itself is **not** stored on disk — it ships as a composition declaration |
+| Package / version | `@xia-sc/dsh-cc-studio` `0.15.1` |
+| Compatibility | DSH `>=0.2.0-rc.2` (incl. Desktop), Node `>=22`, **zero runtime dependencies**; see [Compatibility & permissions](#compatibility--permissions) |
+| Storage | `<DSH_HOME>/cc-library/` (cards), `cc-drafts/` (session drafts + creation lock + backups), `cc-groups/` (relationship groups), `cc-books/` (group shared lorebook); `DSH_HOME` defaults to `~/.dsh` |
+| Docs | This file; read [AGENTS.md](./AGENTS.md) before changing code; history in [CHANGELOG.md](./CHANGELOG.md) |
 
 ## Install
 
-This plugin supports **both `dsh web` (the CLI-launched Web GUI) and DSH Desktop (DeepSeek Harness Desktop)**: they are the same dsh host, and the plugin is loaded from the profile's `dsh.profile.bundles` either way — same loading path, same feature set. The steps below use the `web` profile; the only differences on Desktop are the profile name and "restart the app instead of `dsh web`" — see **[7. Desktop](#7-desktop-deepseek-harness-desktop)** below.
+Paste the following to your agent (inside DSH, Claude Code, or Codex):
 
-### 1. From npm (recommended)
+```text
+Task: install the @xia-sc/dsh-cc-studio plugin for DSH.
+1. Find the profile name (directory under ~/.dsh/profiles/; Desktop usually "desktop", CLI web usually "web").
+2. Install: dsh plugin --profile <profile> add @xia-sc/dsh-cc-studio
+   If dsh is not on PATH: Desktop ships a CLI at <install dir>/resources/runtime/cli/bin/dsh.
+3. Verify the composition (read-only): dsh --profile <profile> --dump-config
+   Expect `id: dsh-cc-studio` (host row) and `id: preset-cc` (CC preset row) under `# == @xia-sc/dsh-cc-studio`.
+4. Restart: CLI restarts `dsh web`; Desktop quit and reopen the app.
+5. Do not copy presets into ~/.dsh/.agent-presets/ (not read), do not hand-edit the profile package.json, do not reinstall repeatedly.
+Permissions: the plugin writes <DSH_HOME>/cc-drafts/ and cc-library/; when an agent runs this inside DSH it needs danger-full-access.
+```
+
+Manual install / update:
 
 ```bash
-dsh plugin --profile web add @xia-sc/dsh-cc-studio
-
-# pin a version
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.12.4
+dsh plugin --profile web add @xia-sc/dsh-cc-studio          # install / update
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.15.1   # pin a version
+dsh plugin --profile web add github:xia-sc/dsh-cc-studio#v0.15.1  # from a GitHub tag
+dsh plugin --profile web remove @xia-sc/dsh-cc-studio        # uninstall
 ```
 
-**Or from GitHub**:
+`CC Mode` is delivered by the bundled declaration layer `presets/cc.patch.yml`; the plugin never writes preset files into the user directory. Uninstalling does **not** delete `cc-library/` or `cc-drafts/`.
 
-```bash
-dsh plugin --profile web add github:xia-sc/dsh-cc-studio
-```
-
-`dsh plugin` only forwards the remaining arguments to pnpm inside the profile directory (`~/.dsh/profiles/web`); afterwards dsh appends `@xia-sc/dsh-cc-studio` to that profile's `dsh.profile.bundles` automatically — no manual `package.json` edit.
-
-> **Since 0.3.2 the package was renamed from `@dsh-plugins/dsh-cc-studio` to `@xia-sc/dsh-cc-studio`** (the former is not an npm scope this project owns, so it could not be published). If you installed the old name, remove it first as shown in "5. Update and uninstall"; `~/.dsh/cc-library/`, `~/.dsh/cc-drafts/` and your plugin settings are unaffected.
-
-- **Pin a version / branch**: `github:xia-sc/dsh-cc-studio#v0.12.4`, `...#master` (see the repo tags).
-- **`allowBuilds` notice**: this plugin has no `prepare` build script, so pnpm's build gate is normally not triggered; if pnpm still prints the notice, add the exact key it prints under `allowBuilds` in `~/.dsh/profiles/web/pnpm-workspace.yaml` and re-run.
-- **When an agent runs it inside a DSH session**: the write target is outside the session workspace, so switch file permissions to `danger-full-access` first. Running it yourself in a terminal has no such limit.
-
-### 2. From a local clone (development / debugging)
-
-```bash
-git clone https://github.com/xia-sc/dsh-cc-studio.git
-cd dsh-cc-studio
-dsh plugin --profile web add .
-```
-
-Relative paths resolve against **the directory you run the command from** (dsh rewrites `.` / `./xxx` to an absolute path before handing it to pnpm, so it cannot silently link inside the profile). The result is a `link:` to the source tree: editing `lib/*.js` takes effect after a dsh web restart; editing only `lib/client.js` needs just a page refresh (with `pnpm run dev:web` running from the dsh checkout the client bundle is rebuilt, so not even that).
-
-### 3. CC preset (available with the plugin — no manual copy)
-
-After installing the plugin and restarting `dsh web`, `CC Mode` is selectable as a session mode (the preset id is always `cc` — the host's `isCcPreset()` and the browser's `CC_PRESET_ID` both compare against it exactly). **There is exactly one delivery mechanism, and it asks nothing of you:**
-
-`presets/cc.patch.yml` is listed as the second entry of `dsh.bundle.patch` in `package.json` (the first is the host plugin row). It inserts a `@deepseek-ai/dsh-agent-preset` **declaration** into the composition — exactly how the built-in `standard` / `ptc` / `minimal` / `cordis` presets ship — so `CC Mode` appears in the roster of whichever profile the plugin is installed into. The plugin **writes nothing to disk for presets**: no supported dsh version reads `<DSH_HOME>/.agent-presets/`.
-
-**Turning `CC Mode` off**: no need to remove the plugin — disable that row by id in your own patch layer (`<profile>/cordis.patch.yml`, or `$DSH_HOME/cordis.patch.yml` for every profile):
-
-```yaml
-- id: preset-cc
-  name: '@deepseek-ai/dsh-agent-preset'
-  disabled: true
-```
-
-> **0.12.0 removed the legacy directory install.** Releases before it also wrote `<DSH_HOME>/.agent-presets/cc` for the older dsh generation; that path, its `DSH_CC_STUDIO_PRESET_INSTALL` switch and its "never overwrite your edits" policy were removed together with support for dsh below `0.2.0-rc.2`. If such a directory still exists on your machine, nothing reads or writes it any more — delete it whenever you like:
->
-> ```powershell
-> Remove-Item "$env:USERPROFILE\.dsh\.agent-presets\cc" -Recurse -Force
-> ```
-
-### 4. Restart and verify
-
-```bash
-# host rows are composed at startup, so a dsh web restart is required
-dsh web
-
-# the composed config must contain the plugin row
-dsh --profile web --dump-config | grep dsh-cc-studio      # Windows: findstr
-
-# —— both checks below need a session cookie: trade the token dsh web printed ——
-TOKEN='<the token dsh web printed>'
-COOKIE=$(curl -s -D - -o /dev/null "http://127.0.0.1:3080/?token=$TOKEN" \
-  | sed -n 's/^[Ss]et-[Cc]ookie:[[:space:]]*\(dsh-auth-[^;]*\).*/\1/p' | head -1)
-
-# the client asset must return 200. Its URL looks like /plugins/??<pkg>/client.js&rev=<content hash>:
-# without ?? or without rev it is a 404, and rev changes whenever lib/client.js changes, so read it from the index.
-ASSET=$(curl -s http://127.0.0.1:3080/ -H "cookie: $COOKIE" \
-  | grep -o '/plugins/??@xia-sc/dsh-cc-studio/client\.js&rev=[0-9a-f]*' | head -1)
-curl -s -o /dev/null -w "%{http_code}  $ASSET\n" "http://127.0.0.1:3080$ASSET" -H "cookie: $COOKIE"
-# -> 200  /plugins/??@xia-sc/dsh-cc-studio/client.js&rev=…
-
-# RPC smoke test (same fence as any /api route: Host/Origin + session cookie)
-curl -s http://127.0.0.1:3080/dsh-cc-studio-rpc/ping \
-  -H 'content-type: application/json' \
-  -H "cookie: $COOKIE" \
-  --data '{"type":"client-request","rpcId":"smoke","method":"ping","payload":{}}'
-# -> {"type":"server-response","rpcId":"smoke","result":{"ok":true,"value":{"ok":true,"time":...}}}
-```
-
-Windows PowerShell equivalent (`rev` is likewise read from the index):
-
-```powershell
-$TOKEN='<the token dsh web printed>'
-$s=New-Object Microsoft.PowerShell.Commands.WebRequestSession
-$null=Invoke-WebRequest "http://127.0.0.1:3080/?token=$TOKEN" -WebSession $s -UseBasicParsing
-$idx=(Invoke-WebRequest 'http://127.0.0.1:3080/' -WebSession $s -UseBasicParsing).Content
-$asset=[regex]::Match($idx,'/plugins/\?\?@xia-sc/dsh-cc-studio/client\.js&rev=[0-9a-f]+').Value
-Invoke-WebRequest "http://127.0.0.1:3080$asset" -WebSession $s -UseBasicParsing | Select-Object StatusCode
-```
-
-The index (`/`) and the RPC route are both fenced by the session cookie, so a bare call returns `401 dsh web authentication required` — that is expected and does not mean the plugin is missing. The session cookie's **name is not** `dsh-auth-127.0.0.1:3080`; it is `dsh-auth-` + base64url(sha256(authority)), which on this host is `dsh-auth-VPhEEcLKeqRDBoBalzN2Nm7CnfxKhLE00pKIDWxt1sw` — copy it from devtools, or mint it from the token as above. Note the asset route `/plugins/??…&rev=…` itself is *not* fenced, so a missing `??` / `rev` shows up as a 404 rather than an auth failure. Refresh the page, switch to a `CC Mode` session, and the capsule above the composer means the install worked.
-
-### 5. Update and uninstall
-
-```bash
-# update to the latest npm release
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@latest
-
-# update to the latest commit on the default branch (master): re-run add, pnpm re-resolves
-dsh plugin --profile web add github:xia-sc/dsh-cc-studio
-
-# if the resolution does not move, remove and add again
-dsh plugin --profile web remove @xia-sc/dsh-cc-studio
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@latest
-
-# uninstall (dsh also drops it from dsh.profile.bundles)
-dsh plugin --profile web remove @xia-sc/dsh-cc-studio
-```
-
-**Migrating from the old name `@dsh-plugins/dsh-cc-studio`**: a rename makes it a different package, so swap it explicitly — otherwise `dsh.profile.bundles` keeps a row for a name that can no longer resolve.
-
-```bash
-dsh plugin --profile web remove @dsh-plugins/dsh-cc-studio
-dsh plugin --profile web add @xia-sc/dsh-cc-studio
-```
-
-Cards in `~/.dsh/cc-library/` and drafts in `~/.dsh/cc-drafts/` survive uninstall.
-
-### 6. Troubleshooting
+## FAQ
 
 | Symptom | Fix |
 | --- | --- |
-| No capsule above the composer | Make sure the session mode is `CC Mode`; `dsh --profile web --dump-config` should list `- id: preset-cc` (under the `# == @xia-sc/dsh-cc-studio` layer), then check whether `CC Mode` carries a "failed to load" diagnostic under Settings → Agent presets. Restart dsh web and refresh. (If you are still on a dsh generation older than `0.2.0-rc.2`: this plugin no longer supports it — the preset is not delivered there at all.) |
-| Reading the preset ledger directly (diagnostics) | dsh exposes every Remote as `POST /api/<namespace>/<method>` with the same envelope as the connection RPC (exchange `/?token=…` for the cookie). `/api/agentPresets/list` strips `name` and `broken`; use `/api/pluginInventory/list` for the **full ledger** (check that `cc` under `agentPresets` has an empty `broken` and that `cc-agent`'s `fiberPhase` is `active`). Note also that the plugin's `info` logs only go to the Cordis logger and **never** reach `dsh web`'s stdout/stderr — do not grep for `[dsh-cc-studio]` to decide whether it is installed |
-| Orange "draft recreated" banner | That session has no stored draft (first creation, or the draft directory was cleared); a successful restore shows a blue banner with `creation_date` instead, and either banner clears after the next write |
-| Switching to CC Mode fails with `invalid config: S.prefix missing required value` | An old release installed the preset template into `~/.dsh/.agent-presets/cc` with a persona key from before 0.2.22 — that directory is dead in every supported dsh, delete it and restart |
-| dsh boot fails with `cannot get property "webServer" without inject` | The plugin is older than 0.2.22; update it |
-| Validation errors | Required `spec: chara_card_v3` / `spec_version: 3.0` / `group_only_greetings`; the main icon must be unique; regexes must be valid |
-| Occasional `本轮运行失败 tool input is invalid JSON` | The model wrote syntactically invalid JSON for tool arguments (most often a trailing comma). The DSH provider `JSON.parse`s tool input strictly and reports `MALFORMED_RESPONSE`, and does not retry by default. 0.10.2 adds "strict JSON + write in small steps" rules to the persona and the five write-tool descriptions — **restart dsh** so the new text is loaded; if it still happens, resend the same message (the model regenerates), or add `MALFORMED_RESPONSE` to `retryPolicy.retryableCodes` on the `llm-deepseek-account` row in the profile's `cordis.patch.yml` for automatic retries (full snippet in CHANGELOG 0.10.2) |
-| Newlines in a card render as literal `\n` (e.g. "said it.\n\nnext paragraph") | The model wrote the newline as a literal `\n` inside the tool-call JSON (one escaping layer too many) and older tools stored it verbatim. Since 0.10.3 write tools decode literal `\n` / `\r` / `\t` (including multiply-escaped input) — **restart dsh** to take effect. Note: fields already broken in a saved card are not auto-repaired; re-write them with the tool or fix them in the workshop |
-| While the LLM is writing, loading another card only opens a preview and the workshop is read-only | That is the 0.11.0 **draft lock** (LLM creation protection): writes from the LLM automatically lock the draft, so loading/importing never overwrites its unsaved content — you get a read-only preview instead. Have the LLM call `cc_release_draft` (or wait out the 30-minute stale timeout) and the workshop becomes editable again; the protection can also be switched off under Settings → Character Card Studio → Workshop defaults → **LLM creation protection (draft lock)** (off = old behaviour). Overwritten drafts are backed up under `<DSH_HOME>/cc-drafts/backups/` (up to 20 per slot) |
-| After a restart the browser shows `Failed to load plugins` / `web boot: 1 entry did not activate` / `import failed` | The rename was not followed by a reinstall under the new name: the profile's install identity (`dsh.profile.bundles` and the `link:` in `dependencies`) still says `@dsh-plugins/dsh-cc-studio`, while `package.json` and `lib/client.js` now say `@xia-sc/dsh-cc-studio`, so the client asset cannot be resolved (the host still boots — only the browser half dies). Confirm it by comparing the directory name under `~/.dsh/profiles/web/node_modules/` with the `name` in `package.json`; fix it by reinstalling under the new name (see the migration commands in "5. Update and uninstall"), restarting `dsh web`, and doing a **hard refresh** (`Ctrl+Shift+R`) — the old page's boot graph is cached, so a plain reload repeats the same error |
-
-### 7. Desktop (DeepSeek Harness Desktop)
-
-**DSH Desktop is the same dsh host** (Electron-embedded), and the plugin is still loaded from the profile's `dsh.profile.bundles` — so this plugin needs **no Desktop-specific adaptation**: the three client mounts (capsule / workshop / settings), the `CC Mode` preset, the RPC channel, draft and card-library persistence are all identical to `dsh web` (0.4.0 was verified end-to-end on a Desktop profile: capsule → workshop → import/export → draft persistence).
-
-Only two steps differ:
-
-| | `dsh web` (CLI) | Desktop |
-| --- | --- | --- |
-| Install | `dsh plugin --profile web add @xia-sc/dsh-cc-studio` | Install `@xia-sc/dsh-cc-studio` from the in-app **Plugins** panel on the left; with the CLI available you can also run `dsh plugin --profile desktop add @xia-sc/dsh-cc-studio` |
-| profile | usually `web` | usually `desktop` (`~/.dsh/profiles/desktop`); check what the app shows |
-| Host / plugin changes | restart `dsh web` | quit and reopen the desktop app |
-| Client-only changes (`lib/client.js`) | reload the page | reload inside the app window (restart the app if you cannot find a reload entry) |
-| Data location | `<DSH_HOME>/cc-drafts/`, `<DSH_HOME>/cc-library/`, `<DSH_HOME>/cc-groups/` (defaults to `~/.dsh`) | identical — Desktop shares the same `DSH_HOME` and data roots |
-
-> The Desktop app window *is* its Web GUI (the port is assigned by the app), so "restart the app" ≈ restart the host and "reload the window" ≈ reload the page — interchangeable when troubleshooting.
+| After restart the browser shows `Failed to load plugins` / `4 entry did not activate` | You reinstalled under a new package name but the profile still has the old identity. Check that the directory name under `node_modules/` equals `package.json`'s `name`; reinstall by the new name → restart → hard refresh |
+| Code changes have no effect | `lib/client.js` → reload the page; `lib/index.js` / presets → restart dsh. The `build` field in any tool reply is the only reliable signal |
+| Clicking "Load" while the LLM writes does nothing and the studio is read-only | Draft lock: the LLM holds it. Ask it to call `cc_release_draft`, wait for the 30-minute idle expiry, or switch off the guard in Settings |
+| Occasional `tool input is invalid JSON` | The model produced malformed tool arguments (often a trailing comma). Resend the same message; prompts already require strict JSON in small steps |
 
 ## Quick start
 
-1. Create a session and pick **CC Mode** (the capsule appears above the composer).
-2. Just describe the idea: "I want a Rain City memory-pawnshop owner, but my worldbuilding is thin."
-3. The LLM walks the 6 steps and asks 1–2 questions before each one; the capsule and workshop refresh on every Tool call:
-   `cc_get_card` (summarize progress + ask) → `cc_patch_character` (discuss vibe/relationship, then fill the 4-piece) → `cc_patch_world` (discuss world focus, then ≥3 dimensions, `autoLorebook`) → `cc_add_lorebook_entries` (discuss triggers, then ≥5 with ≥1 `constant`) → `cc_patch_greetings` (discuss scene, then greetings) → `cc_validate`.
-4. Watch progress in the workshop (it is **read-only while the LLM writes** — it holds the draft lock, and loading another card only opens a read-only preview without replacing the draft). When creation is done and you want to fine-tune, have the LLM hand the draft back (`cc_release_draft`), or wait for the 30-minute idle lock timeout; then: sidebar `★ Save Current` (overwrites in place when an ID is loaded, otherwise creates one) or `＋ Save as New`, or export `JSON / PNG / CHARX`. Later load/rename/export/delete by ID (the top `Loaded ID:xxxx` highlights the active card), or just tell the model "load ID xxxx".
+1. Start a new session and pick **CC Mode** — the capsule appears above the composer.
+2. Describe what you want, e.g. "a pawnshop owner in Rain City with a thin world".
+3. The model follows six steps, asking your preference before writing: `cc_get_card` → `cc_patch_character` → `cc_patch_world` → `cc_add_lorebook_entries` → `cc_patch_greetings` → `cc_validate` → `cc_release_draft` (hand control back).
+4. Open the capsule any time to watch progress (read-only while the LLM writes). After validation, refine, `★ Save Current` / `＋ Save as New`, or export.
+5. Into SillyTavern: open the export dialog → **Import into SillyTavern** → Import.
 
 ## Features
 
-### Fusion workshop (client)
+### Studio (client)
 
-- **Layout**: capsule above the composer (auto in CC Mode) → `shell.overlay` fullscreen workshop with **3 nav pages** (**5D World / Character / Lorebook**) plus a **Validate & Export** entry at the bottom of the left rail / fluid main / 268px collapsible saved sidebar / two collapsed-by-default reading aids at the bottom of the main pane (live `card.json` preview, CBS cheatsheet). Adaptive light/dark via DSW Tokens + brand purple `#7c5cff`.
-- **Only two export entry points** (unified in 0.4.1): the bottom-left **Validate & Export** entry and the **Export** button on a saved-card row both open the same **export page** (`JSON / PNG / Embed into PNG / CHARX / Validate`) — that page always exports the card currently in the workshop (its title carries the card name, or "Unnamed"), so load a saved card first if that is the one you want to export. The top toolbar no longer carries an "Export JSON" button. Clicking a card-row **Export** flips that button to "Opened ✓" immediately, and if the card is not loaded yet the export page tells you to hit Load on its row first.
-- **Style tags**: edit `tags` as a comma-separated field on the Character page; written back to `data.tags` live.
-- **5D worldbuilding**: Timeline / Factions / Geography / Power / Daily → `cc_patch_world(autoLorebook=true)` auto-generates Lorebook entries with `@@position / @@depth / @@activate` (≥1 `constant`; re-calling overwrites previous auto entries and keeps manual ones). The five dimensions render as **document-style text** (borderless auto-growing textareas, editable in place); `⛶` opens a 720px modal carrying an open-time snapshot, so Cancel really rolls back.
-- **Large editors for all long texts**: `description / personality / scenario / system_prompt / post_history_instructions / first_mes / alternate_greetings / group_only_greetings / mes_example / creator_notes` each have a `⛶` 720px modal that syncs live.
-- **Saved sidebar (ID-based CRUD)**: 268px, collapsible (down to a 40px bar), highlights the active card (purple border + `Loaded ID:xxxx`, first 8 chars); `★ Save Current` overwrites when an ID is loaded, `＋ Save as New` always creates a new one, `✎ Rename` / `＋ New`; search / load / export / delete persist to `~/.dsh/cc-library/<id>.json`.
-- **LLM draft lock (0.11.0)**: every write from the LLM locks the draft (`<DSH_HOME>/cc-drafts/<slot>.lock.json`). While active the workshop is read-only; loading/importing another card opens a **read-only preview** (neither the draft nor its source id is written) — exit the preview to get back to the LLM's draft. The LLM hands control back with `cc_release_draft`, or the lock goes stale after **30 minutes** without writes. The protection can be switched off in Settings (off = old behaviour). Before any overwriting action (load / import / migrate / forced overwrite) the current draft is backed up to `<DSH_HOME>/cc-drafts/backups/` (up to 20 per slot; empty drafts and identical content are skipped).
-- **Import / export**: sidebar `⬆ Import JSON/PNG/CHARX` auto-detects the container; on the export page `⬇ JSON` / `⬇ PNG` (1×1 placeholder) / `⬆ Embed into PNG` (writes into any PNG you upload, stripping old `ccv3/chara` chunks and recalculating `CRC32`) / `⬇ CHARX` (packs `card.json`).
-- **Bilingual (zh/en)**: complete `zh / en` dictionaries (`locale: dshCcStudio`) that follow the global `Settings → General → Language` (capsule/workshop/settings refresh instantly, no in-plugin toggle).
-- **Check for updates (0.11.3)**: `Settings → Character Card Studio → Plugin updates` queries the latest version on npm with one click. When an update exists it shows `v<latest> (installed v<current>)` plus a one-click copy of `@xia-sc/dsh-cc-studio@<version>` (with the `dsh plugin --profile <profile> add …` hint); up-to-date, local dev build and failure each get their own message. The lookup runs in the host (the browser never talks to npm, so no CORS/proxy differences) and keeps showing the installed version even when the registry is unreachable.
-- **Adaptive theming**: full `var(--dsw-alias-bg-* / border-l1/l2 / label-primary/secondary)`, primary actions stay brand purple, live on refresh.
+- **Layout**: capsule → fullscreen studio; 3-page nav (5D World / Character / Lorebook) plus a bottom-left **Validate & Export**; collapsible 268px saved-cards sidebar; collapsed live `card.json` preview and CBS cheatsheet at the bottom.
+- **Document-style editing**: borderless auto-growing textareas, editable in place; long fields open a `⛶` modal with a snapshot so Cancel really rolls back.
+- **5D worldbuilding**: Timeline / Factions / Geography / Power / Daily → `autoLorebook` generates entries with `@@position / @@depth / @@activate`.
+- **ID-based CRUD**: save (overwrite when an ID is loaded) / save as new / rename / new / load / delete, with search and highlight; persisted to `cc-library/<id>.json`.
+- **LLM draft lock**: while active the studio is read-only and load/import only open a preview; overwriting actions back up the draft to `cc-drafts/backups/` (up to 20 per slot).
+- **Import / export**: `⬆ Import JSON/PNG/CHARX` (V2/V1 cards are upgraded to CCv3), `⬇ JSON`, `⬇ PNG`, `⬆ Embed into PNG` (strips old `ccv3/chara` chunks), `⬇ CHARX`.
+- **Bilingual + light/dark**: follows `Settings → General → Language` live.
 
-### CC Mode (33 model-side Tools)
+### CC Mode (33 model tools)
 
-- **6-step workflow + co-creation constraint**: before each step the LLM must ask 1–2 open questions (vibe / relationship / world focus / triggers / opening scene) and may never fill everything by assumption; 4-piece character → ≥3 world dimensions → ≥5 lorebook entries (**at least one of them co-created with the user** — auto-generated entries alone don't count) → greetings → `cc_validate` → `cc_release_draft` (hand the draft back). Each reply carries exactly one `workflow.next` (what's next) and `workflow.state` (tri-state progress for the four parts).
-  `cc_get_card` / `cc_patch_character` / `cc_patch_world` / `cc_add_lorebook_entries` / `cc_patch_greetings` / `cc_validate` / `cc_release_draft`
-- **Draft hand-off (0.11.0)**: `cc_release_draft` — **`cc_validate` passing (valid=true) means creation is done: the model must call it right away**; otherwise the workshop stays read-only and the user can only preview. It releases the draft lock so the workshop becomes editable; the lock is re-acquired automatically on the next write. The persona, the `cc_validate` terminal state (`workflow.releaseRequired`) and the first-lock warning all steer the model here.
-- **Lorebook quality**: `cc_patch_world` takes `loreKeys` (per-dimension trigger words — without them auto entries can only use dimension names as keys, which real chat never says); `cc_simulate_trigger` checks a real sentence for hits; `cc_lint_lorebook` statically audits; `cc_patch_book_meta` edits book-level fields (name / `scan_depth` / `token_budget` / recursive scanning).
-- **Fine-grained lorebook control**: `cc_delete_lorebook_entries` / `cc_update_lorebook_entry`.
-- **Dry-run before export**: `cc_preview_export` (size, estimated tokens, field list, and how much of the 5D text is duplicated inside entries).
-- **Clean slate**: `cc_new_card` (destructive: the user must agree first, then pass `confirm:true`).
-- **Saved-library CRUD (shared IDs with the sidebar)**: `cc_list_library` / `cc_save_to_library` / `cc_load_from_library` / `cc_delete_from_library` / `cc_rename_in_library` / `cc_get_library_entry` — "update/load ID xxxx" works in natural language, no UI clicks needed. **Saving right after loading updates the same card** (the draft remembers its source id), so you no longer silently accumulate duplicate cards; renaming updates both the list name and the in-card `data.name`.
-- **Relationship graph (0.8.0)**: `cc_get_relations` / `cc_patch_relations` / `cc_render_relations` / `cc_group_check` — three dimensions (direction × type × strength) living plugin-side under `<DSH_HOME>/cc-groups/`, rendered into `description`'s marker block so shared cards stay self-contained.
-- **Shared lorebook (0.9.0)**: `cc_get_shared_book` / `cc_patch_shared_book` / `cc_promote_shared_entries` / `cc_apply_shared_book` — one book per group (`<DSH_HOME>/cc-books/<groupId>.json`), holding the world setting the member cards would otherwise each repeat verbatim. The model can read it, edit it, **promote duplicated entries into it** (dry-run by default; only exactly-matching content is ever deleted) and merge it back into a card for clients without a global lorebook. The file itself is CCv3's standalone lorebook format (`{spec:"lorebook_v3", data}`), and the export page can also emit it as a **SillyTavern lorebook** (`{entries:{…}}`) — ST's importer accepts nothing else, see 0.9.1 above. Exporting a card (JSON / PNG / CHARX) also writes ST's world binding (`data.extensions.world`) **on the export copy only**, and every PNG now carries both the `ccv3` (pure CCv3) and `chara` (V2 backfill) chunks.
-- **Group management (0.8.0)**: `cc_list_groups` / `cc_create_group` / `cc_rename_group` / `cc_delete_group` / `cc_set_card_group` — the model can now build and re-file groups end to end (`cardId` defaults to the current draft's source card). **Leaving a group deletes neither nodes nor edges** (moving back keeps the relations), **deleting a group never deletes cards** (it only clears their `meta.groupId`), and `cc_delete_group` is destructive: it reports the counts first and only acts with `confirm:true`.
+Six-step workflow with co-creation rules (every step asks first; a complete lorebook is ≥5 entries with at least one co-created). Each reply carries one `workflow.next` + `workflow.state` + `message`, plus `build`.
 
-### Validation and spec
+| Group | Tools |
+| --- | --- |
+| Workflow (mandatory) | `cc_get_card` / `cc_patch_character` / `cc_patch_world` / `cc_add_lorebook_entries` / `cc_patch_greetings` / `cc_validate` |
+| Hand-off | `cc_release_draft` — validation passing means the card is done; call it to release the draft |
+| Lorebook quality | `cc_simulate_trigger` / `cc_lint_lorebook` / `cc_patch_book_meta` |
+| Entries | `cc_update_lorebook_entry` / `cc_delete_lorebook_entries` |
+| Export & reset | `cc_preview_export` / `cc_new_card` (destructive, needs `confirm:true`) |
+| Relationships | `cc_get_relations` / `cc_patch_relations` / `cc_render_relations` / `cc_group_check` |
+| Groups | `cc_list_groups` / `cc_create_group` / `cc_rename_group` / `cc_delete_group` / `cc_set_card_group` |
+| Shared lorebook | `cc_get_shared_book` / `cc_patch_shared_book` / `cc_promote_shared_entries` / `cc_apply_shared_book` |
+| Saved library | `cc_list_library` / `cc_save_to_library` / `cc_load_from_library` / `cc_delete_from_library` / `cc_rename_in_library` / `cc_get_library_entry` |
 
-- Live host-side validation: `spec / group_only_greetings` required, single main icon, regex validity, `spec: chara_card_v3 / spec_version: 3.0`.
-- Full CCv3 coverage: `name / nickname / tags / description / personality / scenario / system_prompt / post_history_instructions / first_mes / alternate_greetings / group_only_greetings / mes_example / creator_notes / assets / character_book`, with CBS `{{char}} / {{random}} / {{roll}}`.
+### Relationships & shared lorebook
 
-## Structure
+- **Relationships**: direction × type × strength; nodes are saved cards or in-card NPCs; group membership lives in the library entry's `meta.groupId`. Rendered into the `<!-- cc-relations:begin … -->` marker section, idempotent and previewable.
+- **Group shared lorebook**: one book per group at `<DSH_HOME>/cc-books/<groupId>.json`; member cards keep only private entries. Migrate with `cc_promote_shared_entries` (dry-run by default, only removes byte-identical copies) and `cc_apply_shared_book`.
+- **Two export shapes**: the CCv3 standalone `lorebook_v3` for clients that know the spec; SillyTavern only accepts `{entries:{…}}` — both buttons have their audience.
 
-```
-dsh-cc-studio/
-├── package.json          # @xia-sc/dsh-cc-studio, dsh.bundle.patch + dsh.client, exports ./client ./agent
-├── cordis.patch.yml      # host insert: id dsh-cc-studio
-├── lib/
-│   ├── index.js          # host: /dsh-cc-studio-rpc (validate, cc_getDraft/cc_setDraft/cc_patchDraft, cc_isCcMode,
-│   │                     #   cc_validateDraft, library cc_*Library, containers cc_importFromPng/cc_exportPng(+imageB64)/
-│   │                     #   cc_importFromCharx/cc_exportCharx, CRC32/ZIP/STORE&DEFLATE)
-│   ├── agent.js          # CC Mode Tools: 6-step co-creation + 5 lorebook-quality + 2 lorebook CRUD + 6 saved-library CRUD
-│   │                     #   + 4 relations + 5 group management + 4 shared book + cc_release_draft = 33
-│   ├── draft-lock.js     # 0.11.0 draft lock: normalize / TTL / write-gate (pure, zero IO, imported by both halves)
-│   └── client.js         # client: dock capsule + overlay workshop + settings.section (DSW Tokens, brand purple,
-│                         #   5D echo, large editors, JSON/PNG/CHARX import/export/embed, lock banners + preview)
-├── presets/
-│   └── cc.patch.yml      # patch layer 2: the CC preset declaration row (the only carrier since 0.12.0)
-├── tests/                # 25 files, 1009 assertions (not published with the package)
-│   ├── rpc-channel.test.mjs       # host-half RPC channel regression (fake ctx + real http), 67 assertions incl. the group endpoints, the cc_getGroup reply shape and the draft-lock matrix
-│   ├── preset-install.test.mjs    # single-carrier preset contract: row set snapshot, package names, prompt-variable whitelist, persona JSON hygiene, anti-relapse source guards, DSH STORE listing contract, 53 assertions
-│   ├── cc-detection.test.mjs      # source-level guards for CC Mode detection, 51 assertions
-│   ├── client-greetings.test.mjs  # client greetings and i18n guards, 62 assertions
-│   ├── draft-slot-sync.test.mjs   # behavioural draft-slot regression (fake React/slot/RPC harness), 19 assertions
-│   ├── draft-lock-client.test.mjs # 0.11.0 client draft lock: read-only, preview, polling, guards, settings switch, 32 assertions
-│   ├── nav-highlight.test.mjs     # workshop step-nav tri-state regression (selection / keyboard focus / hover stay exclusive), 23 assertions
-│   ├── clear-card.test.mjs        # "clear the current card" confirmation regression, 20 assertions
-│   ├── export-entry.test.mjs      # export entry points unified (three doors down to two), 31 assertions
-│   ├── close-button.test.mjs      # workshop close button ✕ (red on hover), 14 assertions
-│   ├── tools-contract.test.mjs    # CC Mode tool-chain contract, state machine, draft identity and lock wiring (33 tools), 125 assertions
-│   ├── draft-lock.test.mjs        # 0.11.0 draft lock: pure functions + tool-half locking/renew/ release/TTL, 34 assertions
-│   ├── relations.test.mjs         # relationship graph + group CRUD: two-half parity, idempotent rendering, data-loss invariants, 69 assertions
-│   ├── relations-view.test.mjs    # workshop relations view renders what the host actually returns (the "0 relations" bug) + the 0.10.0 check list, 20 assertions
-│   ├── shared-book.test.mjs       # group-level shared lorebook: storage, promote/apply, draft sync, round-trip,  75 assertions
-│   ├── shared-book-st-export.test.mjs # SillyTavern world-info export shape and field mapping, 36 assertions
-│   ├── st-compat.test.mjs         # dual-chunk PNG, ccv3 preference, V2 upgrade on import, ST world binding, CHARX import, 68 assertions
-│   ├── promote-draft-sync.test.mjs # draft sync after promoting into the shared book, 6 assertions
-│   ├── group-scope.test.mjs       # 0.10.0 card-group layer: library snapshot + groupScope, two-half parity, single read, 24 assertions
-│   ├── group-metrics.test.mjs     # 0.10.0 the one place that counts: segments, derived numbers, audit/lint parity, 25 assertions
-│   ├── group-checks.test.mjs      # 0.10.0 the check registry: codes unchanged, category filters, byCheck, 22 assertions
-│   ├── group-consistency.test.mjs # 0.10.0 cross-card consistency checks (the fifth card-group feature), 18 assertions
-│   ├── group-layer-guard.test.mjs # 0.10.0 coupling guards: one implementation, no re-reading, no re-counting, 16 assertions
-│   ├── data-root.test.mjs         # data roots: DSH_HOME first + read-time fallback to ~/.dsh + lock path parity, 45 assertions
-│   └── check-update.test.mjs      # 0.11.3 update check: SemVer compare matrix, npm latest endpoint/ envelope, store + settings render, clipboard fallbacks, 53 assertions
-├── CHANGELOG.md          # full version history (Chinese)
-├── README.md             # Chinese (default)
-└── README_EN.md          # English
-```
+### Export & SillyTavern import
 
-> `dsh-cc-agent` was merged into `lib/agent.js` (`@xia-sc/dsh-cc-studio/agent`) at `5f95110`; no separate install needed; the `CC Mode` preset mounts only that single source and does not pollute `standard`.
-
-## Development and tests
-
-```bash
-npm test                                   # 25 files, 1009 assertions (twenty-five node scripts chained)
-node tests/rpc-channel.test.mjs            # only the host-half RPC channel regression (67 assertions)
-```
-
-- **Client changes**: `lib/client.js` only needs a page refresh; with `pnpm run dev:web` running from the dsh checkout it hot-updates.
-- **Host changes**: `lib/index.js` needs a dsh web restart (host rows are composed at startup).
-
-## Appearance
-
-Light/dark via `var(--dsw-alias-*)` (`body[data-ds-dark-theme]`), primary stays `#7c5cff`. Switch at Settings → Appearance → Light/Dark/Follow system, the workshop updates on refresh.
+- Export is a **standalone dialog** opened from the bottom-left entry, the overview button, or a saved-card row (JSON / PNG / Embed / CHARX / Validate). A card-row Export sends that card by `cardId` — no need to load it first.
+- Shared-book scope follows the export target: a saved card uses its own group, the draft uses the current group; no group means no binding.
+- **One-click import into a local ST**: the dialog probes `http://127.0.0.1:8000` (address editable, optional Basic auth; the password stays in this session only). On success: the host opens a CSRF session, imports the lorebook first, rebinds the card copy to the world name ST reports, then imports the PNG card. Same-name books are skipped unless overwrite is ticked; existing cards are never overwritten; optional cover image. Requests run on the host because ST's default CORS refuses browser cross-origin calls; the local draft and library are untouched.
 
 ## Compatibility & permissions
 
-The listing metadata (`dsh.compatibility`, `engines`, runtime dependencies) and the permission bounds live here; DSH STORE's fixed-source review reads the same places.
+- **Supported**: dsh `>=0.2.0-rc.2` (the whole 0.1.x line is unsupported since 0.12.0), Node `>=22`, zero runtime dependencies, no install lifecycle scripts.
+- **Verified builds** (`dsh.compatibility.dshReleases`): `0.2.0-rc.2` (floor, declaration-row generation), `0.2.1-rc.2`, `0.2.1-rc.3`, `0.2.1-rc.5`, `0.2.2-rc.1` — all compatible. **Unverified** (not in the matrix): `0.2.0-rc.1`, `0.2.1-alpha.1`, `0.2.1-rc.4`.
+- **Storage permission**: four directories under `<DSH_HOME>` (`cc-drafts/` / `cc-library/` / `cc-groups/` / `cc-books/`); only one environment variable (`DSH_HOME`).
+- **Network**: two outbound paths only — the Settings "Check for updates" call to the npm registry, and the export dialog's import into the local ST address you enter (default `127.0.0.1:8000`). Both run in the host; the browser never connects directly.
+- **DSH STORE**: writing drafts/cards and reading `DSH_HOME` are core features and trip the file/credential signals, so the plugin is listed as `user-reviewed` (per-run confirmation). The runtime code is not changed to appease scanners.
 
-| Item | Value |
-| --- | --- |
-| DSH range | `>=0.2.0-rc.2` (`dsh.compatibility.dsh` in `package.json`). **The whole 0.1.x line is unsupported since 0.12.0** |
-| Per-release evidence | `dsh.compatibility.dshReleases` marks `0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3` / `0.2.1-rc.5` / **`0.2.2-rc.1`** as `compatible`. Versions that were **never tested are not written** (`0.2.0-rc.1`, `0.2.1-alpha.1`, `0.2.1-rc.4` stay undeclared and show as unknown) instead of being claimed first and tested later |
-| Node.js | `engines.node: ">=22"` (verified on Node v26.9.0) |
-| Host form | `dsh web` (CLI) and **DSH Desktop (DeepSeek Harness Desktop)** are the same host + profile-bundles mechanism, **both supported** (differences and install steps: [7. Desktop](#7-desktop-deepseek-harness-desktop)) |
-| Client platform | `dsh.client.platform: "web"` — that is the **browser-half** platform tag, not the dsh profile name (`web` / `desktop` / …); Desktop and the CLI load the very same client bundle |
-| Runtime dependencies | **none**: `lib/*.js` only imports `node:` builtins and relative paths; the bundled patch/preset files are static YAML with no install-time script |
-| Lifecycle scripts | **none** (`preinstall` / `install` / `postinstall` / `prepare`); only `test` and `prepublishOnly`, which run in this repository and never on an installer |
-| Files | reads its own four directories under `<DSH_HOME>` (plus the legacy `~/.dsh` root): `cc-drafts/`, `cc-library/`, `cc-groups/`, `cc-books/`, and its own `package.json`. It never writes `.agent-presets/` (the legacy directory install was removed in 0.12.0; leftovers there are neither read nor written) and never writes host config or another plugin's data |
-| Network | exactly one outbound request, and only when the user clicks **Check for updates** in the settings page: an HTTPS `GET https://registry.npmjs.org/@xia-sc%2Fdsh-cc-studio/latest` (8s timeout, only `accept` and `user-agent: package/version`, no user data). The settings-page probe (`{network:false}`) never touches the network. Otherwise the host half only registers `POST /dsh-cc-studio-rpc/<endpoint>` on the host's `webServer` and the client half only calls same-origin RPC |
-| Commands | none: no subprocess, no shell |
-| Credentials | reads and stores no token, key or cookie. It reads exactly one environment variable (`DSH_HOME`), and its HTTP route reuses the **host's** cookie fence (`connection.requestRejection`) without parsing credentials itself |
+## Development
 
-> **Why DSH STORE will never auto-approve it:** STORE's automatic low-risk channel (`source-verified`) requires runtime source to contain **no** files, network, commands or credentials signals. This plugin's core feature is persisting character cards and drafts (the files signal), it must read `DSH_HOME` (the scanner counts any `process.env` read as a credentials signal), and since 0.11.3 the update check makes one outbound request (the network signal). None of this will be removed to please a scanner — for a legitimate plugin like this, the correct store tier is `user-reviewed` (it shows the change and asks the user to confirm each install).
+```bash
+npm test    # all test files, serial; must be green
+```
 
-Disposable-Profile install / start / uninstall evidence lives in the `0.3.7` section of [CHANGELOG.md](./CHANGELOG.md): an isolated profile with isolated `DSH_HOME` / `HOME` / `USERPROFILE`, all three client mounts `active`, `cc` present in the preset roster, RPC round-trips identical, PNG / CHARX export→import identical, and the real `~/.dsh` unchanged throughout.
-
-## Spec
-
-- [CCv3 SPEC_V3.md](https://github.com/kwaroran/character-card-spec-v3/blob/main/SPEC_V3.md) (authoritative)
-- [concepts.md](https://github.com/kwaroran/character-card-spec-v3/blob/main/concepts.md) outdated, reference only
+- `lib/client.js` → reload the page; `lib/index.js` / presets → restart dsh.
+- Architecture and hard rules (three halves, RPC wire protocol, single-layer preset delivery, storage roots, test isolation, compatibility matrix, past traps) live in [AGENTS.md](./AGENTS.md).
 
 ## Changelog
 
-Full history lives in [CHANGELOG.md](./CHANGELOG.md) (Chinese). Latest:
+Full history: [CHANGELOG.md](./CHANGELOG.md) (0.12.0 onwards).
 
-- `0.12.4` **CC-mode detection, part two: the 0.12.3 fix corrected the decision layer but the capsule still lingered — the root cause was the render layer.** Real-GUI forensics (a browser session cookie into the local GUI; reading the component's store snapshot through its React fiber) showed `store.isCcMode === false` while `Capsule`'s `useState` snapshot was still the first frame's `true`; a manual no-op emit made the capsule disappear, proving the subscription had missed that update. React runs passive effects in declaration order, so `useCcPreset`'s write effect (which clears `isCcMode` and emits) ran before `store.subscribe` existed: the emit was lost, no later emit came, and the capsule stayed on the stale snapshot until the next session switch remounted the component. Fix: components read snapshots through `useStoreSnapshot` (`useSyncExternalStore` preferred — it re-checks after subscribing), placed **before** `useCcPreset`; `Capsule`'s render condition also requires session consistency (`s.currentSessionId === currentId`) so the old session's `true` cannot light the capsule during the switch frame. Verified on the real GUI: three CC ↔ non-CC rounds in the same workspace and a cross-workspace switch — the capsule disappears/appears correctly **within +150 ms**. Tests 1054 → **1059**. **Client only: refresh the page.**
-
-- `0.12.3` **CC-mode detection rework: the capsule no longer lingers after switching to a non-CC session.** Symptom: enter a CC session (capsule appears) → switch to a non-CC session (capsule stays) → switch again and it finally disappears. The cause was not a wrong projection field but the missing **session ownership** of the state: `isCcMode` was one global boolean and `setSessionId()` never cleared it, so the new session inherited the previous answer; the old decision kept `true` whenever the projection had not arrived yet; and the only authoritative fallback (`cc_isCcMode`) sat behind `if(!isCcMode)`, so the «is → is not» path could never ask the host. Now the state carries `ccSessionId` / `ccSource`, switching sessions invalidates the old answer immediately, the decision is three-valued (unknown / definitely no preset / a preset id) and **must** ask the host when unknown (query sequence + session ownership checks drop late cross-session replies), and projections prefer `useProjection('agentPreset')` with a `useSessions` list fallback. Tests 1009 → **1054** (`cc-detection` 51 → 96, including a fake-React session-switch regression). **Client only: refresh the page** (a hard refresh is safest).
-
-- `0.12.1` **dsh `0.2.2-rc.1` compatibility verified — adaptation required.** `@deepseek-ai/dsh-tool-subagent-control` dropped its `./list-agents` subpath in 0.2.2 (the `list_agents` tool now lives in the main entry), so the preset row `tool-subagent-list-agents` made the **whole CC preset `broken`** (visible in the roster, but selecting it could not build a session); in the same release `dsh-tool-subagent` split `modelSelectionSettings` into `modelSelection` + `modelDiscovery`. Fix: drop the dead row and write **both generations** of the model-selection keys (the old key serves 0.2.0/0.2.1, the new ones serve 0.2.2+; schemastery is non-strict, so the unknown key on either side is harmless). Every other contract change is a backward-compatible addition (webserver `resource`, client-modules `require.asset`, two system-prompt section orders, the base composition's `tool-executor` rows); `dsh-client-connection` is byte-identical. An isolated 0.2.2-rc.1 instance passed **32/32** E2E checks, and the client DOM checks covered the capsule, the full-screen workshop and the settings page with **0 console errors**. `dshReleases` now includes `0.2.2-rc.1`. **Restart dsh (or the desktop app) to apply.**
-
-- `0.12.0` **Breaking: the compatibility floor is now dsh `0.2.0-rc.2`**; the whole 0.1.x line is unsupported. Preset delivery collapsed into a single file, `presets/cc.patch.yml` (a declaration row, the same mechanism the built-in `standard` / `ptc` presets use): the legacy directory template and the "install into `<DSH_HOME>/.agent-presets/cc` on mount" code (`installCcPreset` / `planPresetInstall` / `supportsDeclaredPresets` plus the install-record sidecar) are gone, `apply()` no longer writes anything at mount, and both the `DSH_CC_STUDIO_PRESET_INSTALL` switch and the "two lists must stay byte-identical" maintenance burden went with them. Permission surface shrinks from 5 directories / 2 env vars to 4 / 1. Behaviour: on an unsupported dsh generation `CC Mode` simply does not appear (those generations never read declaration rows); an existing `~/.dsh/.agent-presets/cc` is no longer read or written and can be deleted by hand. `dshReleases` keeps only the tested `0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3` / `0.2.1-rc.5`. **Restart dsh (or the desktop app).**
-
-- `0.11.5` **dsh `0.2.1-rc.5` compatibility verified: nothing to change**. The contract packages (`dsh-host-webserver` / `dsh-client-connection` / `dsh-tools` / `dsh-system-prompt` / `dsh-agent-preset` / `dsh-client-modules` / `dsh-app-boot` and friends) are **byte-identical** to rc.3, and so are the bundled `standard` preset, the `cordis.patch.yml` compositions and all three mount-point definitions; rc.5's real changes are four spots (chat's `reasoningText()`, the conversation View tooltip, slot-catalog docs, the client-modules commit constant), none on a surface this plugin consumes. An isolated rc.5 instance passed **72/72** E2E checks (34 RPC endpoints, draft lock active/stale/force, JSON/PNG/CHARX export→import, `cc` in the roster with no `broken`, client bundle 200 / rev validation), the client DOM checks covered capsule / workshop / settings plus EN↔ZH with **0 console errors**, and on the real GUI running the same rc.5 runtime all three mount points report an active occupant. `dshReleases` now includes `0.2.1-rc.5`. **No runtime code or preset line changed.**
-
-- `0.11.4` **dsh `0.2.1-rc.3` compatibility verified: nothing to change**. The contract packages (`dsh-host-webserver` / `dsh-client-connection` / `dsh-tools` / `dsh-system-prompt` / `dsh-agent-preset` / `dsh-client-modules` / `dsh-app-boot` and friends) are **byte-identical** to rc.2, and so is the bundled `standard` preset; rc.3's real changes are four spots, none on a surface this plugin consumes. An isolated rc.3 instance passed **72/72** E2E checks (34 RPC endpoints, draft lock active/stale/force, JSON/PNG/CHARX export→import, `cc` in the roster with no `broken`, client bundle 200 / rev validation), and on the real GUI running the same rc.3 runtime all three mount points report an active occupant. `dshReleases` now includes `0.2.1-rc.3`; the README matrix is synced. **No runtime code or preset line changed** — upgrading dsh needs no reinstall and no preset edits.
-
-- `0.11.3` **"Check for updates" in the settings page**: one click asks npm for the latest version and, when an update exists, hands you a copyable `@xia-sc/dsh-cc-studio@<version>` (ready for `dsh plugin --profile <profile> add`). The lookup is a new host RPC endpoint `cc_checkUpdate`: `{network:false}` returns only the local version (so the settings page shows the installed version without touching the network), the real check queries the registry's `/latest` with an 8s timeout, and the client never calls npm directly (no CORS/proxy differences). Version comparison follows SemVer §11 (a pre-release ranks below the same version without one; numeric identifiers compare numerically, `rc.2 < rc.10`) and dirty version strings are never misreported as an update. Tests +53 (new `tests/check-update.test.mjs`) → **1041**. **Restart dsh (or the desktop app) and reload the page.**
-
-- `0.10.3` **Multiline text was stored as a literal `\n`**: a user end-to-end report (all six workflow steps, `valid: true`) found every string written through `cc_patch_character` / `cc_patch_greetings` / `cc_patch_world` ending up with a literal `\` + `n` instead of a real newline — in SillyTavern the card read "said it.\n\nnext paragraph". Forensics killed the "the tool double-escapes" theory: a tool-layer round-trip keeps real newlines intact, and the session log shows the model writing `\\n` (one JSON escape layer too many) in 6 of 18 calls — while `alternate_greetings` and lorebook `content` came out right, i.e. **inconsistent model output**. Fix: write tools run `textArg()` first, decoding literal `\n` / `\r` / `\t` (multiply-escaped input converges within 4 rounds) for character fields, greetings, lorebook entries, book meta and the shared book; the workshop-save and import paths are untouched. Also fixes the report's P2 (in-card `token_budget` default 1200 → **2400**) and P4 (autoLorebook's "power" entry had a bare `@@activate` → `@@activate 100`). Tests 858 → **864**. **Restart dsh**; fields already broken in saved cards must be re-written.
-
-- `0.10.2` **One JSON trailing comma from the model killed a whole turn**: `本轮运行失败 DeepSeek Messages stream: tool input is invalid JSON`. Session-log forensics (decompressed `tool-call-chunks`) show the model's arguments for `cc_patch_character` ending in `..."tags":[...],}` — a trailing comma. The strict part is upstream: `@deepseek-ai/dsh-llm-deepseek` `JSON.parse`s every tool input at stream end and raises `MALFORMED_RESPONSE` (no repair), while the default `retryableCodes` omit it, so nothing retries; the tool never ran and the card data was intact. The only lever a plugin has is model-visible text, so the persona now demands strict JSON (no trailing commas / comments / single quotes / raw newlines) and 1-3 fields per call with long fields split across calls, the same rule is repeated in the five write-tool descriptions, and tests pin both (preset-install + tools-contract, +1 each). Optional user-side safety net: add `MALFORMED_RESPONSE` to `retryPolicy.retryableCodes` on the `llm-deepseek-account` row in the profile's `cordis.patch.yml` (snippet in CHANGELOG 0.10.2). Tests 856 → **858**. **Restart dsh (or the desktop app).**
-
-- `0.10.1` **CC Mode failed every turn on dsh 0.2.1-rc.2**: `unknown prompt variable "{{cwd}}" in section "deployment:persona-prefix"; registered variables: provider, model`. Since 0.2.1 `dsh-system-prompt` registers only `provider` / `model` as prompt variables (the working directory now reaches the model as runtime context from the working-directory service), and section interpolation is **strict** — an unknown reference throws before any model request, so the preset mounts fine and stays selectable in the roster while every turn fails. Fix: drop "，工作目录 {{cwd}}" from the persona prefix in the preset list(s) (two carriers at the time; one since 0.12.0) and keep `{{model}}`; pin the prompt-variable whitelist (only `provider` / `model`, `{{cwd}}` forbidden, variable sets in sync, `{{model}}` still present) into `tests/preset-install.test.mjs`. Tests 852 → **856**. **Restart dsh (or the desktop app)** — no reinstall, no page refresh.
-
-- `0.10.0` **The card group is a layer now, not a pile of tools**: both 0.9.x patch rounds landed in the same place — once the group-level shared lorebook shipped, the five *reading* tools (`simulate` / `lint` / `group_check` / `preview_export` / `validate`) each patched in "count the shared book too" ("changed four, missed the fifth"). The root cause was not a slip: the same semantics existed in several copies — card-group data read twice (one per half), scope resolution written once per tool, group-level stats and lorebook stats computed in parallel, and the client counting a fifth time. The fix erects three layers in one shared file, `lib/group-layer.js` (pure functions, zero IO, imported by both halves): **data** (`readLibrarySnapshot()` + `groupScope()` — source card → group → members → book, the only entry point, with `include` / `maxCards` / pass-your-own-snapshot), **numbers** (`groupMetrics()` — every "how many entries / how many tokens" is produced here, five segments plus derived values; `lorebookMetrics` becomes a thin wrapper whose old output is byte-for-byte identical), and **checks** (`runGroupChecks()` + a `GROUP_CHECKS` registry — one list, one issue shape, one `byCheck` count). `checkGroup` is now a 6-line wrapper (it was a 48-line if-chain); the host endpoints, the tools and every existing test were left untouched. **The fifth feature ships as the acceptance case**: a new **cross-card** category — shared trigger words across cards (reported only when ≥2 sources are involved), card entries duplicated verbatim in the shared book, world-dimension drift between member cards, member cards whose lorebook is all auto-generated — plus **lore-quality** (the shared book's own entry quality). Those five landed by touching the registry only; the five existing tools' counting code was **not touched at all** (`tests/group-layer-guard.test.mjs` pins it). The entry points stay `cc_group_check` / `cc_groupCheck` (now with a `checks` filter and `byCheck`), and the workshop renders the result as an error/warn grouped list instead of one concatenated line. Also: a group check now reads the library `1+2N` → `1+N` times, and one check is documented as unreachable (`type-unknown` — `normalizeGroup` normalises unknown edge types to `other`). Tests 735 → **852 (22 files)**. **Restart dsh → refresh the page.**
-- `0.9.1` **The shared lorebook would not import into SillyTavern**: dragging the CCv3 standalone lorebook (`{spec:"lorebook_v3", data}`) into "World Info → Import" answered `Error importing world info: … Bad Request`. Two layers, both read out of a local SillyTavern 1.19.0 checkout and reproduced live: the server's `/api/worldinfo/import` starts with `if (!('entries' in worldContent)) throw`, so **no top-level `entries` means a 400, every time**; and the client's `importWorldInfo()` only converts Novel / Agnai / Risu — the string `lorebook_v3` appears **nowhere** in `world-info.js`, so this was never a file-suffix problem. ST also understands only the `@@activate` / `@@dont_activate` decorators and **drops every other leading `@@` line along with the block it was scanning**, which would have silently thrown away `@@position` / `@@depth`. The fix adds a second format instead of changing the first: a **"⬇ SillyTavern lorebook"** button (shared-book page and export page alike) emits `{entries:{"<uid>":{…}}}` with the field mapping taken verbatim from ST's own `convertCharacterBook()`, translates `@@position` / `@@depth` into ST's `position` / `depth` and removes those lines (`@@activate` is left for ST itself to read), and names the file after the book (ST names a world after the uploaded file). The CCv3 export is **byte-for-byte unchanged**. Measured: the same real book imports with **200 + `{"name":…}`**, the entry uids match the source `id`s, and the timeline entry lands at `position:1` with no decorator line left. Tests 647 → 683 (16 files). The same version then **completed the SillyTavern compatibility layer**: a PNG now carries **both** the `ccv3` chunk (pure CCv3, byte-for-byte) and a `chara` chunk holding an honest V2 projection (V2 field set only; decorators stripped, as the spec requires when backfilling V2), and the reader now **classifies card chunks by the `spec` inside the payload and prefers `ccv3`** — it used to take "the first matching chunk", and since ST writes `chara` first, importing an ST-exported PNG failed with "spec 需为 chara_card_v3". Exporting a card (PNG / CHARX / JSON) with a shared book in its group also writes ST's world binding (`data.extensions.world = <book name>`) **on the export copy only** — import the lorebook into ST first and the card second and the binding connects by itself (the card's own entries still need one "Import Card Lore" click). The spec forbids adding application fields to the CharacterCard object, so no ST-private key is ever added at the card's top level. Measured live: our dual-chunk PNG imports into ST with **200**, ST reads back `data.extensions.world`, its 3 in-card entries and the V3-only fields, and the bound world name resolves in ST's world list; an ST-written "V2-first" PNG is now readable by us too. Tests 683 → **718 (17 files)**. A third step landed in the same version: **V2 cards can now be imported** — most cards in the wild (and everything SillyTavern itself creates) are V2-shaped with a v3 label, and dragging one in used to answer "spec 需为 chara_card_v3". `upgradeCardToV3()` is now the single implementation behind all three import paths (PNG / CHARX / JSON), following ST's own `readFromV2()` rules (top-level V1 fields only fill gaps in `data`, `creatorcomment` → `creator_notes`, `talkativeness`/`fav` → `data.extensions`, a pure V1 card gets wrapped in `data`), the reply carries `upgradedFrom` and the UI says "V2 card upgraded to CCv3" instead of transforming silently; JSON import moved to a new host endpoint `cc_importFromJson` (the client no longer parses card JSON itself). `cc_setDraft` deliberately does **not** upgrade (it mirrors the workshop's own draft). Tests 718 → **735 (17 files)**. **Restart dsh (or the desktop app), then refresh the page.**
-- `0.9.0` **The shared-lorebook iteration, closed**: 0.8.2 moved the world setting from "one copy per card" to "one book per group", while every reading, verdict and quality check still counted only what sat inside the card — five rounds of LLM-side regression levelled them one by one (all four reading tools split into card / shared / total; promoting now syncs the draft, or the next save writes the duplicates straight back; `cc_validate` counts the total; duplicate detection learned the "card ↔ book" kind; the `constant` / `@@decorator` existence checks were unified; and the shared book finally got its own per-entry quality audit). Each semantic collapsed into a single pure function (`lorebookMetrics` / `auditLoreEntries`), so a future change to a rule touches exactly one place. Tests 604 → 647 (15 files).
-- `0.5.0` **A full round of fixes from an LLM-side UX test** (another LLM played "tool user" end-to-end, built a card, ran a save/load round-trip, and filed 15 findings). **P0 four**: `autoLorebook` keys were dimension names only (real chat never says "geography" — 4 of 5 entries were dead; now `loreKeys` lets the model supply real entity names); auto-generating 5 entries instantly satisfied "lorebook done" and skipped step 4's co-creation, contradicting the tool's own "must call" contract (completion now requires **≥5 entries and ≥1 co-created one**); after a passing `cc_validate` the returned `next` still said "must call cc_validate" (now there is a terminal state: `done` + step 7 + export guidance); saving right after a load created **a duplicate card with the same name** (the draft now remembers its source id, surviving page reloads). **P1**: slimmer replies (no more duplicated top-level `next/hint/notice/warning`; patch tools return only `changed` unless `verbose:true`; `fields` / `includeDraft` for on-demand reads), `Ok`/`Partial` collapsed into a tri-state, 12 new `cc_validate` warnings, rename now syncs `data.name`, `meta.tagsTotal`. **5 new tools**: `cc_simulate_trigger` (the gap the report cared most about), `cc_new_card`, `cc_patch_book_meta`, `cc_lint_lorebook`, `cc_preview_export` — tool count 14 → 19. Also a source-review find: the name-based fallback could silently delete a user's hand-made "日常" entry. Tests 380 → 430 (new `tests/tools-contract.test.mjs`, 50 assertions then). **Restart dsh (or the desktop app) to take effect.**
-- `0.6.0` **Second-round regression fixes**: the same LLM tester re-ran the whole flow plus a controlled reproduction and found **P0-6 — when the draft is swapped from another path (workshop UI / host restore), the model has no way to notice**; during the test it silently wiped another card's `personality` (data was restored). Three layers: every tool reply now carries **`cardName` / `cardId`**, `draftStatus.key` is renamed **`sessionKey`** (it is just the session slot, not a card identity); the draft file gains a **`rev`** (identical on both halves) and the tool side **reloads from disk** with an explicit notice when it detects an external change; write tools accept **`expectedRev`** as an optimistic lock and refuse stale writes (`staleRev`). Also fixes `isNew` (now `true` after `cc_new_card`) and the first-round leftovers: **R1** `hint` and `next` now come from one source (no more "next says done, hint says go validate"), **R2** hint / next / message no longer copy each other, **R3** de-duplicated `cc_validate` message, **R4** `autoLoreEdited` + warning when regenerating autoLorebook overwrites hand-edited keys. Tests 430 → 443. **Restart dsh (or the desktop app) to take effect.**
-- `0.7.0` **Fourth-round regression fixes**: the tester set out to verify the three suggestions left over from the previous version and found **none of them had landed** — plus a real performance trap surfaced during stress testing. **N1**: `data.creator` had **no write path at all** (`cc_validate` warned about it on every run, yet neither the tool schema nor the workshop UI could set it — a value passed in was silently ignored) → `creator` on `cc_patch_character`, the same on the host half's `cc_patchDraft`, and a new input in the workshop's character page. **N2 (the big one)**: a long five-dimension world plus autoLorebook copying it verbatim means **a single sentence** can eat the whole world-book budget (measured: "where exactly is 剑冢" → **1139 tokens** against a budget of 1200), and raising `token_budget` can paper over the signal → `cc_lint_lorebook` now reports a **worst-case single-trigger load** (entries sharing a trigger word are merged into one group, plus the always-on constant entries, taking the largest group), while `cc_patch_world` reports `sharedLoreKeys` (one entity assigned to several dimensions) and `heavyAutoEntries` (a single auto entry above 400 tokens) **at write time**. **S1**: calls that omit `expectedRev` now get a `revDrift` + notice (a fallback for weaker models). **S2**: an intentional `cc_new_card` reset is no longer reported as "content may have been lost" (causes are separated; a genuinely new session still warns). **N4**: a no-op write no longer burns a `rev`. Tests 443 → 455. **Restart dsh (or the desktop app) to take effect.**
-- `0.8.2` **The whole group-chat iteration, released at last**: a plugin-side relationship graph (`<DSH_HOME>/cc-groups/`, three dimensions = direction × type × strength, with nodes for either a character that has its own card or an in-card NPC) plus `cc_render_relations` writing it into a fixed marker block in `description` so a shared card stays self-contained (idempotent, `dryRun` preview, empty graph = clear the block); then **model-side group CRUD** (`cc_list_groups` / `cc_create_group` / `cc_rename_group` / `cc_delete_group` / `cc_set_card_group`) and a **group-level shared lorebook** (`<DSH_HOME>/cc-books/`, one book per group, the file itself a plain CCv3 `lorebook_v3` JSON — `cc_promote_shared_entries` lifts the entries every member card repeats verbatim into it and deletes them from the cards), and the workshop's left rail re-cut as a **card-structure navigation** (Overview / Character / World / Lorebook / Openings & examples / Relations & groups / Shared lorebook, each with a tri-state progress badge). Tools 19 → 32. Fixed along the way: **B4** one tool-side save silently dropped a card out of its group (the two halves' `makeLibraryEntryMeta` had drifted), **B5** `mutual` edges were never rendered, the **relations view stuck at "0 relations"** and its navigation twin (the client read the wrong reply shape — the edges live inside `group`), and **the relations view not following a card switch**. Tests 509 → 604 (14 files). **Restart dsh (or the desktop app), then refresh the page.**
-- `0.7.1` **Fifth-round regression fixes**: three of the previous version's four fixes passed on the spot; the fourth (S1) needed explaining, and a real bug surfaced. **B1**: the first `cc_get_card` after a dsh restart failed with `value is not lossless JSON` — dsh validates every tool reply as lossless JSON, so **any nested `undefined` fails the whole call**. The cause is an **externally imported card missing fields** (a PNG/CHARX import may carry no `spec_version` / `creation_date` at all) while the code reads and forwards it verbatim. Three layers, identical on both halves: **normalize on load** (new `normalizeCardShape` fills missing keys from the blank-card template without overwriting values or changing types), an explicit `null` fallback for `draftStatus.creation_date`, and **output hygiene** (the `tool()` wrapper runs every reply through one JSON round-trip, so no `undefined` can ever leak again). **S1** was in fact already implemented — drift only ever comes from a write **outside** the tool sequence — and this version adds `draftStatus.watchedRev` (the on-disk revision remembered before the call) so callers can check at will instead of waiting for the one-shot notice. **B2**: `changed` now shares `rev`'s criterion (`assignIfChanged`), so a same-value write no longer claims a change. Also adds a **`build` identifier** (on every reply, kept in sync with `package.json`) following the tester's workflow suggestion — an LLM can now confirm which code it is testing instead of wasting a whole round on a forgotten restart. Tests 455 → 464. **Restart dsh (or the desktop app) to take effect.**
-- `0.4.1` **Export entry points unified**: the same "export" used to live in three places (the top toolbar's "⬇ Export JSON", the left rail's 4th step "Validate & Export", and the "Export" button on a saved-card row), each behaving slightly differently. The toolbar button is gone; the left rail and the top capsules keep only the three writing steps, and "Validate & Export" merged with the old bottom "Validate" button into a single entry that opens the export page; the card-row "Export" keeps its position but now jumps to that same page — one implementation left (the card-row button no longer downloads JSON directly, and the `store.exportLibraryEntry` side path is deleted). The export page gained a line stating it exports the card currently in the workshop (load a saved card first if that is the one you want). **The other half is docs**: README / README_EN now spell out **DSH Desktop (DeepSeek Harness Desktop) support** — a new "7. Desktop" section (where to install, profile name, restart-app vs reload-window, data roots), a "Host form" row in the compatibility table, and the easily-misread `Profile | web` row renamed to "Client platform". Real-machine feedback then added three affordances: the export page title carries the current card name (or "Unnamed"), a card-row **Export** flips to "Opened ✓" for six seconds, and the export page shows a highlighted notice when the card you clicked is not loaded yet. The bottom **Validate & Export** entry deliberately has **no selected state** — when it lit up together with the card-row feedback it read as "two things selected at once". The workshop header's "Collapse" is now a **✕** icon button (red on hover, closes the workshop). Tests 335 → 380 (new `tests/export-entry.test.mjs`, 31 assertions, and `tests/close-button.test.mjs`, 14).
-- `0.4.0` Fixes the workshop's left step-list highlight: after clicking a step, that row grew a stray outline ring, and switching steps with the top capsules left the ring behind on the old row — two rows looked selected at once. Root cause: `navItem` only painted the `s.cur` selection and never touched browser focus (a clicked `<button>` keeps focus, so the host/UA focus outline stayed painted on its edge). Now: nav rows call `preventDefault()` on `mousedown` (mouse clicks no longer steal focus, Tab still works), the `outline` is owned by the plugin (a 2px brand ring appears only for `:focus-visible`), the selection uses a brand-tinted background plus a left bar and `aria-current`, and hover feedback plus "clear the ring on any mouse press" were added. Adds a **"Clear current card" button** (under *Validate* in the left rail; a `window.confirm` gate swaps the draft back to an empty card and drops the library link, so a later "Save current" creates a new card instead of overwriting the saved one). And **rebuilds the workshop UI** (the main event): the 360px right rail is gone — the live CCv3 preview and the CBS cheatsheet moved to collapsible rows at the bottom of the reading pane (collapsed by default, the preview row still shows the spec and pass/fail badges), and the pure-intro "fusion notes" block was dropped entirely; fields render as document-style rows (borderless auto-growing textareas via `field-sizing: content`) with editing demoted to ⛶ big-box on demand, widening the reading pane from ~700px to ~876px at 1400px. Every feature is kept. `tests/nav-highlight.test.mjs` (23 assertions) and `tests/clear-card.test.mjs` (20) pin the new behaviour. Tests 292 → 335.
-- `0.3.8` DSH STORE listing contract ([Store #1173](https://github.com/AI-Scarlett/DSH-Store/issues/1173)): `engines.node: ">=22"`, `dsh.compatibility` (a range plus an exact per-release matrix that **only lists tested versions**), removal of the `@deepseek-ai/cordis` runtime dependency that no code has imported since 0.3.0, a new "Compatibility & permissions" section in both READMEs, and 11 contract guards in `tests/preset-install.test.mjs` (281 → 292 assertions). **Changing this repository alone cannot close the issue**: the store entry still carries the 0.3.0 package name `@dsh-plugins/dsh-cc-studio`, so STORE's recheck fails at step one with `update-blocked` ("package name no longer matches the Catalog identity") and never reads a 0.3.x manifest — STORE has to migrate the entry identity (re-submitting does not bypass it: the shared `entryIds` collide with the old entry). And the files / credentials permission signals are the plugin's core features (card and draft persistence, reading `DSH_HOME`), so the automatic low-risk channel can never pass; the correct tier is `user-reviewed` (per-install user confirmation). A **dsh `0.2.0-rc.2` compatibility audit** is also done (isolated host: host/preset row composition, RPC wire protocol and fence, draft-slot key, preset roster containing `cc` with an empty `broken`, all three client mounts `active`, PNG/CHARX round-trips byte-identical, real `~/.dsh` untouched), so the matrix now declares `0.2.0-rc.2: compatible`; `0.2.0-rc.1` / `0.2.1-alpha.1` were not tested and stay undeclared.
-- `0.3.7` dsh 0.1.x-era compatibility audit: **nothing needed adapting** (an isolated host verified the RPC route/wire protocol, the preset roster, all three client mounts, the draft-slot key, the data roots, and a PNG/CHARX round-trip). The one real fix is a preset row that had been missing **since the preset was first written**: `command-goal` has been in the shipped `standard` since the 0.1.x era, but the initial copy dropped it — no error, no `broken`, just no `/goal` slash command in a CC Mode session (same class as the `present` row restored in 0.3.4). It is now restored in both carriers, guarded by a row-set snapshot test. Also corrects three doc claims that would mislead the next upgrade (async iteration of `IncomingMessage` does *not* throw here — the official `/api` bridge uses `for await` itself; `/api/agentPresets/list` does carry optional `name`/`description`/`broken`; the channel/endpoint name regexes live in `dsh-client-connection`, not `webServer.register`), and adds a cross-file guard for the implicit "client `preset.ccLabel` must equal the host preset's display name" coupling. It also trims the CC Mode description shown in the session-mode dropdown: it used to list the model-side tool names (`cc_get_card` / `cc_patch_character` / …), which filled the dropdown without telling the user anything (tool names only mean something to the model reading the persona); it now just says "the model asks before it fills / live capsule sync / full-screen workshop / export JSON, PNG, CHARX". Tests 278 → 281.
-- `0.3.6` Two fixes. ① The `CC Mode` preset disappearing on the 0.1.x-era dsh: from that generation on dsh takes presets only from **declaration rows** in a composition, and `<DSH_HOME>/.agent-presets/` is no longer read by any code (the directory is still there, nobody looks at it). The plugin now ships a patch layer `presets/cc.patch.yml` (a `@deepseek-ai/dsh-agent-preset` declaration, structurally identical to the built-in `standard`) and writes nothing on newer dsh; the directory install was kept for the older generation only and stood down automatically. ② Data roots unified: drafts and the card library used to be hard-wired to `~/.dsh` and ignored `DSH_HOME` (custom-`DSH_HOME` users ended up with two sets of roots, and an isolated run wrote into the real `~/.dsh`), now **`DSH_HOME` first with a read-time fallback to `~/.dsh`** — unchanged paths when `DSH_HOME` is unset. Tests 216 → 278.
-- `0.3.5` Fixes #5, "frontend and Tools read different draft slots": `useCcPreset` read `useSessions().current`, a field that does not exist in the 0.1.x-era `SessionListState` (it was always `null`), and the keyless pull at startup consumed the global throttle, so the UI stayed on the `default` slot while the model's Tools wrote to `session-<sessionId>` — hence "the model says it wrote it / the workshop says there is no data". Now the session id is taken from slot props only and published to the store, a draft pull without a session id is never sent, throttling is per key, and a host response whose `key` differs is not rendered but surfaced as a warning. Also fixes the capsule flicker (the root-scope instance was clearing the CC verdict the session-scope instance had just made) and adds `cc_migrateDraft` with a one-click "migrate into this session" recovery. Tests 158 → 216 (+ a behavioural `tests/draft-slot-sync.test.mjs`).
-- `0.3.4` 0.1.x-era dsh compatibility plus two preset omissions restored: the CC preset was missing the `present` row (so CC Mode's model had no "register a deliverable" tool, silently) and the `tool-subagent` row was missing `modelSelectionSettings: true` (silently disabling per-subagent model selection); also adds the `tool-plugin-manager` row added in that era (`disabled`, so the preset now differs from the shipped `standard` only where intended). Adds 7 preset row-contract guards.
-- `0.3.3` Release automation: pushing a `v*` tag makes GitHub Actions publish to npm (OIDC trusted publishing, no secrets) and create the GitHub Release; a manual run only does a safe self-check. No runtime behaviour change.
-- `0.3.2` Renamed to `@xia-sc/dsh-cc-studio` (the former `@dsh-plugins` is not an npm scope this project owns, so it could not be published) and published to npm for the first time; adds `publishConfig.access` / `prepublishOnly` and other publishing metadata.
-- `0.3.1` 0.1.x-era dsh compatibility: the CC preset's `workflow-worker-thread` row becomes `workflow-ptc`; otherwise the whole preset is marked broken and CC Mode becomes unselectable.
-- `0.3.0` Removed the "Idea" page: the workshop now has 4 nav pages (5D World / Character / Lorebook / Validate & Export), the `⛶` large-editor capability moved to a shared `fieldHead()` covering every long-text string field, sidebar search kept. Also fixes the array round-trip regression that change introduced (`[]` was rewritten as `[""]`, i.e. a phantom blank greeting), and turns the greeting fields into **per-entry editors** (one box = one entry), removing the silent corruption where editing a multi-paragraph greeting split it into several; adds greeting add/remove and aligns the 10-entry cap. Makes the large editor's "Cancel" actually roll back, removes the `expandIdea` / `expandWorld` dead code unreachable since 67172fd, and **completes the i18n wiring** (the locale table existed but many call sites hard-coded Chinese, so English still showed Chinese; all 122 Chinese literals are now wired, with the Chinese UI byte-for-byte unchanged), **installs the CC preset automatically** (previously a manual copy), and fixes **the capsule not appearing on the first switch to CC Mode** (detection read the wrong field, `projectionValues.agentPreset`, so it only appeared after a refresh or session switch).
-- `0.2.22` Fix the boot crash on the earliest dsh generation this plugin ever supported: `connection.rpc.handle()` is unusable by an outside plugin, so the host half now registers the `/dsh-cc-studio-rpc` prefix route on `webServer` and implements the same RPC wire protocol; request bodies are read with events; fixes the preset persona `prefix`; adds 23 regression assertions.
-- `0.2.21` Fix #2 silent draft loss: every draft write persists to `~/.dsh/cc-drafts/<session>.json` and restores per session after a restart; fresh blanks warn, successful restores notify.
+- `0.15.1` **Added**: one-click import into a local SillyTavern from the export dialog (host does the CSRF session → lorebook first → bind by the returned name → PNG card; same-name books are skipped, existing cards are never overwritten; optional cover and Basic auth). **Fixed**: JPG/WebP covers are converted to PNG, and a non-PNG cover / unknown error no longer masquerades as "SillyTavern not detected".
+- `0.14.2` A saved card's shared book follows that card's own `meta.groupId` (fetched with `cc_getBook`, shown with a group badge).
+- `0.14.1` Export is decoupled from loading: a card-row Export exports that saved card (`cardId`).
+- `0.14.0` Export became a standalone dialog instead of a middle-pane page; three entry points open it.
+- `0.13.0` The CCv3 spec core and the SillyTavern layer split into `lib/compat/` (core + target adapters), so adding a platform is one adapter.
+- `0.12.1` / `0.12.0` Adapt to dsh `0.2.2-rc.1` (preset subpath change); raise the floor to `0.2.0-rc.2` and collapse preset delivery to one declaration layer.
 
 ## License
 
-MIT © 2026 xia-sc — see [LICENSE](./LICENSE).
-
-## Listed
-
-[![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/xia-sc/dsh-cc-studio)
+MIT. See [CHANGELOG.md](./CHANGELOG.md) and the repository `AGENTS.md` for references.

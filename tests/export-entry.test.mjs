@@ -1,27 +1,15 @@
 /**
- * 导出入口归一回归测试（不随插件发布，files 未含 tests）。
+ * 导出入口回归测试（不随插件发布，files 未含 tests）。
  *
- * 现象（用户截图）：同一个「导出」在工坊里出现了三处，彼此重复：
- *   ① 顶部工具条右侧的「⬇ 导出 JSON」；
- *   ② 左侧导航第 4 步「校验导出」（中栏是一整页 JSON / PNG / 写入PNG / CHARX 按钮）；
- *   ③ 已存角色卡片里的「导出」（直接下载那张卡的 JSON，与工坊当前内容无关）。
+ * 历史：0.4.1 把「顶部导出 JSON / 导航第 4 步 / 卡片导出」三处归一成「左下角入口 + 卡片入口」，
+ * 中栏是一整页「校验与导出」。
  *
- * 本次（0.4.1）：
- *   ① 删掉顶部那枚「导出 JSON」；
- *   ② 左侧导航与顶部胶囊都只留写作三步 ——「校验导出」与左下角原来那枚「校验」按钮合并成一枚：
- *      点它切到导出页，校验与导出动作都只留在那一页里；
- *   ③ 已存角色卡片上的「导出」保留原位置，但改成切到同一页（不再自己下载 JSON）——
- *      导出页导出的始终是当前工坊里的卡，想导某张已存角色先「载入」；
- *   ④ store 里的旁路实现 exportLibraryEntry 一并删除：同一次导出不许有两套行为。
- *
- * 反馈补强（同版）：① 导出页标题后面挂上当前卡名（「… CHARX · 测试卡」，还没名字时显示「未命名」），
- * 让用户一眼知道这一页在导哪张卡；② 卡片上的「导出」点下去按钮自己先变（「已切到 ✓」）并自动收起，
- * 同时在导出页把「导出的仍是工坊里那张、你点的那张还没载入」写成醒目提示 —— 只切页太安静了，
- * 用户的视线在右侧卡片上，中栏换了内容他未必看得见。
- *
- * 修正（用户第二轮实机反馈）：左下角那枚「校验导出」入口**不做选中态**。上一版给它加过淡紫选中态 +
- * `aria-current`，从卡片点「导出」时它和卡片那枚「已切到 ✓」同时发亮 —— 又成了「两处看起来像选中」，
- * 正是 0.4.0 修过、用户最敏感的那类问题。「现在在导出页」改由中栏标题（带卡名）表达。
+ * 0.14.0（用户截图反馈）：导出**不再占用中栏一整页**，改成独立弹层——
+ *   - 中栏是「读卡」的地方，导出是「把卡交出去」的动作，两者混在一页里，用户滑一段正文就会
+ *     撞见一排下载按钮；离开后那一页的校验错误清单也跟着消失；
+ *   - 三个入口（左下角「校验导出」/ 总览页按钮 / 已存角色卡片上的「导出」）一律打开弹层，
+ *     **不再改 cur**；`exportOpen` 状态在 store，关闭按钮 / 点遮罩 / 6s 跳转提示都只动这一处；
+ *   - 弹层打开时工坊树仍在（遮罩覆盖），所以入口按钮不会出现「选中态」这种第二处高亮。
  *
  * 本文件把 lib/client.js 真装进假 React harness 里渲染，断言的是「点一下之后发生了什么」，
  * 不只是源码正则。
@@ -58,7 +46,7 @@ globalThis.document = {
 globalThis.Blob = function Blob(parts, opts) { this.parts = parts; this.type = opts && opts.type; };
 globalThis.URL = { createObjectURL() { return 'blob:test'; }, revokeObjectURL() {} };
 
-// —— 假 React：hook 槽位按渲染顺序保留（这样 setCur / setHover 之后重渲染能看到新值）——
+// —— 假 React：hook 槽位按渲染顺序保留（这样 setExportOpen / setHover 之后重渲染能看到新值）——
 const effectQueue = [];
 const hooks = { slots: [], idx: 0 };
 const React = {
@@ -103,7 +91,7 @@ globalThis.window = { __ModuleLoader__: { load(def) { registration = def; } } };
 new Function('window', src)(globalThis.window);
 if (!registration) { console.log('FAIL  bundle 没有调用 window.__ModuleLoader__.load'); process.exit(1); }
 
-// —— 假 RPC：只让角色库返回一条卡片，其余端点一律失败（导出按钮只调本地逻辑，不该发请求）——
+// —— 假 RPC：角色库返回一条卡片；JSON 导出（0.13.0 起由宿主导出）返回一个固定文本 ——
 const calls = [];
 const LIB_ENTRY = { id: 'abcdef1234', name: '测试卡', loreCount: 1, tags: ['测试'], updatedAt: 1791960000, descriptionSnippet: '' };
 const registered = {};
@@ -117,6 +105,16 @@ const fakeCtx = {
   connection: { rpc: { call(channel, endpoint, payload) {
     calls.push({ endpoint, payload });
     if (endpoint === 'cc_listLibrary') return Promise.resolve({ ok: true, value: { entries: [LIB_ENTRY] } });
+    if (endpoint === 'cc_getLibraryEntry') return Promise.resolve({ ok: true, value: { id: 'abcdef1234', meta: { name: '测试卡', groupId: 'g-lib' }, draft: { spec: 'chara_card_v3', spec_version: '3.0', data: { name: '测试卡', group_only_greetings: [], assets: [], tags: [], creation_date: 1791960000, modification_date: 1791960000 } } } });
+    if (endpoint === 'cc_getBook') return Promise.resolve({ ok: true, value: { exists: true, groupId: 'g-lib', book: { spec: 'lorebook_v3', data: { name: '库组书', entries: [{ keys: ['x'], content: 'c' }] } }, rev: 1, tokens: 12, scan: null } });
+    if (endpoint === 'cc_exportJson') return Promise.resolve({ ok: true, value: { filename: '工坊卡.json', mime: 'application/json', content: '{"spec":"chara_card_v3","data":{"name":"工坊卡"}}', merged: 0 } });
+    // 0.15.0 远程导入：目标表 + 探测 + 导入（模拟本机 ST 在线）
+    if (endpoint === 'cc_listTargets') return Promise.resolve({ ok: true, value: { defaultTarget: 'sillytavern', targets: [
+      { id: 'ccv3', label: 'CCv3', capabilities: {} },
+      { id: 'sillytavern', label: 'SillyTavern', capabilities: {}, remote: { label: 'SillyTavern', defaultBaseUrl: 'http://127.0.0.1:8000', auth: 'basic' } },
+    ] } });
+    if (endpoint === 'cc_stProbe') return Promise.resolve({ ok: true, value: { online: true, baseUrl: 'http://127.0.0.1:8000', version: '1.19.0', worlds: 3, auth: 'none', error: null } });
+    if (endpoint === 'cc_stImport') return Promise.resolve({ ok: true, value: { card: { fileName: '工坊卡.png', name: '工坊卡' }, world: { action: 'imported', name: '锁天司·共享设定', existed: false }, warnings: [] } });
     return Promise.resolve({ ok: false, error: { code: 'internal', message: 'no handler' } });
   } } },
 };
@@ -154,15 +152,15 @@ function flatten(node, out) {
 const buttons = (tree) => flatten(tree).filter((n) => n.type === 'button');
 const byLabel = (tree, label) => buttons(tree).filter((b) => b.children[0] === label);
 const textNodes = (tree, label) => flatten(tree).filter((n) => n.children && n.children[0] === label);
+const byAria = (tree, label) => buttons(tree).filter((b) => b.props && b.props['aria-label'] === label);
 // 「选中」的判据：有底色 + 有 inset 左竖条（不写死色值，换品牌色不该让测试红）
 function isActive(style) {
   if (!style) return false;
   return String(style.background || '') !== '' && String(style.background) !== 'transparent' && String(style.boxShadow || '').indexOf('inset') >= 0;
 }
+const exportOpen = () => !!store.getSnapshot().exportOpen;
 
 // —— 打开工坊（panelOpen=false 时整棵工坊树不渲染）——
-// 顺序同 nav-highlight：先开面板再首渲染，否则 useState 的惰性初始化会把「关闭」快照固化下来。
-// 给工坊里的卡起个名字：标题里的卡名、以及「点的那张 ≠ 工坊里这张」都靠它区分（库里那张叫「测试卡」）。
 store.updateDraft(function (d) { d.name = '工坊卡'; });
 store.setPanel(true);
 run(render().effects);
@@ -180,6 +178,8 @@ check('①d store 不再暴露 exportLibraryEntry（旁路不删，「导出」�
   !/function exportLibraryEntry/.test(src) && !/exportLibraryEntry:exportLibraryEntry/.test(src), '');
 check('①e 新键 workshop.export.currentHint / workshop.library.exportTip 在 zh 与 en 都在',
   ['workshop.export.currentHint', 'workshop.library.exportTip'].every((k) => hasKey(zhSrc, k) && hasKey(enSrc, k)), '');
+check('①f 弹层关闭键 export.close 在 zh 与 en 都在（键集同步，切英文不退化）',
+  hasKey(zhSrc, 'export.close') && hasKey(enSrc, 'export.close'), '');
 
 // ② 顶部工具条：那枚「导出 JSON」必须消失
 check('② 顶部工具条里再也找不到「导出 JSON」按钮',
@@ -189,40 +189,73 @@ check('② 顶部工具条里再也找不到「导出 JSON」按钮',
 const entryBtns = byLabel(tree, 'step.export');
 check('③ 左下角恰有 1 枚「校验导出」入口（原来导航第 4 项 + 底部「校验」两枚已合并）',
   entryBtns.length === 1, String(entryBtns.length));
-check('③b 不在导出页时它是普通主按钮样子，且不带 aria-current',
+check('③b 没打开弹层时它是普通主按钮样子，且不带 aria-current',
   entryBtns[0].props['aria-current'] == null && !isActive(entryBtns[0].props.style),
   String(entryBtns[0].props['aria-current']) + ' / ' + String(entryBtns[0].props.style.background));
 check('③c 它拦掉鼠标按下时的默认行为（不抢焦点，免得留下一圈焦点描边）',
   (function () { let n = 0; entryBtns[0].props.onMouseDown({ preventDefault() { n++; } }); return n === 1; })(), '');
 
-// ④ 点入口 → 切到导出页，且不发任何 RPC（它只是入口）
+// ④ 点入口 → 打开导出弹层（不再切页 / 不改 cur）
+const curBefore = store.getSnapshot().cur;
 const beforeEntry = calls.length;
 entryBtns[0].props.onClick({});
-check('④ 点它切到导出页（cur=3）', store.getSnapshot().cur === 3, String(store.getSnapshot().cur));
-check('④b 切页本身不发 RPC（校验/导出动作只发生在导出页里）',
-  calls.length === beforeEntry, '新增 ' + (calls.length - beforeEntry) + ' 条');
+check('④ 点它打开导出弹层（store.exportOpen=true），且不改 cur（导出是动作，不是页面）',
+  exportOpen() === true && store.getSnapshot().cur === curBefore,
+  'open=' + exportOpen() + ' cur=' + store.getSnapshot().cur + ' before=' + curBefore);
+// 0.15.0：打开弹层会顺带做一次**只读**远程探测（cc_listTargets / cc_stProbe）——
+// 但校验/导出/写草稿类动作仍然只在用户点按钮时发生。
+const PROBE_ONLY = ['cc_listTargets', 'cc_stProbe'];
+const probeAdded = calls.slice(beforeEntry).map((c) => c.endpoint);
+check('④b 打开弹层不触发校验/导出（只允许顺带探测 ST 的只读 RPC）',
+  probeAdded.every((ep) => PROBE_ONLY.indexOf(ep) >= 0), probeAdded.join(',') || '(无新增 RPC)');
 
 tree = redraw();
+check('④c 弹层渲染出关闭按钮（aria-label=export.close，与工坊 ✕ 区分）',
+  byAria(tree, 'export.close').length === 1, String(byAria(tree, 'export.close').length));
+
+// 0.15.0：打开弹层顺带探测本机 SillyTavern（目标表 → cc_stProbe），在线后出现「导入到 ST」区块
+await tick(); await tick(); await tick();
+tree = redraw();
+const onlineBadge = flatten(tree).filter((n) => n.children && String(n.children[0]).indexOf('● st.online') === 0);
+check('④d 弹层里出现远程导入区块，且探测结果为在线（带 ST 版本）',
+  textNodes(tree, 'st.title').length === 1 && onlineBadge.length === 1,
+  'title=' + textNodes(tree, 'st.title').length + ' online=' + onlineBadge.length
+  + ' probe=' + JSON.stringify(store.getSnapshot().stProbe));
+const stImportBtn = byLabel(tree, 'st.import')[0];
+check('④e 在线后「开始导入」按钮不再是禁用态', !!stImportBtn && stImportBtn.props.disabled === false,
+  stImportBtn ? String(stImportBtn.props.disabled) : 'missing');
+check('④e2 区块提供「选择封面」（可选，不选就用占位图）',
+  byLabel(tree, 'st.cover').length === 1 && typeof store.pickStCover === 'function' && typeof store.clearStCover === 'function',
+  'cover=' + byLabel(tree, 'st.cover').length);
+const beforeImport = calls.length;
+if (stImportBtn) stImportBtn.props.onClick({});
+await tick(); await tick();
+const stImportCall = calls.slice(beforeImport).filter((c) => c.endpoint === 'cc_stImport')[0];
+check('④f 点「开始导入」调 cc_stImport（草稿模式不带 cardId，带 baseUrl）',
+  !!stImportCall && !stImportCall.payload.args.cardId
+  && stImportCall.payload.args.baseUrl === 'http://127.0.0.1:8000',
+  stImportCall ? JSON.stringify(stImportCall.payload.args) : 'no cc_stImport');
+check('④g 导入成功后回报「已导入：卡 · 世界书」',
+  store.getSnapshot().lastMsg === 'st.imported', String(store.getSnapshot().lastMsg));
+
 const entryNow = byLabel(tree, 'step.export')[0];
-// 上一版给过它淡紫选中态 + aria-current，结果从右侧卡片点「导出」时，它和卡片那枚「已切到 ✓」同时发亮 ——
-// 又是「两处看起来像选中」（0.4.0 修过的同一个坑）。所以这枚入口按钮不做选中态：
-// 「现在在导出页」由中栏标题（带卡名）表达，不靠按钮。
-check('⑤ 入口按钮不随所在页面改变外观（不许再造出第二处「看起来像选中」）',
+// 弹层打开时工坊树仍在（遮罩覆盖），入口按钮不做选中态 —— 否则又是「两处看起来像选中」。
+check('⑤ 入口按钮不随弹层开关改变外观（不许造出第二处「看起来像选中」）',
   !isActive(entryNow.props.style) && entryNow.props['aria-current'] == null && entryNow.props.style.background === '#7c5cff',
   String(entryNow.props['aria-current']) + ' / ' + String(entryNow.props.style.background));
 
-// ⑥ 导出页本身：四枚导出 + 一枚校验，一处都不少
+// ⑥ 弹层本身：四枚导出 + 一枚校验，一处都不少
 const ACTION_KEYS = ['action.exportJson', 'action.exportPng', 'action.embedPng', 'action.exportCharx', 'action.validate'];
-check('⑥ 导出页仍渲染出 5 枚动作按钮（JSON / PNG / 写入 PNG / CHARX / 校验）',
+check('⑥ 弹层内仍渲染出 5 枚动作按钮（JSON / PNG / 写入 PNG / CHARX / 校验）',
   ACTION_KEYS.every((k) => byLabel(tree, k).length === 1),
   ACTION_KEYS.map((k) => k + ':' + byLabel(tree, k).length).join(', '));
-check('⑥b 导出页写明了「导出的是当前工坊里的卡」',
+check('⑥b 弹层写明了「导出的是当前工坊里的卡」',
   textNodes(tree, 'workshop.export.currentHint').length === 1, String(textNodes(tree, 'workshop.export.currentHint').length));
-check('⑥c 导出页标题与校验徽章仍在（这页就是原来那个「校验与导出」）',
+check('⑥c 弹层标题与校验徽章仍在（就是原来那个「校验与导出」）',
   textNodes(tree, 'workshop.export.title').length === 1 && (textNodes(tree, 'workshop.export.passed').length + textNodes(tree, 'workshop.export.failed').length) === 1, '');
 const titleNode = textNodes(tree, 'workshop.export.title')[0];
 const nameSpan = titleNode && titleNode.children && titleNode.children[1];
-check('⑥d 标题后面挂上当前卡名（让用户知道这页在导哪张卡）',
+check('⑥d 标题后面挂上当前卡名（让用户知道这次导的是哪张卡）',
   !!nameSpan && nameSpan.children[0] === '· 工坊卡', nameSpan ? String(nameSpan.children[0]) : 'missing');
 store.updateDraft(function (d) { d.name = ''; });
 tree = redraw();
@@ -232,62 +265,118 @@ check('⑥e 卡还没名字时显示「未命名」，而不是留个空标题',
 store.updateDraft(function (d) { d.name = '工坊卡'; });
 tree = redraw();
 
-// ⑦ 导出动作仍然真的能下载（归一没有把功能砍掉）
+// ⑦ 导出动作仍然真的能下载（搬进弹层没有把功能砍掉）
 const dlBefore = downloads.length;
 byLabel(tree, 'action.exportJson')[0].props.onClick({});
-check('⑦ 导出页的「⬇ JSON」仍然触发下载并回报 store.exportedJson',
+await tick(); await tick();   // 0.13.0：JSON 导出走宿主 RPC（转换在 lib/compat/adapters，客户端只下载）
+check('⑦ 弹层里的「⬇ JSON」仍然触发下载并回报 store.exportedJson',
   downloads.length === dlBefore + 1 && store.getSnapshot().lastMsg === 'store.exportedJson',
   'downloads+' + (downloads.length - dlBefore) + ' lastMsg=' + String(store.getSnapshot().lastMsg));
 
-// ⑧ 回到写作步骤：入口按钮的选中态必须收回（选中态唯一）
+// ⑧ 写作用途的导航仍可用：点导航只改 cur，弹层保持打开（直到用户关）
 byLabel(tree, 'step.world')[0].props.onClick({});
 tree = redraw();
-check('⑧ 回到写作步骤后它仍是同一副主按钮样子（与在导出页时逐字一致，没有任何「选中」痕迹）',
-  byLabel(tree, 'step.export')[0].props['aria-current'] == null && !isActive(byLabel(tree, 'step.export')[0].props.style) && byLabel(tree, 'step.export')[0].props.style.background === entryNow.props.style.background,
-  String(byLabel(tree, 'step.export')[0].props.style.background));
+check('⑧ 点左侧写作步骤只切 cur，弹层仍开着（导航与导出是两件事）',
+  store.getSnapshot().cur === 0 && exportOpen() === true && byLabel(tree, 'action.exportJson').length === 1,
+  'cur=' + store.getSnapshot().cur + ' open=' + exportOpen());
 
-// ⑨ 已存角色卡片上的「导出」：位置不变，行为改成切页
+// ⑨ 已存角色卡片上的「导出」：0.14.1 起**直接导出这张卡**，与「载入」解绑
 const cardExport = byLabel(tree, 'workshop.library.export');
 check('⑨ 已存角色卡片上的「导出」还在原位（有卡片时恰 1 枚）', cardExport.length === 1, String(cardExport.length));
-check('⑨b 它带上了说明用的 tooltip（导出的是当前工坊里的卡）',
+check('⑨b 它带上了说明用的 tooltip（打开导出弹层，不需要先载入）',
   cardExport[0].props.title === 'workshop.library.exportTip', String(cardExport[0].props.title));
+const curBeforeCard = store.getSnapshot().cur;
 const beforeCard = calls.length;
 cardExport[0].props.onClick({});
-check('⑨c 点它同样只是切到导出页', store.getSnapshot().cur === 3, String(store.getSnapshot().cur));
+await tick(); await tick(); await tick();   // cc_getLibraryEntry → openExport → cc_getBook（目标组共享书）
+check('⑨c 点它打开导出弹层（不改 cur），并把导出目标指向这张已存卡',
+  exportOpen() === true && store.getSnapshot().cur === curBeforeCard
+  && store.getSnapshot().exportTarget && store.getSnapshot().exportTarget.id === 'abcdef1234',
+  'open=' + exportOpen() + ' target=' + JSON.stringify(store.getSnapshot().exportTarget && store.getSnapshot().exportTarget.id));
 const added = calls.slice(beforeCard).map((c) => c.endpoint);
-check('⑨d 不自动载入、也不直接下载（不碰 cc_loadFromLibrary / cc_getLibraryEntry）',
-  added.indexOf('cc_loadFromLibrary') < 0 && added.indexOf('cc_getLibraryEntry') < 0,
+check('⑨d 只读这张卡（cc_getLibraryEntry）；不载入草稿槽（不碰 cc_loadFromLibrary）',
+  added.indexOf('cc_getLibraryEntry') >= 0 && added.indexOf('cc_loadFromLibrary') < 0,
   added.join(',') || '(无新增 RPC)');
+const bookCall = calls.slice(beforeCard).filter((c) => c.endpoint === 'cc_getBook')[0];
+check('⑨d2 库卡属于别的分组：顺带拉那个组的共享书（cc_getBook groupId=g-lib），不动工坊当前组',
+  !!bookCall && bookCall.payload.args.groupId === 'g-lib'
+  && String(store.getSnapshot().currentGroupId) === '',
+  bookCall ? JSON.stringify(bookCall.payload.args) : 'no cc_getBook');
 tree = redraw();
-check('⑨e 切页后当前草稿没被换掉（卡片名不会变成工坊里的卡名）',
+check('⑨e 打开弹层后当前草稿没被换掉（卡片名不会变成工坊里的卡名）',
   store.getSnapshot().currentLibraryId == null, String(store.getSnapshot().currentLibraryId));
-check('⑨f 点完按钮自己先变（「已切到 ✓」）—— 视线在右侧也看得见反应',
+check('⑨f 点完按钮自己先变（「已打开 ✓」）—— 视线在右侧也看得见反应',
   byLabel(tree, 'workshop.library.exportJumped').length === 1, String(byLabel(tree, 'workshop.library.exportJumped').length));
-check('⑨g 导出页顶部换成醒目提示：导的是工坊里那张、你点的那张还没载入',
-  textNodes(tree, 'workshop.export.jumpedOther').length === 1 && textNodes(tree, 'workshop.export.currentHint').length === 0,
-  'jumped=' + textNodes(tree, 'workshop.export.jumpedOther').length + ' hint=' + textNodes(tree, 'workshop.export.currentHint').length);
-// 用户实机报的正是这一条：从卡片点「导出」时，左下角那枚入口按钮**不许**跟着变亮
-check('⑨g2 从卡片跳转后左下角入口按钮没有被一起点亮（还是「两处看起来像选中」的坑）',
+check('⑨g 弹层顶部说明「正在导出已存角色」，不再要求先载入（jumpedOther 已删）',
+  textNodes(tree, 'workshop.export.savedCardHint').length === 1 && textNodes(tree, 'workshop.export.currentHint').length === 0,
+  'saved=' + textNodes(tree, 'workshop.export.savedCardHint').length + ' hint=' + textNodes(tree, 'workshop.export.currentHint').length);
+const savedTitle = textNodes(tree, 'workshop.export.title')[0];
+const savedName = savedTitle && savedTitle.children && savedTitle.children[1];
+check('⑨g1 弹层标题显示的是这张已存卡的名字',
+  !!savedName && savedName.children[0] === '· 测试卡', savedName ? String(savedName.children[0]) : 'missing');
+const libBookNode = flatten(tree).filter((n) => n.children && String(n.children[0]) === '库组书')[0];
+const libGroupBadge = flatten(tree).filter((n) => n.children && String(n.children[0]) === '· g-lib')[0];
+check('⑨g3 弹层共享书块用这张卡所属分组的书（库组书 + 组名徽章），不是工坊当前组',
+  !!libBookNode && !!libGroupBadge, (libBookNode ? 'book=库组书 ' : 'no-book ') + (libGroupBadge ? 'group=ok' : 'no-group'));
+check('⑨g2 从卡片打开弹层后左下角入口按钮没有被一起点亮（还是「两处看起来像选中」的坑）',
   !isActive(byLabel(tree, 'step.export')[0].props.style) && byLabel(tree, 'step.export')[0].props['aria-current'] == null,
   String(byLabel(tree, 'step.export')[0].props.style.background));
-const jumpTimer = timers.filter(function (x) { return x.ms === 6000; })[0];check('⑨h 反馈会自己收起（安排了一个 6s 的清除定时器，不常驻打扰）', !!jumpTimer, timers.length + ' timers');
+const jumpTimer = timers.filter(function (x) { return x.ms === 6000; }).slice(-1)[0];
+check('⑨h 反馈会自己收起（安排了一个 6s 的清除定时器，不常驻打扰）', !!jumpTimer, timers.length + ' timers');
 if (jumpTimer) {
   jumpTimer.fn();
   tree = redraw();
-  check('⑨i 收起后回到常态：按钮文案复原、提示换回常驻说明',
-    byLabel(tree, 'workshop.library.export').length === 1 && byLabel(tree, 'workshop.library.exportJumped').length === 0 && textNodes(tree, 'workshop.export.currentHint').length === 1,
-    'export=' + byLabel(tree, 'workshop.library.export').length + ' hint=' + textNodes(tree, 'workshop.export.currentHint').length);
+  check('⑨i 收起后按钮文案复原；弹层仍指着那张已存卡（提示不退回草稿口径）',
+    byLabel(tree, 'workshop.library.export').length === 1 && byLabel(tree, 'workshop.library.exportJumped').length === 0
+    && textNodes(tree, 'workshop.export.savedCardHint').length === 1 && textNodes(tree, 'workshop.export.currentHint').length === 0,
+    'export=' + byLabel(tree, 'workshop.library.export').length + ' saved=' + textNodes(tree, 'workshop.export.savedCardHint').length);
 }
+// ⑨j 弹层里的 JSON 导出带着 cardId —— 导出的是那张已存卡，不是当前草稿
+const dlLib = downloads.length;
+byLabel(tree, 'action.exportJson')[0].props.onClick({});
+await tick(); await tick();
+const lastExportCall = calls.filter((c) => c.endpoint === 'cc_exportJson').slice(-1)[0];
+check('⑨j 弹层内点 JSON：请求带 cardId；groupId/stWorld 用该卡所属分组（g-lib / 库组书），并正常下载',
+  downloads.length === dlLib + 1 && !!lastExportCall
+  && lastExportCall.payload.args.cardId === 'abcdef1234'
+  && lastExportCall.payload.args.groupId === 'g-lib'
+  && lastExportCall.payload.args.stWorld === '库组书',
+  lastExportCall ? JSON.stringify(lastExportCall.payload.args) : 'no call');
 
-// ⑩ 顶部胶囊与左侧导航都只剩写作三步
+// ⑩ 关闭弹层：✕ / 点遮罩都只动 store.exportOpen，工坊回到原页面
+byAria(tree, 'export.close')[0].props.onClick({});
+check('⑩ 点弹层 ✕ 关闭：exportOpen=false，弹层内容消失',
+  exportOpen() === false && byLabel(redraw(), 'action.exportJson').length === 0,
+  'open=' + exportOpen());
+// 再打开一次，验证「点面板内部不关、点遮罩才关」
+byLabel(redraw(), 'step.export')[0].props.onClick({});
+tree = redraw();
+check('⑩b0 普通入口（草稿模式）不沿用上一张库卡的共享书（当前组没有书就显示 none）',
+  flatten(tree).filter((n) => n.children && String(n.children[0]) === '库组书').length === 0, '');
+const mask = flatten(tree).filter((n) => n.props && n.props.style && n.props.style.zIndex === 45)[0];
+check('⑩b 点面板内部（target !== currentTarget）不会关闭弹层', (function () {
+  if (!mask) return false;
+  mask.props.onClick({ target: {}, currentTarget: mask });
+  return exportOpen() === true;
+})(), 'mask=' + !!mask + ' open=' + exportOpen());
+check('⑩c 点遮罩（target===currentTarget）→ exportOpen=false',
+  !!mask && (function () {
+    mask.props.onClick({ target: mask, currentTarget: mask });
+    return exportOpen() === false && byLabel(redraw(), 'action.exportJson').length === 0;
+  })(),
+  'open=' + exportOpen() + ' mask=' + !!mask);
+
+// ⑪ 顶部胶囊与左侧导航都只剩写作三步
+byLabel(tree, 'step.export')[0].props.onClick({});
+tree = redraw();
 const chips = flatten(tree).filter((n) => n.type === 'span' && typeof n.children[0] === 'string' && /^\d\. step\./.test(n.children[0]));
 const navBtns = flatten(tree).filter((n) => n.type === 'button' && ['step.world', 'step.char', 'step.lore'].indexOf(n.children[0]) >= 0);
-check('⑩ 顶部胶囊与左侧导航都只有 3 个写作步骤（导出不再是第 4 步）',
+check('⑪ 顶部胶囊与左侧导航都只有 3 个写作步骤（导出不再是第 4 步）',
   chips.length === 3 && navBtns.length === 3, 'chips=' + chips.length + ' nav=' + navBtns.length);
 
-// ⑪ 收起工坊：整棵树不再渲染（面板开关没被这次改动碰坏）
+// ⑫ 收起工坊：整棵树不再渲染（面板开关没被这次改动碰坏）
 store.setPanel(false);
-check('⑪ 收起工坊后不再渲染任何导出按钮', byLabel(redraw(), 'action.exportJson').length === 0, '');
+check('⑫ 收起工坊后不再渲染任何导出按钮', byLabel(redraw(), 'action.exportJson').length === 0, '');
 
 globalThis.setTimeout = realSetTimeout;
 globalThis.setInterval = realSetInterval;

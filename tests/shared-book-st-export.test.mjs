@@ -23,6 +23,9 @@
  * 运行：node tests/shared-book-st-export.test.mjs   （全绿退出码 0）
  */
 import { readFileSync } from 'node:fs';
+// 0.13.0：世界书转换搬进宿主 lib/compat/adapters；客户端只发 RPC。测试的 fake RPC 用同一份
+// 纯函数生成期望内容，断言客户端「参数/下载/文案」契约；转换本身由 tests/compat-adapter.test.mjs 直接断言。
+import { bookToStWorldInfo } from '../lib/compat/index.js';
 
 const src = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 // 工具半也要看：共享书相关提示里必须点名「SillyTavern 要用哪一份」（下面是 URL 被替换前先读好）
@@ -176,6 +179,24 @@ const fakeCtx = {
     if (endpoint === 'cc_getGroup') return Promise.resolve({ ok: true, value: { group: { id: 'g1', name: '锁天司', nodes: [], edges: [] }, members: [], rev: 1 } });
     if (endpoint === 'cc_listGroups') return Promise.resolve({ ok: true, value: { groups: [{ id: 'g1', name: '锁天司', members: 4 }] } });
     if (endpoint === 'cc_listLibrary') return Promise.resolve({ ok: true, value: { entries: [] } });
+    if (endpoint === 'cc_listTargets') {
+      // 0.13.0：客户端共享书按钮按宿主注册的目标渲染；这里给三个目标（含一个「新平台」）。
+      return Promise.resolve({ ok: true, value: { targets: [
+        { id: 'ccv3', label: 'CCv3', capabilities: {} },
+        { id: 'sillytavern', label: 'SillyTavern', capabilities: {} },
+        { id: 'ccv3-native', label: 'CCv3 native', capabilities: {} },
+      ], defaultTarget: 'sillytavern' } });
+    }
+    if (endpoint === 'cc_exportBook') {
+      const gargs = (payload && payload.args) || {};
+      if (gargs.target === 'ccv3') {
+        return Promise.resolve({ ok: true, value: { filename: '锁天司·共享设定.lorebook.json', mime: 'application/json', content: JSON.stringify({ spec: 'lorebook_v3', data: BOOK.data }, null, 2) } });
+      }
+      if (gargs.target === 'ccv3-native') {
+        return Promise.resolve({ ok: true, value: { filename: '锁天司·共享设定.world.json', mime: 'application/json', content: JSON.stringify({ spec: 'lorebook_v3', data: BOOK.data }, null, 2) } });
+      }
+      return Promise.resolve({ ok: true, value: { filename: '锁天司·共享设定.json', mime: 'application/json', content: JSON.stringify(bookToStWorldInfo(BOOK.data), null, 2) } });
+    }
     return Promise.resolve({ ok: false, error: { code: 'internal', message: 'no handler' } });
   } } },
 };
@@ -237,23 +258,30 @@ const ST_TEMPLATE_KEYS = ['key', 'keysecondary', 'comment', 'content', 'constant
   'delayUntilRecursion', 'probability', 'useProbability', 'depth', 'outletName', 'group', 'groupOverride', 'groupWeight',
   'scanDepth', 'caseSensitive', 'matchWholeWords', 'useGroupScoring', 'automationId', 'role', 'sticky', 'cooldown', 'delay', 'triggers'];
 
-// ① 两处入口都渲染出新按钮（共享世界书页 cur=7 / 导出页 cur=3）
+// ① 两处入口都按宿主注册的目标渲染按钮（共享世界书页 cur=7 / 导出页 cur=3）
 store.setCur(7);
+await tick();                 // 0.13.0：目标来自宿主 cc_listTargets（面板打开时拉取）
 tree = redraw();
 const stBtnBookPage = byLabel(tree, 'export.book.buttonSt');
-check('① 共享世界书页渲染出「SillyTavern 世界书」按钮（与 CCv3 那枚并列，各 1 枚）',
-  stBtnBookPage.length === 1 && byLabel(tree, 'export.book.button').length === 1,
-  'st=' + stBtnBookPage.length + ' ccv3=' + byLabel(tree, 'export.book.button').length);
-store.setCur(3);
+const nativeBtnBookPage = byLabel(tree, 'CCv3 native');
+check('① 共享世界书页按宿主目标渲染：CCv3 / SillyTavern / 新目标各 1 枚（新增平台不用改客户端）',
+  stBtnBookPage.length === 1 && byLabel(tree, 'export.book.button').length === 1 && nativeBtnBookPage.length === 1,
+  'st=' + stBtnBookPage.length + ' ccv3=' + byLabel(tree, 'export.book.button').length + ' native=' + nativeBtnBookPage.length);
+store.setCur(5);
+store.openExport();           // 0.14.0：导出改成独立弹层（不再有 cur=3 页面）
+await tick();
 tree = redraw();
 const stBtnExportPage = byLabel(tree, 'export.book.buttonSt');
-check('①b 导出页的共享书块同样有这一枚（同一个实现，两处入口）',
-  stBtnExportPage.length === 1 && byLabel(tree, 'export.book.button').length === 1,
-  'st=' + stBtnExportPage.length + ' ccv3=' + byLabel(tree, 'export.book.button').length);
+check('①b 导出弹层里的共享书块同样按目标渲染（同一个实现，两处入口）',
+  stBtnExportPage.length === 1 && byLabel(tree, 'export.book.button').length === 1
+  && byLabel(tree, 'CCv3 native').length === 1,
+  'st=' + stBtnExportPage.length + ' ccv3=' + byLabel(tree, 'export.book.button').length
+  + ' native=' + byLabel(tree, 'CCv3 native').length);
 
 // ② 点它 → 真的下载，且文件名 = 书名（ST 用上传文件名当世界名）
 const dl0 = downloads.length;
 stBtnExportPage[0].props.onClick({});
+await tick(); await tick();   // 0.13.0：转换在宿主，按钮只发一次 cc_exportBook + 下载
 check('② 点它触发下载并回报 book.exportedSt（不是静默失败）',
   downloads.length === dl0 + 1 && String(store.getSnapshot().lastMsg).indexOf('book.exportedSt') === 0,
   'downloads+' + (downloads.length - dl0) + ' lastMsg=' + String(store.getSnapshot().lastMsg));
@@ -335,6 +363,7 @@ check('⑥c key/keysecondary 一律是数组、comment/content 一律是字符�
 // ⑦ CCv3 那份没被改坏（两枚按钮各有各的读者，不许「顺手合并」）
 const dl1 = downloads.length;
 byLabel(tree, 'export.book.button')[0].props.onClick({});
+await tick(); await tick();
 const ccv3 = stJson();
 check('⑦ 另一枚按钮仍然导出 CCv3 独立世界书（spec: lorebook_v3 + data）',
   downloads.length === dl1 + 1 && ccv3.spec === 'lorebook_v3' && ccv3.data && Array.isArray(ccv3.data.entries) && ccv3.data.entries.length === BOOK_ENTRIES.length,
@@ -349,8 +378,22 @@ const dl2 = downloads.length;
 store.setCur(7);
 tree = redraw();
 byLabel(tree, 'export.book.buttonSt')[0].props.onClick({});
+await tick(); await tick();
 check('⑧ 共享书页那枚点下去产出**同一份**文件（一次实现、两个入口）',
   downloads.length === dl2 + 1 && JSON.stringify(stJson()) === JSON.stringify(out) && lastDownload().download === '锁天司·共享设定.json',
+  lastDownload().download);
+
+// ⑧b 宿主注册的新目标自动出现，并走同一个 cc_exportBook（target 由按钮决定）
+tree = redraw();
+const nativeBtns = byLabel(tree, 'CCv3 native');
+check('⑧b0 新目标在两个入口都出现（共享书页 + 导出弹层；弹层在 DOM 末尾，索引 1）',
+  nativeBtns.length === 2, String(nativeBtns.length));
+const dl3 = downloads.length;
+nativeBtns[1].props.onClick({});
+await tick(); await tick();
+check('⑧b 第三个目标（宿主注册的）自动出现并走同一个端点：target=ccv3-native',
+  downloads.length === dl3 + 1 && lastDownload().download === '锁天司·共享设定.world.json'
+  && calls.some((c) => c.endpoint === 'cc_exportBook' && c.payload.args.target === 'ccv3-native'),
   lastDownload().download);
 
 // ⑨ 词表与说明：zh/en 都要有，且用户看得懂「为什么要挑格式」
@@ -368,8 +411,16 @@ check('⑨d 工具侧提示也同步了（cc_validate 的共享书警告点名 S
 
 // ⑩ store 暴露了新动作（不是只加了个按钮壳子）
 check('⑩ store 暴露 exportBookStFile', typeof store.exportBookStFile === 'function', typeof store.exportBookStFile);
-check('⑩b 转换不依赖 RPC（点按钮时不该再发一次请求；数据本来就在手里）',
-  calls.filter((c) => c.endpoint === 'cc_getBook').length === 1, calls.map((c) => c.endpoint).join(','));
+// 0.13.0：转换收口到宿主 compat/adapters（单一实现）—— 按钮只发 cc_exportBook，target 由按钮决定；
+// 目标列表来自 cc_listTargets（新平台自动多按钮）。
+const bookCalls = calls.filter((c) => c.endpoint === 'cc_exportBook');
+check('⑩b 四次点击各发一次 cc_exportBook，target 依次为 sillytavern / ccv3 / sillytavern / ccv3-native',
+  bookCalls.length === 4
+  && bookCalls[0].payload.args.target === 'sillytavern'
+  && bookCalls[1].payload.args.target === 'ccv3'
+  && bookCalls[2].payload.args.target === 'sillytavern'
+  && bookCalls[3].payload.args.target === 'ccv3-native',
+  bookCalls.map((c) => (c.payload.args || {}).target).join(','));
 
 globalThis.setTimeout = realSetTimeout;
 globalThis.setInterval = realSetInterval;

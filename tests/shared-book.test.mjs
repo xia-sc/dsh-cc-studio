@@ -64,10 +64,18 @@ check('①c normalizeBook **保真**：未知顶层字段、未知条目字段�
     && norm.data.entries[0].cc_auto === true && norm.data.entries[0].id === 42 && norm.data.entries[0].priority === 7
     && norm.data.entries[0].extensions.cc_world_ref === 'timeline',
   JSON.stringify(norm.data.entries[0]));
-check('①d 两半 contentKeyOf / normalizeBook 输出一致（同构实现不许漂移）',
-  host.contentKeyOf(norm.data.entries[0]) === agent.contentKeyOf(norm.data.entries[0])
-    && JSON.stringify(host.normalizeBook(raw, 'g-book')) === JSON.stringify(agent.normalizeBook(raw, 'g-book')),
-  '');
+check('①d 两半 contentKeyOf / normalizeBook 输出一致（同构实现不许漂移）', (() => {
+  // `normalizeBook` 缺省 `updatedAt` 用 nowSec()：两次调用若跨秒会比较出 1 秒差（测试曾经偶发红，
+  // 2026-11-09 全量跑正好跨秒复现）。时间戳与「两半是否同构」无关，比较前归零。
+  const stripTime = (book) => {
+    const o = JSON.parse(JSON.stringify(book));
+    if (o.data && o.data.extensions && o.data.extensions.cc) o.data.extensions.cc.updatedAt = 0;
+    return o;
+  };
+  return host.contentKeyOf(norm.data.entries[0]) === agent.contentKeyOf(norm.data.entries[0])
+    && JSON.stringify(stripTime(host.normalizeBook(raw, 'g-book')))
+      === JSON.stringify(stripTime(agent.normalizeBook(raw, 'g-book')));
+})(), '');
 
 // ——————————————————————————————————————————————————————————————
 // ② 扫描：哪些条目算「重复」
