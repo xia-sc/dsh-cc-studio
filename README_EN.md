@@ -8,7 +8,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 
 | Item | Value |
 | --- | --- |
-| Package / version | `@xia-sc/dsh-cc-studio` `0.18.0-alpha.1` (Alpha channel; `latest` is still `0.17.0`) |
+| Package / version | `@xia-sc/dsh-cc-studio` `0.18.0-alpha.2` (Alpha channel; `latest` is still `0.17.0`) |
 | Compatibility | DSH `>=0.2.0-rc.2` (incl. Desktop), Node `>=22`, **zero runtime dependencies**; see [Compatibility & permissions](#compatibility--permissions) |
 | Storage | `<DSH_HOME>/cc-library/` (cards), `cc-drafts/` (session drafts + creation lock + backups), `cc-groups/` (relationship groups), `cc-books/` (group shared lorebook); `DSH_HOME` defaults to `~/.dsh` |
 | Docs | This file; read [AGENTS.md](./AGENTS.md) before changing code; history in [CHANGELOG.md](./CHANGELOG.md) |
@@ -98,6 +98,8 @@ The usual failure is "previous scene in the morning, next scene at night". CC Mo
 - **Character's Note (`depth_prompt`, written automatically)**: ST injects it within the last 4 messages every turn — closer than Post-History, and independent of ST's `prefer_character_*` switches; in group chats each member card contributes its own.
 - **World Info "time anchor" constant entry** (`cc_patch_world({timeLore:true})`): injected every turn. ⚠️ ST does not turn a card's `character_book` into a world book automatically — put it in the group's shared book (the one-click import sends the book first), or Import Card Lore manually / export a standalone lorebook.
 - **Variable placeholder** (`cc_patch_character({timeVariable:true})`, advanced): appends `{{getvar::cc_story_time}}`. ST expands `{{getvar}}`, but **the card cannot write the variable itself** (a `{{setvar}}` in model output is not executed, and a card cannot carry Quick Replies) — maintain it with a Quick Reply / `/setvar` on the ST side; with no variable set the template falls back to the timestamp in the text.
+**Custom eras / fictional calendars (0.18.0-alpha.2)**: the anchor is no longer ISO-only. Dual-track is recommended: `[时间：1287-09-12 07:40]（天启三年九月十二·辰时）`; a pure fictional calendar can write `[时间：天启三年九月十二 辰时]` directly (it passes, with a warning to add the ISO prefix for comparison); `cc_patch_greetings` accepts `startAnchor` to fill any era prefix. Card authoring only validates the format — runtime continuity is still up to the model.
+
 `first_mes` also carries a starting timestamp (`cc_patch_greetings` can fill it from `startTime`). ST has `prefer_character_prompt` / `prefer_character_jailbreak` on by default, so it works right after import; **if you customised the Main Prompt in ST, the card's system_prompt replaces it** (the template keeps the base sentence). This is a soft constraint: it greatly reduces drift, but cannot guarantee 100%.
 ### Relationships & shared lorebook
 
@@ -132,6 +134,7 @@ npm test    # all test files, serial; must be green
 
 Full history: [CHANGELOG.md](./CHANGELOG.md) (0.12.0 onwards).
 
+- `0.18.0-alpha.2` **Custom eras in the time anchor** (Issue #6): lenient anchor + dual-track wording + `startAnchor`; fictional calendars pass (with an ISO-comparison warning).
 - `0.18.0-alpha.1` First Alpha: pre-release publishing (`npm publish --tag alpha`, `latest` untouched; Release marked `--prerelease`); same features as 0.17.0.
 - `0.17.0` **Time anchoring, deeper**: `Character's Note` (`depth_prompt`) is written automatically (ST injects it near the last messages); optional World Info time-anchor entry and a `timeVariable` placeholder (needs an ST-side Quick Reply to maintain).
 - `0.16.0` **Time anchoring (anti drift)**: every card gets a `system_prompt` (replies start with `[时间：…]`, time only moves forward) and `post_history_instructions` (pre-generation check), plus a starting timestamp in `first_mes`; validation fails without them.

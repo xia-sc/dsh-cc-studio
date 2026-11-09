@@ -50,6 +50,8 @@ tests/*.test.mjs      回归测试，不随包发布
 
 `data.extensions.depth_prompt`（Character's Note）是 **ST 私有扩展**：ST 每轮注入在最近消息内（默认 depth 4 / role system），其他客户端忽略；`cc_patch_character` 未传 `depthPrompt` 时自动写入。世界书「时间锚定」常驻条目只是卡内书 —— ST 不会自动把 `character_book` 变成世界书（要共享书或手动 Import Card Lore）。变量模式（`timeVariable`）只放 `{{getvar}}` 占位：**卡不能自动写变量**（AI 输出的 `{{setvar}}` 不执行），文档不得承诺「每轮自动注入当前故事时间」。
 
+锚点校验分三档（0.18.0-alpha.2，A+）：`TIME_ANCHOR_RE`（严格 ISO）与 `TIME_ANCHOR_ANY_RE`（任意纪年，1-80 字符）并存 —— ISO 通过；任意纪年通过但 warning；无锚点才 error。`cc_patch_greetings` 的 `startAnchor` 支持任意纪年起锚。别把「自定义纪年」重新判成 error（Issue #6 的回归），也别宣称插件做运行时时间检测。
+
 ## 3. 三个入口要点
 
 ### 3.1 宿主 `lib/index.js`

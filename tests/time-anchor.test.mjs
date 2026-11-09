@@ -44,6 +44,17 @@ const call = (n, a) => tools.get(n).execute(a || {}, exec);
     /自检/.test(mod.TIME_POST_HISTORY) && /\[时间：/.test(mod.TIME_POST_HISTORY)
     && /只能向前/.test(mod.TIME_POST_HISTORY),
     mod.TIME_POST_HISTORY.slice(0, 60));
+  // A+（0.18.0-alpha.2）：宽松锚点 + 双轨
+  check('①e 宽松锚点正则：接受自定义纪年（架空历法）',
+    mod.TIME_ANCHOR_ANY_RE.test('[时间：天启三年九月十二 辰时]')
+    && mod.TIME_ANCHOR_ANY_RE.test('[时间：星历 3042 年·第二周期]'), '');
+  check('①f 宽松锚点正则：拒绝空内容 / 无闭合 / 超长',
+    !mod.TIME_ANCHOR_ANY_RE.test('[时间：]')
+    && !mod.TIME_ANCHOR_ANY_RE.test('[时间：天启三年')
+    && !mod.TIME_ANCHOR_ANY_RE.test('[时间：' + 'x'.repeat(81) + ']'), '');
+  check('①g 三份模板都写了双轨写法（ISO 前缀 + 自定义纪年）',
+    /双轨/.test(mod.TIME_SYSTEM_PROMPT) && /双轨/.test(mod.TIME_POST_HISTORY)
+    && /双轨/.test(mod.TIME_DEPTH_PROMPT) && /双轨/.test(mod.TIME_LORE_PROMPT), '');
 }
 
 // ── ② 自动写入：模型漏写时工具兜底 ─────────────────────────────
@@ -104,6 +115,14 @@ const call = (n, a) => tools.get(n).execute(a || {}, exec);
   card = (await call('cc_get_card')).draft;
   check('③c 已有锚点时不重复加前缀（第二次 startTime 不生效）',
     (card.data.first_mes.match(/\[时间：/g) || []).length === 1, String(card.data.first_mes).slice(0, 40));
+  // A+：任意纪年锚点
+  await call('cc_patch_greetings', { first_mes: '架空开场。' });
+  const rAnchor = await call('cc_patch_greetings', { startAnchor: '天启三年九月十二 辰时' });
+  card = (await call('cc_get_card')).draft;
+  check('③d startAnchor 支持自定义纪年：自动补 [时间：天启三年九月十二 辰时]',
+    card.data.first_mes.indexOf('[时间：天启三年九月十二 辰时]') === 0
+    && rAnchor.greetings.timeAnchored === true && rAnchor.greetings.timeAnchoredISO === false,
+    String(card.data.first_mes).slice(0, 40));
 }
 
 // ── ④ validate：缺时间锚定不通过，补齐后通过 ────────────────────
@@ -137,6 +156,12 @@ const call = (n, a) => tools.get(n).execute(a || {}, exec);
   check('④e validate 说明「时间锚定」条目在 ST 里要手动 Import Card Lore（卡内书不会被自动转成世界书）',
     (ok.warnings || []).some(w => /Import Card Lore/.test(String(w))),
     JSON.stringify((ok.warnings || []).filter(w => /时间锚定/.test(String(w))).map(w => String(w).slice(0, 40))));
+  // A+：纯自定义纪年 first_mes 也应通过（只给 ISO 双轨 warning）
+  await call('cc_patch_greetings', { first_mes: '[时间：天启三年九月十二 辰时]\n架空开场白。' });
+  const okAny = await call('cc_validate');
+  check('④f 纯自定义纪年锚点 → valid=true，但 warning 提示补 ISO 双轨前缀',
+    okAny.valid === true && (okAny.warnings || []).some(w => /ISO/.test(String(w))),
+    JSON.stringify({ valid: okAny.valid, warnings: (okAny.warnings || []).filter(w => /ISO/.test(String(w))).map(w => String(w).slice(0, 40)) }));
 }
 
 // ── ⑤ 导出投影保留两个字段（PNG 的 chara 块 / JSON 用同一条投影） ──

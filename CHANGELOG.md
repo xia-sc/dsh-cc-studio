@@ -4,6 +4,31 @@
 
 格式：最新版本按「新增 / 修复」写；更早的小节按现象 → 根因 → 修法 → 生效方式。
 
+## 0.18.0-alpha.2
+
+**时间锚点支持自定义纪年 / 架空历法（A+，双轨制）。** Issue #6：仙侠 / 西幻 / 架空星历的卡写不出 `[时间：YYYY-MM-DD HH:MM]`，被 `cc_validate` 直接挡下。
+
+### 新增
+
+- **宽松锚点**：`TIME_ANCHOR_ANY_RE` 接受 `[时间：…]` 内任意纪年文本（1-80 字符、单行）。`cc_validate` 三档：ISO 前缀通过；任意纪年通过但 warning（建议双轨）；完全没有锚点才 error（文案给双轨示例）。
+- **双轨写法**：`TIME_SYSTEM_PROMPT` / `TIME_POST_HISTORY` / `TIME_DEPTH_PROMPT` / `TIME_LORE_PROMPT` 全部写明「推荐双轨：`[时间：1287-09-12 07:40]（天启三年九月十二·辰时）`；架空历法可直接写 `[时间：天启三年九月十二 辰时]`」。
+- **`cc_patch_greetings({startAnchor})`**：任意纪年起始锚点，`first_mes` 缺锚点时自动补 `[时间：<startAnchor>]`；`greetings.timeAnchored` 改用宽松正则，另报 `timeAnchoredISO`。
+- `cc_patch_greetings` / `cc_validate` 的参数说明与错误文案同步。
+
+### 说明
+
+- 插件在**制卡期**只做格式校验，运行时不参与 —— 放宽不会丢失任何已实现的检测能力（此前也没有运行时倒退检测）。
+- 纯自定义纪年能通过，但没有 ISO 前缀时无法做程序化时间对照，所以只给 warning 而非 error。
+
+### 测试
+
+- `tests/time-anchor.test.mjs` 23 → 28 项：宽松正则、模板双轨、`startAnchor`、自定义纪年 first_mes 通过 + warning。
+- 全量 29 个文件、1245 项全绿。
+
+### 生效方式
+
+**宿主 / 预设半有改动：重启 `dsh web` 并刷新页面。**
+
 ## 0.18.0-alpha.1
 
 **首个 Alpha 版本：发布通道 + 0.17.0 的全部内容。**

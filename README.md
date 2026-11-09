@@ -8,7 +8,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 
 | 项目 | 值 |
 | --- | --- |
-| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.18.0-alpha.1`（Alpha 通道；`latest` 仍为 `0.17.0`） |
+| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.18.0-alpha.2`（Alpha 通道；`latest` 仍为 `0.17.0`） |
 | 兼容 | DSH `>=0.2.0-rc.2`（含桌面版）、Node `>=22`、**零运行依赖**；逐版本实测见 [兼容与权限](#兼容与权限) |
 | 落盘 | `<DSH_HOME>/cc-library/`（角色卡）、`cc-drafts/`（会话草稿 + 创作锁 + 备份）、`cc-groups/`（关系分组）、`cc-books/`（组共享世界书）；`DSH_HOME` 默认 `~/.dsh` |
 | 文档 | 用户文档＝本文件；改代码前读 [AGENTS.md](./AGENTS.md)；历史 [CHANGELOG.md](./CHANGELOG.md) |
@@ -98,6 +98,8 @@ LLM 续写时最容易「上一段早晨、下一段直接夜晚」。CC 模式�
 - **Character's Note（`depth_prompt`，默认自动写入）**：ST 每轮注入在最近 4 条消息之内，比 Post-History 更靠近生成点，且不受 ST 的 prefer 开关影响；群聊里每张成员卡各自注入。
 - **世界书「时间锚定」常驻条目**（`cc_patch_world({timeLore:true})`）：每轮必插。⚠️ ST 不会自动把卡内 `character_book` 变成世界书 —— 要自动生效得放进组共享书（一键导入 ST 会先导书），否则需在 ST 里手动 Import Card Lore 或导出独立世界书。
 - **变量占位**（`cc_patch_character({timeVariable:true})`，进阶）：在模板里加 `{{getvar::cc_story_time}}`。ST 的 `{{getvar}}` 会展开，但**卡本身无法自动写变量**（AI 输出里的 `{{setvar}}` 不会被执行，卡也带不了 Quick Reply）—— 需要在 ST 侧用 Quick Reply / `/setvar` 维护，没设置时模板回退到正文时间戳。
+**自定义纪年 / 架空历法（0.18.0-alpha.2）**：锚点不再强制 ISO。推荐双轨 `[时间：1287-09-12 07:40]（天启三年九月十二·辰时）`；纯架空历法可直接写 `[时间：天启三年九月十二 辰时]`（能通过校验，但会提示补 ISO 前缀便于对照）；`cc_patch_greetings` 可用 `startAnchor` 自动补任意纪年前缀。注意：制卡期只校验格式，运行时的连贯仍靠模型。
+
 `first_mes` 也带一个起始时间锚点（`cc_patch_greetings` 的 `startTime` 可自动补）。ST 默认 `prefer_character_prompt` / `prefer_character_jailbreak` 开启，导入即生效；**若你在 ST 里自定义过 Main Prompt，它会被卡里的 system_prompt 覆盖**（模板已保留基础句）。这是软约束：显著减少漂移，但不保证 100%。
 ### 关系与共享世界书
 
@@ -132,6 +134,7 @@ npm test    # 全部测试文件串行；全绿才算过
 
 完整见 [CHANGELOG.md](./CHANGELOG.md)（保留 0.12.0 起）。
 
+- `0.18.0-alpha.2` **时间锚点支持自定义纪年**（Issue #6）：宽松锚点 + 双轨写法 + `startAnchor`；纯架空历法通过校验（只给 ISO 对照 warning）。
 - `0.18.0-alpha.1` 首个 Alpha 版本：发布流程支持预发布（`npm publish --tag alpha`，不覆盖 `latest`；Release 标 `--prerelease`）；功能与 0.17.0 相同。
 - `0.17.0` **时间锚定增强**：`Character's Note`（`depth_prompt`）自动写入（ST 每轮注入在最近位置）；可选世界书「时间锚定」常驻条目与 `timeVariable` 变量占位（后者需 ST 侧 Quick Reply 维护）。
 - `0.16.0` **时间锚定（防时间漂移）**：每张卡强制写 `system_prompt`（每段以 `[时间：…]` 开头、时间只能向前）与 `post_history_instructions`（生成前自检），`first_mes` 带起始时间戳；缺任一项 validate 不通过。
