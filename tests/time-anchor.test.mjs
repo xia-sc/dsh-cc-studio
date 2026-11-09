@@ -68,6 +68,26 @@ const call = (n, a) => tools.get(n).execute(a || {}, exec);
     JSON.stringify(r3.changed));
   // 恢复模板，后续用例用标准卡
   await call('cc_patch_character', { system_prompt: mod.TIME_SYSTEM_PROMPT });
+  const dp = (await call('cc_get_card')).draft.data.extensions.depth_prompt;
+  check('②e 自动写入 Character\'s Note（depth_prompt）：形状 prompt/depth/role 正确',
+    !!dp && dp.prompt === mod.TIME_DEPTH_PROMPT && dp.depth === 4 && dp.role === 'system',
+    JSON.stringify(dp && { depth: dp.depth, role: dp.role }));
+  await call('cc_patch_character', { depthPrompt: '自定义深度提示 [时间：YYYY-MM-DD HH:MM]' });
+  check('②f 显式 depthPrompt 覆盖自动模板',
+    (await call('cc_get_card')).draft.data.extensions.depth_prompt.prompt === '自定义深度提示 [时间：YYYY-MM-DD HH:MM]', '');
+  await call('cc_patch_character', { depthPrompt: '' });
+  check('②g depthPrompt 传空串可清空（不再强行写回模板）',
+    !(await call('cc_get_card')).draft.data.extensions.depth_prompt, '');
+  await call('cc_patch_character', { timeVariable: true });
+  const withVar = (await call('cc_get_card')).draft.data;
+  check('②h timeVariable:true 时 system_prompt 与 depth_prompt 都追加 {{getvar::cc_story_time}}',
+    withVar.system_prompt.includes('{{getvar::cc_story_time}}')
+    && String(withVar.extensions.depth_prompt && withVar.extensions.depth_prompt.prompt).includes('{{getvar::cc_story_time}}'),
+    JSON.stringify({ sys: withVar.system_prompt.includes('{{getvar::cc_story_time}}') }));
+  check('②i 默认（不传 timeVariable）不含变量占位',
+    !mod.TIME_SYSTEM_PROMPT.includes('{{getvar::cc_story_time}}') && !mod.TIME_DEPTH_PROMPT.includes('{{getvar::cc_story_time}}'), '');
+  // 恢复成默认模板 + 默认 depth_prompt，后续 validate 用例按标准卡走
+  await call('cc_patch_character', { system_prompt: mod.TIME_SYSTEM_PROMPT, depthPrompt: mod.TIME_DEPTH_PROMPT });
 }
 
 // ── ③ first_mes 时间锚：startTime 自动补前缀 ────────────────────
@@ -93,7 +113,15 @@ const call = (n, a) => tools.get(n).execute(a || {}, exec);
     timeline: '十年前那场大火之后，学校就没有再招过新生。',
     factions: '夜巡与学生会', geo: '旧校舍、广播室、天台',
     power: '遗忘会沉淀为异常', daily: '晚自习后走廊很安静',
+    timeLore: true,
   });
+  const lore = (await call('cc_get_card')).draft.data.character_book.entries.filter(e => e && e.name === '时间锚定')[0];
+  check('④c timeLore:true 生成 constant 的「时间锚定」条目（带 @@ 装饰器）',
+    !!lore && lore.constant === true && String(lore.content).indexOf('@@position') === 0,
+    lore ? String(lore.content).slice(0, 30) : 'missing');
+  await call('cc_patch_world', { timeline: '十年前那场大火之后，学校就没有再招过新生。', timeLore: false });
+  check('④d timeLore:false 不生成条目（也不重复添加）',
+    (await call('cc_get_card')).draft.data.character_book.entries.filter(e => e && e.name === '时间锚定').length === 1, '');
   await call('cc_add_lorebook_entries', { entries: [
     { name: '罐底的字', keys: ['红豆奶', '罐底'], content: '@@depth 4\n罐底有一行被刮掉的字。' },
     { name: '西侧楼梯', keys: ['西侧楼梯'], content: '@@depth 4\n西侧楼梯的灯总是坏。' },
@@ -106,6 +134,9 @@ const call = (n, a) => tools.get(n).execute(a || {}, exec);
   check('④b validate 给出「system_prompt 会替换 ST Main Prompt」的提示',
     (ok.warnings || []).some(w => /Main Prompt/.test(String(w))),
     JSON.stringify((ok.warnings || []).map(w => String(w).slice(0, 30))));
+  check('④e validate 说明「时间锚定」条目在 ST 里要手动 Import Card Lore（卡内书不会被自动转成世界书）',
+    (ok.warnings || []).some(w => /Import Card Lore/.test(String(w))),
+    JSON.stringify((ok.warnings || []).filter(w => /时间锚定/.test(String(w))).map(w => String(w).slice(0, 40))));
 }
 
 // ── ⑤ 导出投影保留两个字段（PNG 的 chara 块 / JSON 用同一条投影） ──
@@ -116,7 +147,7 @@ const call = (n, a) => tools.get(n).execute(a || {}, exec);
       name: '投影卡', description: 'd', personality: 'p', scenario: 's',
       first_mes: '[时间：2026-11-09 08:00]\n开场。',
       system_prompt: mod.TIME_SYSTEM_PROMPT, post_history_instructions: mod.TIME_POST_HISTORY,
-      extensions: {},
+      extensions: { depth_prompt: { prompt: mod.TIME_DEPTH_PROMPT, depth: 4, role: 'system' } },
     },
   };
   const proj = compat.stV2Projection(card);
@@ -124,6 +155,10 @@ const call = (n, a) => tools.get(n).execute(a || {}, exec);
     proj.data.system_prompt === mod.TIME_SYSTEM_PROMPT
     && proj.data.post_history_instructions === mod.TIME_POST_HISTORY,
     String(proj.data.system_prompt).slice(0, 40));
+  check('⑤b V2 投影保留 extensions.depth_prompt（ST 的 Character\'s Note）',
+    proj.data.extensions && proj.data.extensions.depth_prompt
+    && proj.data.extensions.depth_prompt.prompt === mod.TIME_DEPTH_PROMPT,
+    JSON.stringify(proj.data.extensions && proj.data.extensions.depth_prompt));
 }
 
 rmSync(tmpHome, { recursive: true, force: true });

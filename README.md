@@ -8,7 +8,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 
 | 项目 | 值 |
 | --- | --- |
-| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.16.0` |
+| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.17.0` |
 | 兼容 | DSH `>=0.2.0-rc.2`（含桌面版）、Node `>=22`、**零运行依赖**；逐版本实测见 [兼容与权限](#兼容与权限) |
 | 落盘 | `<DSH_HOME>/cc-library/`（角色卡）、`cc-drafts/`（会话草稿 + 创作锁 + 备份）、`cc-groups/`（关系分组）、`cc-books/`（组共享世界书）；`DSH_HOME` 默认 `~/.dsh` |
 | 文档 | 用户文档＝本文件；改代码前读 [AGENTS.md](./AGENTS.md)；历史 [CHANGELOG.md](./CHANGELOG.md) |
@@ -33,8 +33,8 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 
 ```bash
 dsh plugin --profile web add @xia-sc/dsh-cc-studio          # 安装 / 更新
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.16.0   # 锁定版本
-dsh plugin --profile web add github:xia-sc/dsh-cc-studio#v0.16.0  # 从 GitHub tag
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.17.0   # 锁定版本
+dsh plugin --profile web add github:xia-sc/dsh-cc-studio#v0.17.0  # 从 GitHub tag
 dsh plugin --profile web remove @xia-sc/dsh-cc-studio        # 卸载
 ```
 
@@ -92,6 +92,11 @@ LLM 续写时最容易「上一段早晨、下一段直接夜晚」。CC 模式�
 - `system_prompt`：每段回复必须以 `[时间：YYYY-MM-DD HH:MM]` 开头；时间只能向前、推进幅度与剧情匹配；不得无过渡跳时段；用户说「第二天」以用户为准。模板保留了 ST 默认的基础句。
 - `post_history_instructions`：生成前自检 —— 上一段时间戳是什么、本段经过多久、是否跨时段；不输出自检过程，只输出新时间戳。
 
+**0.17.0 起还有三处可选增强（把「时间自检」放得离生成点更近）：**
+
+- **Character's Note（`depth_prompt`，默认自动写入）**：ST 每轮注入在最近 4 条消息之内，比 Post-History 更靠近生成点，且不受 ST 的 prefer 开关影响；群聊里每张成员卡各自注入。
+- **世界书「时间锚定」常驻条目**（`cc_patch_world({timeLore:true})`）：每轮必插。⚠️ ST 不会自动把卡内 `character_book` 变成世界书 —— 要自动生效得放进组共享书（一键导入 ST 会先导书），否则需在 ST 里手动 Import Card Lore 或导出独立世界书。
+- **变量占位**（`cc_patch_character({timeVariable:true})`，进阶）：在模板里加 `{{getvar::cc_story_time}}`。ST 的 `{{getvar}}` 会展开，但**卡本身无法自动写变量**（AI 输出里的 `{{setvar}}` 不会被执行，卡也带不了 Quick Reply）—— 需要在 ST 侧用 Quick Reply / `/setvar` 维护，没设置时模板回退到正文时间戳。
 `first_mes` 也带一个起始时间锚点（`cc_patch_greetings` 的 `startTime` 可自动补）。ST 默认 `prefer_character_prompt` / `prefer_character_jailbreak` 开启，导入即生效；**若你在 ST 里自定义过 Main Prompt，它会被卡里的 system_prompt 覆盖**（模板已保留基础句）。这是软约束：显著减少漂移，但不保证 100%。
 ### 关系与共享世界书
 
@@ -126,6 +131,7 @@ npm test    # 全部测试文件串行；全绿才算过
 
 完整见 [CHANGELOG.md](./CHANGELOG.md)（保留 0.12.0 起）。
 
+- `0.17.0` **时间锚定增强**：`Character's Note`（`depth_prompt`）自动写入（ST 每轮注入在最近位置）；可选世界书「时间锚定」常驻条目与 `timeVariable` 变量占位（后者需 ST 侧 Quick Reply 维护）。
 - `0.16.0` **时间锚定（防时间漂移）**：每张卡强制写 `system_prompt`（每段以 `[时间：…]` 开头、时间只能向前）与 `post_history_instructions`（生成前自检），`first_mes` 带起始时间戳；缺任一项 validate 不通过。
 - `0.15.1` **新增**：导出面板一键导入本机 SillyTavern（宿主代发请求：CSRF 会话 → 先导书 → 用 ST 实际书名绑定 → 再导 PNG 卡；同名书默认跳过、已有卡不覆盖；可选封面与 Basic 认证）。**修复**：JPG/WebP 封面自动转 PNG；非 PNG 封面与未知错误不再误报「未检测到 SillyTavern」。
 - `0.14.2` 库卡模式的共享书按那张卡自己的 `meta.groupId` 取（必要时用 `cc_getBook` 拉取并显示组名）。

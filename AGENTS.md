@@ -48,6 +48,8 @@ tests/*.test.mjs      回归测试，不随包发布
 
 **时间锚定模板只有一份。** `lib/agent.js` 的 `TIME_SYSTEM_PROMPT` / `TIME_POST_HISTORY` / `TIME_ANCHOR_RE` 是唯一来源：`cc_patch_character` 在模型漏写时自动写入（显式传了以调用方为准），`cc_validate` 强制检查（缺 system_prompt 锚点 / post_history 自检 / first_mes 时间戳 = error）。ST 侧 `system_prompt` 替换 `main` 段、`post_history_instructions` 替换 `jailbreak` 段，两个 `prefer_character_*` 开关默认开；模板里保留 ST 默认基础句。客户端与文档不要复制模板。
 
+`data.extensions.depth_prompt`（Character's Note）是 **ST 私有扩展**：ST 每轮注入在最近消息内（默认 depth 4 / role system），其他客户端忽略；`cc_patch_character` 未传 `depthPrompt` 时自动写入。世界书「时间锚定」常驻条目只是卡内书 —— ST 不会自动把 `character_book` 变成世界书（要共享书或手动 Import Card Lore）。变量模式（`timeVariable`）只放 `{{getvar}}` 占位：**卡不能自动写变量**（AI 输出的 `{{setvar}}` 不执行），文档不得承诺「每轮自动注入当前故事时间」。
+
 ## 3. 三个入口要点
 
 ### 3.1 宿主 `lib/index.js`

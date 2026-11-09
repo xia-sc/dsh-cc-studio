@@ -4,6 +4,33 @@
 
 格式：最新版本按「新增 / 修复」写；更早的小节按现象 → 根因 → 修法 → 生效方式。
 
+## 0.17.0
+
+**时间锚定增强：Character's Note（depth_prompt）+ 可选的世界书常驻条目 / 变量占位。**
+
+### 新增
+
+- **Character's Note（`data.extensions.depth_prompt`）**：`cc_patch_character` 自动写入 `{prompt: 时间自检, depth: 4, role: "system"}`。ST 把它注入在**最近消息内**（IN_CHAT @Depth 4），比 post-history 更靠近生成点，且不受 `prefer_character_prompt` / `prefer_character_jailbreak` 开关影响；群聊里每张成员卡各自注入。显式传 `depthPrompt` 可覆盖，传空串可清空。
+- **`cc_patch_world({timeLore:true})`**：额外生成一条 `constant: true` 的「时间锚定」世界书条目（`@@position after_desc`，每轮必插）。
+- **`cc_patch_character({timeVariable:true})`**（进阶，默认关）：在 system_prompt / depth_prompt 末尾追加 `{{getvar::cc_story_time}}` 占位，供 ST 侧自行维护故事内时间。
+- **工坊展示**：角色细化页只读显示 Character's Note（`workshop.field.depthNote`）。
+- `cc_validate` 新增提示：缺 depth_prompt（warning）、depth_prompt 无时间锚点（warning）、卡内「时间锚定」条目在 ST 里需手动 Import Card Lore（warning）。
+
+### 说明（能做到什么程度）
+
+- **depth_prompt**：纯卡自带、ST 每轮注入在最近位置，单聊/群聊都生效 —— 这是卡方案里能做到的最深位置（仍是静态文本）。
+- **世界书条目**：可行，但**卡内 `character_book` 不会被 ST 自动转成世界书**；要自动生效请放进组共享书（一键导入 ST 会先导书），否则需手动 Import Card Lore 或导出独立世界书。
+- **变量宏**：`{{getvar}}` 在 system / post-history / depth_prompt / 世界书里都会展开，但**卡无法自动写变量**（AI 输出的 `{{setvar}}` 不会被执行，卡也带不了 Quick Reply）。`timeVariable` 只是占位，需要在 ST 侧用 Quick Reply / `/setvar` 维护；未设置时模板回退到正文时间戳。**纯卡做不到「每轮自动注入当前故事时间」。**
+
+### 测试
+
+- `tests/time-anchor.test.mjs` 扩到 23 项：depth_prompt 自动写入/覆盖/清空、timeVariable 占位、timeLore 条目、validate 提示、V2 投影保留 `extensions.depth_prompt`。
+- 全量 29 个文件、1240 项全绿。
+
+### 生效方式
+
+**宿主 + 客户端都有改动：重启 `dsh web` 并刷新页面。**
+
 ## 0.16.0
 
 **时间锚定（防时间漂移）：强制写入 System Prompt 与历史后置指令。** 反馈：LLM 写卡/续写时没有时间观念 —— 上一段还是早晨，下一段就把事情推到晚上。
