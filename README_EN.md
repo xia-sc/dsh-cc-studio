@@ -8,7 +8,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 
 | Item | Value |
 | --- | --- |
-| Package / version | `@xia-sc/dsh-cc-studio` `0.17.0` |
+| Package / version | `@xia-sc/dsh-cc-studio` `0.18.0-alpha.1` (Alpha channel; `latest` is still `0.17.0`) |
 | Compatibility | DSH `>=0.2.0-rc.2` (incl. Desktop), Node `>=22`, **zero runtime dependencies**; see [Compatibility & permissions](#compatibility--permissions) |
 | Storage | `<DSH_HOME>/cc-library/` (cards), `cc-drafts/` (session drafts + creation lock + backups), `cc-groups/` (relationship groups), `cc-books/` (group shared lorebook); `DSH_HOME` defaults to `~/.dsh` |
 | Docs | This file; read [AGENTS.md](./AGENTS.md) before changing code; history in [CHANGELOG.md](./CHANGELOG.md) |
@@ -33,6 +33,7 @@ Manual install / update:
 
 ```bash
 dsh plugin --profile web add @xia-sc/dsh-cc-studio          # install / update
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@alpha     # Alpha channel (pre-release, latest untouched)
 dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.17.0   # pin a version
 dsh plugin --profile web add github:xia-sc/dsh-cc-studio#v0.17.0  # from a GitHub tag
 dsh plugin --profile web remove @xia-sc/dsh-cc-studio        # uninstall
@@ -131,6 +132,7 @@ npm test    # all test files, serial; must be green
 
 Full history: [CHANGELOG.md](./CHANGELOG.md) (0.12.0 onwards).
 
+- `0.18.0-alpha.1` First Alpha: pre-release publishing (`npm publish --tag alpha`, `latest` untouched; Release marked `--prerelease`); same features as 0.17.0.
 - `0.17.0` **Time anchoring, deeper**: `Character's Note` (`depth_prompt`) is written automatically (ST injects it near the last messages); optional World Info time-anchor entry and a `timeVariable` placeholder (needs an ST-side Quick Reply to maintain).
 - `0.16.0` **Time anchoring (anti drift)**: every card gets a `system_prompt` (replies start with `[时间：…]`, time only moves forward) and `post_history_instructions` (pre-generation check), plus a starting timestamp in `first_mes`; validation fails without them.
 - `0.15.1` **Added**: one-click import into a local SillyTavern from the export dialog (host does the CSRF session → lorebook first → bind by the returned name → PNG card; same-name books are skipped, existing cards are never overwritten; optional cover and Basic auth). **Fixed**: JPG/WebP covers are converted to PNG, and a non-PNG cover / unknown error no longer masquerades as "SillyTavern not detected".

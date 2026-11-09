@@ -501,7 +501,7 @@ check('⑪c B1 宿主半同构：工坊侧读到外部导入卡时也补齐（�
   JSON.stringify({ spec_version: hostFixed.spec_version, creator: hostFixed.data.creator, kind: typeof hostFixed.data.creation_date }));
 
 check('⑪d 每次返回都带 build 版本标识（LLM 能自己确认「我测的是不是最新代码」，第五轮为此白跑一轮）',
-  typeof b1full.build === 'string' && /^\d+\.\d+\.\d+$/.test(b1full.build), String(b1full.build));
+  typeof b1full.build === 'string' && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(b1full.build), String(b1full.build));
 check('⑪e draftStatus.watchedRev 报出「本次调用开始前工具半记着的盘上版本」（S1 的可对账字段）',
   Object.prototype.hasOwnProperty.call(b1full.draftStatus, 'watchedRev')
     && (b1full.draftStatus.watchedRev === null || typeof b1full.draftStatus.watchedRev === 'number'),

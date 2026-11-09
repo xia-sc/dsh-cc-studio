@@ -208,7 +208,7 @@ const blockOf = (id) => {
 // 不在并集里的 0.x token 直接红。非 0 开头（SillyTavern `1.19.0`）与 IP 地址不归本守卫管。
 {
   const changelog = read('CHANGELOG.md');
-  const pluginVersions = (changelog.match(/^## (\d+\.\d+\.\d+)$/gm) || []).map((l) => l.slice(3));
+  const pluginVersions = (changelog.match(/^## (\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/gm) || []).map((l) => l.slice(3));
   const compat = pkg.dsh.compatibility;
   const declaredDsh = Object.keys(compat.dshReleases);
   const rangeDsh = String(compat.dsh).match(/\d+\.\d+\.\d+(?:-[A-Za-z]+\.\d+)?/g) || [];

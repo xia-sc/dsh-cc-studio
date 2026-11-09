@@ -72,6 +72,23 @@ jobs:
           npm install -g npm@latest
           npm --version
 
+      - name: Detect prerelease
+        id: pre
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$tag" != "${tag%%-*}" ]; then
+            is_pre=true
+            dist_tag="${tag#*-}"
+            dist_tag="${dist_tag%%.*}"
+          else
+            is_pre=false
+            dist_tag=latest
+          fi
+          echo "is_pre=$is_pre" >> "$GITHUB_OUTPUT"
+          echo "dist_tag=$dist_tag" >> "$GITHUB_OUTPUT"
+
       - name: Version guard (tag 必须等于 package.json 的 version)
         if: startsWith(github.ref, 'refs/tags/')
         run: |
@@ -95,7 +112,15 @@ jobs:
 
       - name: Publish (OIDC + provenance)
         if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)
-        run: npm publish --provenance
+        env:
+          DIST_TAG: ${{ steps.pre.outputs.dist_tag }}
+        run: |
+          if [ -n "${DIST_TAG:-}" ] && [ "$DIST_TAG" != "latest" ]; then
+            echo "预发布：npm publish --tag $DIST_TAG（latest 不受影响）"
+            npm publish --provenance --tag "$DIST_TAG"
+          else
+            npm publish --provenance
+          fi
 
   # 发布成功后再建 Release，所以这里才需要 contents: write；
   # publish job 自己保持 contents: read + id-token: write 的最小权限。
@@ -118,7 +143,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # 标题沿用本仓库既有习惯：`0.3.3 — 短描述`（不带 v 前缀，tag 本身仍是 v0.3.3）
+          PRERELEASE=""
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$tag" != "${tag%%-*}" ]; then PRERELEASE="--prerelease"; fi
           gh release create "$GITHUB_REF_NAME" \
             --title "${GITHUB_REF_NAME#v} — $(cat release-title.txt)" \
             --notes-file release-notes.md \
-            --verify-tag
+            --verify-tag $PRERELEASE

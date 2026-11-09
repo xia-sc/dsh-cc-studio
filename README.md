@@ -8,7 +8,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 
 | 项目 | 值 |
 | --- | --- |
-| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.17.0` |
+| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.18.0-alpha.1`（Alpha 通道；`latest` 仍为 `0.17.0`） |
 | 兼容 | DSH `>=0.2.0-rc.2`（含桌面版）、Node `>=22`、**零运行依赖**；逐版本实测见 [兼容与权限](#兼容与权限) |
 | 落盘 | `<DSH_HOME>/cc-library/`（角色卡）、`cc-drafts/`（会话草稿 + 创作锁 + 备份）、`cc-groups/`（关系分组）、`cc-books/`（组共享世界书）；`DSH_HOME` 默认 `~/.dsh` |
 | 文档 | 用户文档＝本文件；改代码前读 [AGENTS.md](./AGENTS.md)；历史 [CHANGELOG.md](./CHANGELOG.md) |
@@ -33,6 +33,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 
 ```bash
 dsh plugin --profile web add @xia-sc/dsh-cc-studio          # 安装 / 更新
+dsh plugin --profile web add @xia-sc/dsh-cc-studio@alpha     # Alpha 通道（预发布，不覆盖 latest）
 dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.17.0   # 锁定版本
 dsh plugin --profile web add github:xia-sc/dsh-cc-studio#v0.17.0  # 从 GitHub tag
 dsh plugin --profile web remove @xia-sc/dsh-cc-studio        # 卸载
@@ -131,6 +132,7 @@ npm test    # 全部测试文件串行；全绿才算过
 
 完整见 [CHANGELOG.md](./CHANGELOG.md)（保留 0.12.0 起）。
 
+- `0.18.0-alpha.1` 首个 Alpha 版本：发布流程支持预发布（`npm publish --tag alpha`，不覆盖 `latest`；Release 标 `--prerelease`）；功能与 0.17.0 相同。
 - `0.17.0` **时间锚定增强**：`Character's Note`（`depth_prompt`）自动写入（ST 每轮注入在最近位置）；可选世界书「时间锚定」常驻条目与 `timeVariable` 变量占位（后者需 ST 侧 Quick Reply 维护）。
 - `0.16.0` **时间锚定（防时间漂移）**：每张卡强制写 `system_prompt`（每段以 `[时间：…]` 开头、时间只能向前）与 `post_history_instructions`（生成前自检），`first_mes` 带起始时间戳；缺任一项 validate 不通过。
 - `0.15.1` **新增**：导出面板一键导入本机 SillyTavern（宿主代发请求：CSRF 会话 → 先导书 → 用 ST 实际书名绑定 → 再导 PNG 卡；同名书默认跳过、已有卡不覆盖；可选封面与 Basic 认证）。**修复**：JPG/WebP 封面自动转 PNG；非 PNG 封面与未知错误不再误报「未检测到 SillyTavern」。

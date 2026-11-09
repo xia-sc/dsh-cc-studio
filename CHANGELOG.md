@@ -4,6 +4,26 @@
 
 格式：最新版本按「新增 / 修复」写；更早的小节按现象 → 根因 → 修法 → 生效方式。
 
+## 0.18.0-alpha.1
+
+**首个 Alpha 版本：发布通道 + 0.17.0 的全部内容。**
+
+### 说明
+
+- **发布流程支持预发布**：`vX.Y.Z-alpha.N` tag 会 `npm publish --tag alpha`（**不覆盖 latest**），GitHub Release 自动标 `--prerelease`；`beta` / `rc` 同理（dist-tag 取 `-` 后的第一段）。
+- 本版本功能与 `0.17.0` 相同（时间锚定增强：system_prompt / post_history_instructions / Character's Note / first_mes 时间戳 / timeLore / timeVariable），用于验证 Alpha 通道；`latest` 仍指向 `0.17.0`。
+- 安装 Alpha：`dsh plugin --profile <profile> add @xia-sc/dsh-cc-studio@alpha`（或精确到 `@0.18.0-alpha.1`）。
+- 版本守卫已放宽到接受预发布后缀（`## x.y.z-alpha.N` 的 CHANGELOG 标题、`build` 字段）。
+
+### 测试
+
+- 沿用 0.17.0 的全量套件；版本相关守卫改为接受 `-alpha.N`。
+- `npm test` 全绿。
+
+### 生效方式
+
+**与 0.17.0 相同：重启 `dsh web` 并刷新页面。**
+
 ## 0.17.0
 
 **时间锚定增强：Character's Note（depth_prompt）+ 可选的世界书常驻条目 / 变量占位。**
