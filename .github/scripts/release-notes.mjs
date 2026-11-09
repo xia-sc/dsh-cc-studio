@@ -36,9 +36,12 @@ if (start === -1) {
 }
 
 // 标题沿用本仓库既有的 Release 命名习惯 `vX.Y.Z — 短描述`：
-// 短描述取小节第一行，去掉 ** 强调、截到第一个冒号为止，避免出现一整屏的标题。
+// 短描述取小节第一行、去掉 ** 强调。冒号前若只是「新增」「修复」这类模板词（< 8 字），
+// 不截断整行（否则标题会退化成两个字）。
 const firstLine = notes.find((line) => line.trim() !== "") ?? version;
-const summary = firstLine.replace(/\*\*/g, "").split(/[：:]/)[0].trim().slice(0, 60);
+const plain = firstLine.replace(/\*\*/g, "").trim();
+const head = plain.split(/[：:]/)[0].trim();
+const summary = (head.length >= 8 ? head : plain.replace(/[。．.]$/, "")).slice(0, 60);
 
 writeFileSync("release-notes.md", notes.join("\n").trim() + "\n", "utf8");
 writeFileSync("release-title.txt", (summary || version) + "\n", "utf8");
