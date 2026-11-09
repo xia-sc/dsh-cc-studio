@@ -4,6 +4,25 @@
 
 格式：最新版本按「新增 / 修复」写；更早的小节按现象 → 根因 → 修法 → 生效方式。
 
+## 0.18.0
+
+**正式版：时间锚定增强 + 自定义纪年（包含 0.18.0-alpha.1 / 0.18.0-alpha.2 的全部内容）。**
+
+### 内容
+
+- **时间锚定**（0.16.0 起）：`system_prompt` 时间规则 + `post_history_instructions` 生成前自检 + `first_mes` 起始时间戳；`cc_patch_character` 在模型漏写时自动兜底写入。
+- **Character's Note**（0.17.0）：`data.extensions.depth_prompt` 由 ST 每轮注入在最近消息内；`cc_patch_world({timeLore:true})` 可选世界书常驻条目；`timeVariable` 进阶变量占位。
+- **自定义纪年 / 架空历法**（0.18.0-alpha.2，Issue #6）：宽松锚点 + 双轨写法 + `cc_patch_greetings({startAnchor})`；纯自定义纪年通过校验（只给 ISO 对照 warning）。
+- **发布流程**（0.18.0-alpha.1）：`vX.Y.Z-alpha.N` 自动走 `npm publish --tag alpha` + GitHub Release `--prerelease`，不覆盖 `latest`。
+
+### 测试
+
+- 全量 29 个文件、1245 项断言全绿。
+
+### 生效方式
+
+**宿主 / 预设半有改动：重启 `dsh web` 并刷新页面。**
+
 ## 0.18.0-alpha.2
 
 **时间锚点支持自定义纪年 / 架空历法（A+，双轨制）。** Issue #6：仙侠 / 西幻 / 架空星历的卡写不出 `[时间：YYYY-MM-DD HH:MM]`，被 `cc_validate` 直接挡下。

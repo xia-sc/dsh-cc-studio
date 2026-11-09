@@ -8,7 +8,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 
 | Item | Value |
 | --- | --- |
-| Package / version | `@xia-sc/dsh-cc-studio` `0.18.0-alpha.2` (Alpha channel; `latest` is still `0.17.0`) |
+| Package / version | `@xia-sc/dsh-cc-studio` `0.18.0` |
 | Compatibility | DSH `>=0.2.0-rc.2` (incl. Desktop), Node `>=22`, **zero runtime dependencies**; see [Compatibility & permissions](#compatibility--permissions) |
 | Storage | `<DSH_HOME>/cc-library/` (cards), `cc-drafts/` (session drafts + creation lock + backups), `cc-groups/` (relationship groups), `cc-books/` (group shared lorebook); `DSH_HOME` defaults to `~/.dsh` |
 | Docs | This file; read [AGENTS.md](./AGENTS.md) before changing code; history in [CHANGELOG.md](./CHANGELOG.md) |
@@ -33,7 +33,6 @@ Manual install / update:
 
 ```bash
 dsh plugin --profile web add @xia-sc/dsh-cc-studio          # install / update
-dsh plugin --profile web add @xia-sc/dsh-cc-studio@alpha     # Alpha channel (pre-release, latest untouched)
 dsh plugin --profile web add @xia-sc/dsh-cc-studio@0.17.0   # pin a version
 dsh plugin --profile web add github:xia-sc/dsh-cc-studio#v0.17.0  # from a GitHub tag
 dsh plugin --profile web remove @xia-sc/dsh-cc-studio        # uninstall
@@ -134,6 +133,7 @@ npm test    # all test files, serial; must be green
 
 Full history: [CHANGELOG.md](./CHANGELOG.md) (0.12.0 onwards).
 
+- `0.18.0` **Stable release**: includes the 0.17.0 time-anchoring work and the 0.18.0-alpha.2 custom-era support (lenient anchor + dual-track + `startAnchor`).
 - `0.18.0-alpha.2` **Custom eras in the time anchor** (Issue #6): lenient anchor + dual-track wording + `startAnchor`; fictional calendars pass (with an ISO-comparison warning).
 - `0.18.0-alpha.1` First Alpha: pre-release publishing (`npm publish --tag alpha`, `latest` untouched; Release marked `--prerelease`); same features as 0.17.0.
 - `0.17.0` **Time anchoring, deeper**: `Character's Note` (`depth_prompt`) is written automatically (ST injects it near the last messages); optional World Info time-anchor entry and a `timeVariable` placeholder (needs an ST-side Quick Reply to maintain).
