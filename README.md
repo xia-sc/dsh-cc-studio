@@ -8,7 +8,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 
 | 项目 | 值 |
 | --- | --- |
-| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.19.1` |
+| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.19.2` |
 | 兼容 | DSH `>=0.2.0-rc.2`（含桌面版）、Node `>=22`、**零运行依赖**；逐版本实测见 [兼容与权限](#兼容与权限) |
 | 落盘 | `<DSH_HOME>/cc-library/`（角色卡）、`cc-drafts/`（会话草稿 + 创作锁 + 备份）、`cc-groups/`（关系分组）、`cc-books/`（组共享世界书）；`DSH_HOME` 默认 `~/.dsh` |
 | 文档 | 用户文档＝本文件；改代码前读 [AGENTS.md](./AGENTS.md)；历史 [CHANGELOG.md](./CHANGELOG.md) |
@@ -110,7 +110,7 @@ LLM 续写时最容易「上一段早晨、下一段直接夜晚」。CC 模式�
 
 **每轮固定开销**（实测口径：CJK 一字≈1 token，其余 4 字符≈1 token）：12 条铁律时约 **1000 token/轮** —— system_prompt 440（时间规则 + 铁律指引，替换 ST 默认的 30 token 一句话）+ post_history 231（时间自检 + 仲裁语，替换空的 jailbreak）+ Character's Note 337（时间自检 + 铁律全文）。铁律全文只出现一次；若卡内世界书也加载，再加约 320（两条常驻条目）。
 
-`cc_validate({canon:[{subject,fact}]})` 提交铁律；不传时工具按现有内容自动派生草案（`source=derived`，会给 warning 让用户确认）。门禁：超长、同一实体两条不同说法、同名条目两种内容 → `valid=false`；手工条目的主题没进铁律 → warning。工坊点「校验」能看到完整清单（含冲突两处的原文）。
+`cc_validate({canon:[{subject,fact}]})` 提交铁律；不传时工具按现有内容自动派生草案（`source=derived`，会给 warning 让用户确认）。门禁：超长、同一实体两条不同说法、同名条目两种内容 → `valid=false`；手工条目的主题没进铁律 → warning（触发型条目可带 `skipCoverage: true` 豁免，不必为了消 warning 硬凑铁律）。工坊点「校验」能看到完整清单（含冲突两处的原文）；注入后顶爆 `token_budget` 时返回 `budgetHint`（含下一步该发的 `cc_patch_book_meta` 调用与具体数值）。
 
 **能力边界**：插件只做可计算检查（长度 / 重复 / 覆盖 / 极性词可疑），**不判断语义矛盾** —— 「债已清了」与「年底前总要核一次账」可以并存。语义冲突只能靠人（或审稿子代理）逐条对照。
 
@@ -147,6 +147,7 @@ npm test    # 全部测试文件串行；全绿才算过
 
 完整见 [CHANGELOG.md](./CHANGELOG.md)（保留 0.12.0 起）。
 
+- `0.19.2` **修复 stale 死循环**：显式重传逐字相同的 canon 现在会刷新指纹并清掉 `canon-stale`；`cc_add_lorebook_entries` / `cc_update_lorebook_entry` 支持 `skipCoverage`（触发型设定不必进铁律）；`cc_validate` 超预算时返回结构化 `budgetHint`；两条 warning 都写清「怎么消」。
 - `0.19.1` **修复 0.19.0 的 3 个 bug**：派生 canon 必然超限（存量卡全部 `valid=false`）、极性词表把时间副词当极性词、纯规则条目被算进覆盖缺口；另加 `canon-stale` 指标、预算建议值、`digest` 派生预览等体验改进。
 - `0.19.0` **设定铁律（Canon）**：把设定压成 ≤12 条短句，编译进 Character's Note / Post-History / 世界书常驻条目，让 ST 运行期每轮都读到；`cc_validate` 增加 canon 门禁与一致性清单（工坊「校验」可见），`cc_get_card({digest:true})` 提供不会被上下文裁剪的事实摘要。
 - `0.18.0` **正式版**：包含 0.17.0 的时间锚定增强与 0.18.0-alpha.2 的自定义纪年（宽松锚点 + 双轨 + `startAnchor`）。

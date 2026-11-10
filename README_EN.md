@@ -8,7 +8,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 
 | Item | Value |
 | --- | --- |
-| Package / version | `@xia-sc/dsh-cc-studio` `0.19.1` |
+| Package / version | `@xia-sc/dsh-cc-studio` `0.19.2` |
 | Compatibility | DSH `>=0.2.0-rc.2` (incl. Desktop), Node `>=22`, **zero runtime dependencies**; see [Compatibility & permissions](#compatibility--permissions) |
 | Storage | `<DSH_HOME>/cc-library/` (cards), `cc-drafts/` (session drafts + creation lock + backups), `cc-groups/` (relationship groups), `cc-books/` (group shared lorebook); `DSH_HOME` defaults to `~/.dsh` |
 | Docs | This file; read [AGENTS.md](./AGENTS.md) before changing code; history in [CHANGELOG.md](./CHANGELOG.md) |
@@ -110,7 +110,7 @@ In-chat continuity errors cannot be stopped by the plugin — once a card is imp
 
 **Per-turn fixed cost** (measured: 1 CJK char ≈ 1 token, other chars 4 ≈ 1): with 12 rules, about **1000 tokens/turn** — system_prompt 440 (time rules + canon pointer, replacing ST's 30-token default sentence) + post_history 231 (time self-check + arbitration line, replacing the empty jailbreak) + Character's Note 337 (time self-check + full canon). The full canon appears once; if the in-card world book is loaded too, add about 320 (two constant entries).
 
-Submit it with `cc_validate({canon:[{subject,fact}]})`; when omitted the tool derives a draft from existing content (`source=derived`, with a warning asking the user to confirm). Gates: over-length, two different facts for one entity, two same-named entries with different content → `valid=false`; a manual entry's topic missing from the canon → warning. The Studio "Validate" button shows the full list, including both quoted sides of a conflict.
+Submit it with `cc_validate({canon:[{subject,fact}]})`; when omitted the tool derives a draft from existing content (`source=derived`, with a warning asking the user to confirm). Gates: over-length, two different facts for one entity, two same-named entries with different content → `valid=false`; a manual entry's topic missing from the canon → warning (trigger-only entries can opt out with `skipCoverage: true` instead of padding the canon). The Studio "Validate" button shows the full list, including both quoted sides of a conflict; if injecting the canon pushes the card over `token_budget`, the result carries a `budgetHint` with the exact `cc_patch_book_meta` call to make.
 
 **Capability boundary**: the plugin only performs computable checks (length / duplicates / coverage / polarity words) and **does not judge semantic contradictions** — "the debt is settled" and "we still reconcile at year end" can coexist. Semantic conflicts need a human (or a reviewing subagent) to compare rule by rule.
 
@@ -147,6 +147,7 @@ npm test    # all test files, serial; must be green
 
 Full history: [CHANGELOG.md](./CHANGELOG.md) (0.12.0 onwards).
 
+- `0.19.2` **Fixes the stale loop**: re-submitting a byte-identical canon now refreshes the fingerprint and clears `canon-stale`; `cc_add_lorebook_entries` / `cc_update_lorebook_entry` accept `skipCoverage` (trigger-only settings need no canon rule); `cc_validate` returns a structured `budgetHint` when over budget; both warnings now say how to resolve them.
 - `0.19.1` **Fixes 3 bugs from 0.19.0**: derived canon always exceeded its own limit (every existing card became `valid=false`), the polarity word list treated time adverbs as polarity words, and pure-rule entries were counted as coverage gaps; also adds `canon-stale`, a concrete budget suggestion, and a derived preview in `digest`.
 - `0.19.0` **Setting canon**: compress the setting into ≤12 short rules and compile them into Character's Note / Post-History / a world-book constant entry so ST reads them every turn; `cc_validate` gains canon gates and a consistency list (visible in the Studio "Validate" panel), and `cc_get_card({digest:true})` returns a fact digest that never gets context-pruned.
 - `0.18.0` **Stable release**: includes the 0.17.0 time-anchoring work and the 0.18.0-alpha.2 custom-era support (lenient anchor + dual-track + `startAnchor`).

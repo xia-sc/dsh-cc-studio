@@ -680,9 +680,10 @@ check('⑭j 顶层没有 next/hint/notice/warning 副本（①d 的追加样本�
   && JSON.stringify(ulRt) === JSON.stringify(ul), Object.keys(ul).join(','));
 
 const ulDef = tools.get('cc_update_lorebook_entry');
-check('⑭k 参数声明：id 必填、9 个字段全部声明、additionalProperties:false（模型传不出未声明字段）',
+check('⑭k 参数声明：id 必填、全部字段声明、additionalProperties:false（模型传不出未声明字段）',
   !!ulDef && ulDef.parameters.required.indexOf('id') >= 0 && ulDef.parameters.additionalProperties === false
-  && Object.keys(ulDef.parameters.properties).sort().join(',') === 'constant,content,enabled,expectedRev,id,keys,name,priority,use_regex',
+  // 0.19.2：新增 skipCoverage（触发型条目豁免 canon-coverage-gap）
+  && Object.keys(ulDef.parameters.properties).sort().join(',') === 'constant,content,enabled,expectedRev,id,keys,name,priority,skipCoverage,use_regex',
   ulDef ? Object.keys(ulDef.parameters.properties).join(',') : 'tool missing');
 
 // —— 收尾：清掉临时落盘根 ——

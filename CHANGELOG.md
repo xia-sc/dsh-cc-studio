@@ -4,6 +4,28 @@
 
 格式：最新版本按「新增 / 修复」写；更早的小节按现象 → 根因 → 修法 → 生效方式。
 
+## 0.19.2
+
+**修复 0.19.1 的 1 个 bug + 落实 3 条建议（用户反馈）。**
+
+### 修复
+
+- **重传逐字相同的 canon 清不掉 `canon-stale`**：`applyCanon` 在规则没变时保留旧指纹，于是「改完条目 → 按提示原样重传」永远无效，只有改 canon 的文字才能清掉，形成死循环。修法：区分「确认」与「沿用」—— 显式传 `canon` 时刷新指纹（写一次 `extensions.cc_canon`）；`cc_validate()` 不传 canon 时仍保留旧指纹，stale 检测不被削弱。
+
+### 改进
+
+- **触发型条目可豁免覆盖检查**：`cc_add_lorebook_entries` / `cc_update_lorebook_entry` 新增 `skipCoverage` 参数（此前只有内部字段，模型写不进去）。「聊到才插入」的设定不必再被 `canon-coverage-gap` 反复催。
+- **warning 文案写清「怎么消」**：`canon-stale` 给两条消法（补新设定 / 原样重传也算确认）；`canon-coverage-gap` 给出 `skipCoverage: true` 的具体调用。
+- **超预算给结构化修复建议**：`cc_validate` 返回 `budgetHint: { over, current, used, suggested, call: { tool, args } }` —— `call` 就是下一步该发的工具调用。**设计上仍不跳过 canon 写入**：跳过等于运行期没有铁律，会退回 0.19.0 之前的状态；预算不够时按建议调预算或精简条目。
+
+### 测试
+
+- `tests/canon.test.mjs` 增加 ⑱–⑳（stale 刷新 / skipCoverage / budgetHint）；全量测试全绿。
+
+### 生效方式
+
+**改的是预设半（`lib/agent.js`）与共享纯函数（`lib/consistency.js`）：重启 `dsh web` 并刷新页面。**
+
 ## 0.19.1
 
 **修复 0.19.0 设定铁律的 3 个 bug + 6 条体验改进（用户反馈）。**

@@ -361,6 +361,69 @@ const call = (n, a) => tools.get(n).execute(a || {}, exec);
     JSON.stringify(e && { keys: e.keys.length, total: e.keysTotal, trunc: e.keysTruncated }));
 }
 
+// ── ⑱ 反馈 Bug 4：显式重传相同 canon 必须能清掉 stale ─────────────
+{
+  const base = { data: { name: 'X', extensions: { cc_world: { geo: '旧校舍' } }, character_book: { entries: [] } } };
+  const d0 = cons.deriveCanonDraft(base);
+  const c1 = cons.applyCanon(base, { rules: d0.rules, source: 'model', explicit: true }, {}).card;
+  c1.data.character_book.entries.push({ name: '新设定', keys: ['新设定'], content: '新设定正文。', enabled: true });
+  check('⑱a 改条目后 stale 出现（检测没被削弱）',
+    cons.auditCanon(c1).issues.some(i => i.code === 'canon-stale'), '');
+  const same = cons.normalizeCanon(c1).rules;
+  // 显式重传（explicit）→ 应刷新指纹
+  const c2 = cons.applyCanon(c1, { rules: same, source: 'model', explicit: true }, {});
+  check('⑱b 显式重传逐字相同的 canon → 指纹刷新、stale 消失',
+    !cons.auditCanon(c2.card).issues.some(i => i.code === 'canon-stale'), JSON.stringify(c2.changed));
+  check('⑱c 重传时 changed 含 extensions.cc_canon（证明真的写了，不是静默跳过）',
+    c2.changed.indexOf('extensions.cc_canon') >= 0, JSON.stringify(c2.changed));
+  // 非显式（validate 沿用已存）→ 不能刷新，否则 stale 检测失效
+  const c3 = cons.applyCanon(c1, { rules: same, source: 'model' }, {});
+  check('⑱d 不显式重传（沿用已存）时 stale 仍保留',
+    cons.auditCanon(c3.card).issues.some(i => i.code === 'canon-stale'), '');
+  // 建议 B：warning 文案要写清怎么消
+  const staleMsg = (cons.auditCanon(c1).issues.find(i => i.code === 'canon-stale') || {}).message || '';
+  check('⑱e canon-stale 文案给出两条消法（含「原样重传也算确认」）',
+    /消法/.test(staleMsg) && /原样重传/.test(staleMsg), staleMsg.slice(0, 80));
+  const gapMsg = (cons.auditCanon({ data: {
+    extensions: { cc_canon: { rules: [{ subject: '丹阁', fact: '掌炉火' }], source: 'model' } },
+    character_book: { entries: [{ name: '剑盟来客', keys: ['剑盟'], content: '剑盟来客分三种。', enabled: true }] },
+  } }).issues.find(i => i.code === 'canon-coverage-gap') || {}).message || '';
+  check('⑱f coverage-gap 文案给出 skipCoverage 消法',
+    /skipCoverage/.test(gapMsg), gapMsg.slice(0, 80));
+}
+
+// ── ⑲ 反馈建议 A：触发型条目可显式豁免覆盖检查 ─────────────────────
+{
+  await call('cc_add_lorebook_entries', { entries: [
+    { name: '触发型条目', keys: ['触发型'], content: '@@depth 4\n触发型设定正文。', skipCoverage: true },
+  ] });
+  let card = (await call('cc_get_card')).draft;
+  const e = card.data.character_book.entries.find(x => x.name === '触发型条目');
+  check('⑲a cc_add_lorebook_entries 支持 skipCoverage（模型写这条设定时就能声明「不需要每轮注入」）',
+    !!e && e.skipCoverage === true, JSON.stringify(e && e.skipCoverage));
+  const r = await call('cc_update_lorebook_entry', { id: e.id, skipCoverage: false });
+  const e2 = (await call('cc_get_card')).draft.data.character_book.entries.find(x => x.id === e.id);
+  check('⑲b cc_update_lorebook_entry 可取消豁免（changed 记录 skipCoverage）',
+    !e2.skipCoverage && (r.changed || []).indexOf('skipCoverage') >= 0, JSON.stringify(r.changed));
+  const r2 = await call('cc_update_lorebook_entry', { id: e.id, skipCoverage: true });
+  const e3 = (await call('cc_get_card')).draft.data.character_book.entries.find(x => x.id === e.id);
+  check('⑲c 也可以重新打开豁免',
+    e3.skipCoverage === true && (r2.changed || []).indexOf('skipCoverage') >= 0, JSON.stringify(r2.changed));
+}
+
+// ── ⑳ 反馈设计 4：超预算给结构化修复建议 ───────────────────────────
+{
+  await call('cc_patch_book_meta', { token_budget: 10 });
+  const r = await call('cc_validate');
+  check('⑳a 超预算时返回结构化 budgetHint（含下一步工具调用与建议值）',
+    !!r.budgetHint && !!r.budgetHint.call && r.budgetHint.call.tool === 'cc_patch_book_meta'
+    && r.budgetHint.call.args.token_budget > r.budgetHint.used,
+    JSON.stringify(r.budgetHint));
+  check('⑳b budgetHint.over 为正数（差额可读）',
+    !!r.budgetHint && r.budgetHint.over > 0, JSON.stringify(r.budgetHint && r.budgetHint.over));
+  await call('cc_patch_book_meta', { token_budget: 2400 });   // 复原
+}
+
 // ── 汇总 ──────────────────────────────────────────────────────
 const failed = results.filter(r => !r.pass);
 for (const r of results) if (!r.pass) console.log('FAIL  ' + r.name + '  — ' + (r.detail || ''));
