@@ -162,6 +162,14 @@ const blockOf = (id) => {
   // （模型最关注的文本）——「cc_validate 通过 = 创作完成，必须调用 cc_release_draft 收口」。
   check('persona 含草稿锁交还规则（cc_validate 通过后必须 cc_release_draft）',
     codeLines(patchText).join('\n').includes('cc_release_draft'), '');
+
+  // 0.19.0：设定铁律（canon）必须由 persona 要求模型在交付前给出 —— 这条如果只写在工具描述里，
+  // 模型选工具时未必读；而「运行期吃书」的根因是卡里没有可注入的事实清单，不是插件校验不够。
+  const personaText = codeLines(patchText).join('\n');
+  check('persona 含设定铁律规则（交付前给 canon：条数上限 + 写进卡的三处）',
+    personaText.includes('设定铁律') && personaText.includes('canon') && personaText.includes('cc_validate({canon'), '');
+  check('persona 要求写前先看 canonDigest（先对账再写，而不是写完再说）',
+    personaText.includes('canonDigest'), '');
 }
 
 // —— 5) 投递层：package.json 必须仍然只列两层补丁，且第二层是预设声明 ——

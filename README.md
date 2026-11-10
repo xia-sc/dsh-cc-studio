@@ -8,7 +8,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 
 | 项目 | 值 |
 | --- | --- |
-| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.18.0` |
+| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.19.0` |
 | 兼容 | DSH `>=0.2.0-rc.2`（含桌面版）、Node `>=22`、**零运行依赖**；逐版本实测见 [兼容与权限](#兼容与权限) |
 | 落盘 | `<DSH_HOME>/cc-library/`（角色卡）、`cc-drafts/`（会话草稿 + 创作锁 + 备份）、`cc-groups/`（关系分组）、`cc-books/`（组共享世界书）；`DSH_HOME` 默认 `~/.dsh` |
 | 文档 | 用户文档＝本文件；改代码前读 [AGENTS.md](./AGENTS.md)；历史 [CHANGELOG.md](./CHANGELOG.md) |
@@ -100,6 +100,20 @@ LLM 续写时最容易「上一段早晨、下一段直接夜晚」。CC 模式�
 **自定义纪年 / 架空历法（0.18.0-alpha.2）**：锚点不再强制 ISO。推荐双轨 `[时间：1287-09-12 07:40]（天启三年九月十二·辰时）`；纯架空历法可直接写 `[时间：天启三年九月十二 辰时]`（能通过校验，但会提示补 ISO 前缀便于对照）；`cc_patch_greetings` 可用 `startAnchor` 自动补任意纪年前缀。注意：制卡期只校验格式，运行时的连贯仍靠模型。
 
 `first_mes` 也带一个起始时间锚点（`cc_patch_greetings` 的 `startTime` 可自动补）。ST 默认 `prefer_character_prompt` / `prefer_character_jailbreak` 开启，导入即生效；**若你在 ST 里自定义过 Main Prompt，它会被卡里的 system_prompt 覆盖**（模板已保留基础句）。这是软约束：显著减少漂移，但不保证 100%。
+### 设定铁律（Canon，0.19.0）
+
+对话里的「吃书」不能靠插件拦 —— 卡导入 ST / Risu 之后插件就退场了；真正起作用的是**卡里带什么**。CC 模式在交付前把一张卡的设定压成一份短的「设定铁律」（≤12 条、每条 ≤40 字：一个实体 + 一句不可违背的事实），并编译进三处：
+
+- **Character's Note（`extensions.depth_prompt`，主力）**：ST 每轮注入在最近消息内，不受 `prefer_character_*` 开关影响 —— 用户不需要做任何事。
+- **Post-History（`post_history_instructions`）**：只追加一句仲裁语（「与上文冲突时以铁律为准，宁可暂停推进也不要改写设定」）—— 铁律全文不在这里重复，同一份事实清单每轮读两遍纯属浪费。
+- **世界书常驻条目「设定铁律」**：`@@position after_desc` + `constant`。⚠️ 与「时间锚定」条目一样，ST 不会自动把卡内 `character_book` 变成世界书 —— 需在 ST 里 Import Card Lore、放进组共享书，或导出独立世界书才生效。
+
+**每轮固定开销**（实测口径：CJK 一字≈1 token，其余 4 字符≈1 token）：12 条铁律时约 **1000 token/轮** —— system_prompt 440（时间规则 + 铁律指引，替换 ST 默认的 30 token 一句话）+ post_history 231（时间自检 + 仲裁语，替换空的 jailbreak）+ Character's Note 337（时间自检 + 铁律全文）。铁律全文只出现一次；若卡内世界书也加载，再加约 320（两条常驻条目）。
+
+`cc_validate({canon:[{subject,fact}]})` 提交铁律；不传时工具按现有内容自动派生草案（`source=derived`，会给 warning 让用户确认）。门禁：超长、同一实体两条不同说法、同名条目两种内容 → `valid=false`；手工条目的主题没进铁律 → warning。工坊点「校验」能看到完整清单（含冲突两处的原文）。
+
+**能力边界**：插件只做可计算检查（长度 / 重复 / 覆盖 / 极性词可疑），**不判断语义矛盾** —— 「债已清了」与「年底前总要核一次账」可以并存。语义冲突只能靠人（或审稿子代理）逐条对照。
+
 ### 关系与共享世界书
 
 - **人物关系**：三维（方向 × 类型 × 强度）；节点分「已存卡」与「卡内 NPC」；卡属于哪个组记在库条目 `meta.groupId`。渲染进 description 的 `<!-- cc-relations:begin … -->` 标记区，幂等替换、可预览。
@@ -133,6 +147,7 @@ npm test    # 全部测试文件串行；全绿才算过
 
 完整见 [CHANGELOG.md](./CHANGELOG.md)（保留 0.12.0 起）。
 
+- `0.19.0` **设定铁律（Canon）**：把设定压成 ≤12 条短句，编译进 Character's Note / Post-History / 世界书常驻条目，让 ST 运行期每轮都读到；`cc_validate` 增加 canon 门禁与一致性清单（工坊「校验」可见），`cc_get_card({digest:true})` 提供不会被上下文裁剪的事实摘要。
 - `0.18.0` **正式版**：包含 0.17.0 的时间锚定增强与 0.18.0-alpha.2 的自定义纪年（宽松锚点 + 双轨 + `startAnchor`）。
 - `0.18.0-alpha.2` **时间锚点支持自定义纪年**（Issue #6）：宽松锚点 + 双轨写法 + `startAnchor`；纯架空历法通过校验（只给 ISO 对照 warning）。
 - `0.18.0-alpha.1` 首个 Alpha 版本：发布流程支持预发布（`npm publish --tag alpha`，不覆盖 `latest`；Release 标 `--prerelease`）；功能与 0.17.0 相同。

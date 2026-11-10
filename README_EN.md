@@ -8,7 +8,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 
 | Item | Value |
 | --- | --- |
-| Package / version | `@xia-sc/dsh-cc-studio` `0.18.0` |
+| Package / version | `@xia-sc/dsh-cc-studio` `0.19.0` |
 | Compatibility | DSH `>=0.2.0-rc.2` (incl. Desktop), Node `>=22`, **zero runtime dependencies**; see [Compatibility & permissions](#compatibility--permissions) |
 | Storage | `<DSH_HOME>/cc-library/` (cards), `cc-drafts/` (session drafts + creation lock + backups), `cc-groups/` (relationship groups), `cc-books/` (group shared lorebook); `DSH_HOME` defaults to `~/.dsh` |
 | Docs | This file; read [AGENTS.md](./AGENTS.md) before changing code; history in [CHANGELOG.md](./CHANGELOG.md) |
@@ -100,6 +100,20 @@ The usual failure is "previous scene in the morning, next scene at night". CC Mo
 **Custom eras / fictional calendars (0.18.0-alpha.2)**: the anchor is no longer ISO-only. Dual-track is recommended: `[时间：1287-09-12 07:40]（天启三年九月十二·辰时）`; a pure fictional calendar can write `[时间：天启三年九月十二 辰时]` directly (it passes, with a warning to add the ISO prefix for comparison); `cc_patch_greetings` accepts `startAnchor` to fill any era prefix. Card authoring only validates the format — runtime continuity is still up to the model.
 
 `first_mes` also carries a starting timestamp (`cc_patch_greetings` can fill it from `startTime`). ST has `prefer_character_prompt` / `prefer_character_jailbreak` on by default, so it works right after import; **if you customised the Main Prompt in ST, the card's system_prompt replaces it** (the template keeps the base sentence). This is a soft constraint: it greatly reduces drift, but cannot guarantee 100%.
+### Setting canon (0.19.0)
+
+In-chat continuity errors cannot be stopped by the plugin — once a card is imported into ST / Risu the plugin is gone. What matters is **what the card carries**. Before delivery, CC Mode compresses a card's setting into a short "setting canon" (≤12 rules, ≤40 characters each: one entity + one fact that must not be violated) and compiles it into three places:
+
+- **Character's Note (`extensions.depth_prompt`, main carrier)**: injected by ST every turn near the latest messages, unaffected by `prefer_character_*` — the user does nothing.
+- **Post-History (`post_history_instructions`)**: only a one-line arbitration sentence ("if the text conflicts with this, this wins; pause the plot rather than rewrite the setting") — the full canon is **not** repeated here; reading the same fact list twice per turn is pure waste.
+- **World-book constant entry "设定铁律"**: `@@position after_desc` + `constant`. ⚠️ Like the "时间锚定" entry, ST does **not** turn a card's `character_book` into a world book by itself — it needs Import Card Lore, a shared book, or a standalone lorebook export.
+
+**Per-turn fixed cost** (measured: 1 CJK char ≈ 1 token, other chars 4 ≈ 1): with 12 rules, about **1000 tokens/turn** — system_prompt 440 (time rules + canon pointer, replacing ST's 30-token default sentence) + post_history 231 (time self-check + arbitration line, replacing the empty jailbreak) + Character's Note 337 (time self-check + full canon). The full canon appears once; if the in-card world book is loaded too, add about 320 (two constant entries).
+
+Submit it with `cc_validate({canon:[{subject,fact}]})`; when omitted the tool derives a draft from existing content (`source=derived`, with a warning asking the user to confirm). Gates: over-length, two different facts for one entity, two same-named entries with different content → `valid=false`; a manual entry's topic missing from the canon → warning. The Studio "Validate" button shows the full list, including both quoted sides of a conflict.
+
+**Capability boundary**: the plugin only performs computable checks (length / duplicates / coverage / polarity words) and **does not judge semantic contradictions** — "the debt is settled" and "we still reconcile at year end" can coexist. Semantic conflicts need a human (or a reviewing subagent) to compare rule by rule.
+
 ### Relationships & shared lorebook
 
 - **Relationships**: direction × type × strength; nodes are saved cards or in-card NPCs; group membership lives in the library entry's `meta.groupId`. Rendered into the `<!-- cc-relations:begin … -->` marker section, idempotent and previewable.
@@ -133,6 +147,7 @@ npm test    # all test files, serial; must be green
 
 Full history: [CHANGELOG.md](./CHANGELOG.md) (0.12.0 onwards).
 
+- `0.19.0` **Setting canon**: compress the setting into ≤12 short rules and compile them into Character's Note / Post-History / a world-book constant entry so ST reads them every turn; `cc_validate` gains canon gates and a consistency list (visible in the Studio "Validate" panel), and `cc_get_card({digest:true})` returns a fact digest that never gets context-pruned.
 - `0.18.0` **Stable release**: includes the 0.17.0 time-anchoring work and the 0.18.0-alpha.2 custom-era support (lenient anchor + dual-track + `startAnchor`).
 - `0.18.0-alpha.2` **Custom eras in the time anchor** (Issue #6): lenient anchor + dual-track wording + `startAnchor`; fictional calendars pass (with an ISO-comparison warning).
 - `0.18.0-alpha.1` First Alpha: pre-release publishing (`npm publish --tag alpha`, `latest` untouched; Release marked `--prerelease`); same features as 0.17.0.

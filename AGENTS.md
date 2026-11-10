@@ -52,6 +52,8 @@ tests/*.test.mjs      回归测试，不随包发布
 
 锚点校验分三档（0.18.0-alpha.2，A+）：`TIME_ANCHOR_RE`（严格 ISO）与 `TIME_ANCHOR_ANY_RE`（任意纪年，1-80 字符）并存 —— ISO 通过；任意纪年通过但 warning；无锚点才 error。`cc_patch_greetings` 的 `startAnchor` 支持任意纪年起锚。别把「自定义纪年」重新判成 error（Issue #6 的回归），也别宣称插件做运行时时间检测。
 
+**设定铁律（canon）只有一份。** `lib/consistency.js` 的 `normalizeCanon` / `deriveCanonDraft` / `auditCanon` / `applyCanon` / `canonText` 是唯一实现：宿主 `validate` 端点与预设 `cc_validate` 都 import 它。canon 必须**实时派生**，不许往卡里再存第二份摘要（`data.extensions.cc_canon` 只存模型提交/工具派生时用的那一份；派生只在没有时兜底）。**全文只注入一处**（`depth_prompt`）与卡内世界书条目；`post_history_instructions` 只放 `CANON_PH_NOTE` 短句、`system_prompt` 只放 `CANON_SYSTEM_NOTE`（并进时间模板）—— 同一份清单每轮读两遍纯属浪费（实测 12 条约 187 token/轮）。`applyCanon` 必须幂等（靠 `CANON_MARK` 摘掉旧段再拼）。长度上限（12 条 × 40 字、整段 600 字）是硬约束：长设定在运行期会被模型忽略。**不许宣称插件能自动检出语义矛盾** —— 只做长度 / 重复 / 覆盖 / 极性词可疑这些可计算检查，语义冲突靠人或审稿子代理。派生时必须跳过插件自己注入的「设定铁律」条目与 autoLorebook 条目，否则会自我复制或与五维同源自撞。
+
 ## 3. 三个入口要点
 
 ### 3.1 宿主 `lib/index.js`
@@ -69,6 +71,7 @@ tests/*.test.mjs      回归测试，不随包发布
 - 写类返回必须带 `cardName` / `cardId` / `draftStatus.sessionKey`；`rev` 在草稿文件里（跨进程唯一真相），盘上 rev 变化要 `revDrift` 重载，`expectedRev` 不符直接拒绝；空改动不落盘、不涨 rev。
 - 返回前统一 `sanitizeJson()`（任何嵌套 `undefined` / `NaN` / `-0` 会让整次调用失败）；`changed` 用 `assignIfChanged()`。
 - `cc_validate` 通过后必须引导 `cc_release_draft`（persona、终态 `next`、首次上锁 warning 三处都要保留）。
+- `cc_validate` 的 `canon` 参数（0.19.0）：显式传了就用它（`source:model`，写世界书「设定铁律」条目）；没传且卡里没有就 `deriveCanonDraft` 兜底（`source:derived`，**不**写世界书条目）；两者都会把铁律注入 `depth_prompt` / `post_history_instructions` 并写 `system_prompt` 指引。`cc_get_card({digest:true})` 是核对一致性时的小体积入口（整份 draft 会被 pruner 裁剪）。
 - 与宿主共享同一份草稿文件与同一套落盘根；两半的解析/截断（如 `GREETING_MAX = 10`）必须一致。
 
 ### 3.3 浏览器 `lib/client.js`

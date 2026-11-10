@@ -112,6 +112,12 @@ async function post(path, body, { contentType = 'application/json', method = 'PO
   check('POST validate → 200', r.status === 200, `status=${r.status}`);
   check('validate 返回 valid=true', r.json && r.json.result && r.json.result.ok === true && r.json.result.value.valid === true,
     JSON.stringify(r.json && r.json.result));
+  // 0.19.0：设定铁律检查并入 validate —— 工坊「校验」面板据此显示一致性清单。
+  // 这张卡没有 canon → 只有 warning（canon-missing），不影响 valid（宿主只读校验不改用户的卡）。
+  check('validate 返回 consistency 段（设定铁律检查）',
+    !!r.json && !!r.json.result.value.consistency && Array.isArray(r.json.result.value.consistency.issues)
+    && r.json.result.value.consistency.issues.some(i => i.code === 'canon-missing' && i.level === 'warning'),
+    JSON.stringify(r.json && r.json.result.value && r.json.result.value.consistency && r.json.result.value.consistency.issues));
 }
 
 // 3) 非法卡：validate 端点把校验结果当成功值返回（不是 fail 帧）
