@@ -8,7 +8,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 
 | 项目 | 值 |
 | --- | --- |
-| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.19.0` |
+| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.19.1` |
 | 兼容 | DSH `>=0.2.0-rc.2`（含桌面版）、Node `>=22`、**零运行依赖**；逐版本实测见 [兼容与权限](#兼容与权限) |
 | 落盘 | `<DSH_HOME>/cc-library/`（角色卡）、`cc-drafts/`（会话草稿 + 创作锁 + 备份）、`cc-groups/`（关系分组）、`cc-books/`（组共享世界书）；`DSH_HOME` 默认 `~/.dsh` |
 | 文档 | 用户文档＝本文件；改代码前读 [AGENTS.md](./AGENTS.md)；历史 [CHANGELOG.md](./CHANGELOG.md) |
@@ -147,6 +147,7 @@ npm test    # 全部测试文件串行；全绿才算过
 
 完整见 [CHANGELOG.md](./CHANGELOG.md)（保留 0.12.0 起）。
 
+- `0.19.1` **修复 0.19.0 的 3 个 bug**：派生 canon 必然超限（存量卡全部 `valid=false`）、极性词表把时间副词当极性词、纯规则条目被算进覆盖缺口；另加 `canon-stale` 指标、预算建议值、`digest` 派生预览等体验改进。
 - `0.19.0` **设定铁律（Canon）**：把设定压成 ≤12 条短句，编译进 Character's Note / Post-History / 世界书常驻条目，让 ST 运行期每轮都读到；`cc_validate` 增加 canon 门禁与一致性清单（工坊「校验」可见），`cc_get_card({digest:true})` 提供不会被上下文裁剪的事实摘要。
 - `0.18.0` **正式版**：包含 0.17.0 的时间锚定增强与 0.18.0-alpha.2 的自定义纪年（宽松锚点 + 双轨 + `startAnchor`）。
 - `0.18.0-alpha.2` **时间锚点支持自定义纪年**（Issue #6）：宽松锚点 + 双轨写法 + `startAnchor`；纯架空历法通过校验（只给 ISO 对照 warning）。

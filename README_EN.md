@@ -8,7 +8,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 
 | Item | Value |
 | --- | --- |
-| Package / version | `@xia-sc/dsh-cc-studio` `0.19.0` |
+| Package / version | `@xia-sc/dsh-cc-studio` `0.19.1` |
 | Compatibility | DSH `>=0.2.0-rc.2` (incl. Desktop), Node `>=22`, **zero runtime dependencies**; see [Compatibility & permissions](#compatibility--permissions) |
 | Storage | `<DSH_HOME>/cc-library/` (cards), `cc-drafts/` (session drafts + creation lock + backups), `cc-groups/` (relationship groups), `cc-books/` (group shared lorebook); `DSH_HOME` defaults to `~/.dsh` |
 | Docs | This file; read [AGENTS.md](./AGENTS.md) before changing code; history in [CHANGELOG.md](./CHANGELOG.md) |
@@ -147,6 +147,7 @@ npm test    # all test files, serial; must be green
 
 Full history: [CHANGELOG.md](./CHANGELOG.md) (0.12.0 onwards).
 
+- `0.19.1` **Fixes 3 bugs from 0.19.0**: derived canon always exceeded its own limit (every existing card became `valid=false`), the polarity word list treated time adverbs as polarity words, and pure-rule entries were counted as coverage gaps; also adds `canon-stale`, a concrete budget suggestion, and a derived preview in `digest`.
 - `0.19.0` **Setting canon**: compress the setting into ≤12 short rules and compile them into Character's Note / Post-History / a world-book constant entry so ST reads them every turn; `cc_validate` gains canon gates and a consistency list (visible in the Studio "Validate" panel), and `cc_get_card({digest:true})` returns a fact digest that never gets context-pruned.
 - `0.18.0` **Stable release**: includes the 0.17.0 time-anchoring work and the 0.18.0-alpha.2 custom-era support (lenient anchor + dual-track + `startAnchor`).
 - `0.18.0-alpha.2` **Custom eras in the time anchor** (Issue #6): lenient anchor + dual-track wording + `startAnchor`; fictional calendars pass (with an ISO-comparison warning).

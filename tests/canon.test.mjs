@@ -11,7 +11,7 @@
  * 运行：node tests/canon.test.mjs
  * 隔离：DSH_HOME / HOME / USERPROFILE 全部指向临时目录（见 AGENTS.md）。
  */
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -193,7 +193,8 @@ const call = (n, a) => tools.get(n).execute(a || {}, exec);
 {
   await call('cc_new_card', { confirm: true });
   await call('cc_patch_character', { name: '派生卡', description: '一个把自己锁在广播室里的学生。', personality: '警惕', scenario: '停电的校舍' });
-  await call('cc_patch_world', { timeline: '十年前那场大火之后，学校再没招过新生。', factions: '夜巡与学生会', geo: '旧校舍、广播室、天台' });
+  // timeline 故意写成一句 40 字以上的长设定：派生必须自己守住上限，否则 ⑦a 会变成 valid=false
+  await call('cc_patch_world', { timeline: '十年前那场大火把西侧教学楼整栋烧穿，之后学校再没招过新生，旧校舍一直封着。', factions: '夜巡与学生会', geo: '旧校舍、广播室、天台' });
   await call('cc_add_lorebook_entries', { entries: [
     { name: '广播室', keys: ['广播室'], content: '@@depth 4\n广播室的麦克风永远开着。' },
     { name: '天台', keys: ['天台'], content: '@@depth 4\n天台风很大。' },
@@ -234,6 +235,130 @@ const call = (n, a) => tools.get(n).execute(a || {}, exec);
   const applied = cons.applyCanon(card, { rules: [{ subject: 'A', fact: 'B' }], source: 'model' }, { timeDepth: 'T' });
   check('⑧b applyCanon 的 changed 列出被改的字段（幂等判定依据）',
     applied.changed.some(x => /cc_canon/.test(x)) && applied.changed.some(x => /depth_prompt/.test(x)), JSON.stringify(applied.changed));
+}
+
+// ── ⑨ 反馈 bug 1：派生结果不能违反自己的上限（存量卡升级即可用）──────
+{
+  const long = '青崖宗六阁：丹阁掌炉火、器阁铸兵刃、律堂掌刑罚、药堂管伤病、书阁藏典籍、驿阁通商路，六阁互不统属。';
+  const card = { data: { name: '旧卡', description: '一个在丹阁长大的药童。', extensions: { cc_world: { factions: long } }, character_book: { entries: [] } } };
+  const d = cons.deriveCanonDraft(card);
+  check('⑨a 派生 fact 不超过上限（省略号也占位，不再出现 41 vs 40）',
+    d.rules.every(r => Array.from(r.fact).length <= cons.CANON_MAX_FACT),
+    JSON.stringify(d.rules.map(r => Array.from(r.fact).length)));
+  const c2 = JSON.parse(JSON.stringify(card));
+  c2.data.extensions.cc_canon = { rules: d.rules, source: 'derived', at: 1, fp: cons.canonFingerprint(c2) };
+  const a = cons.auditCanon(c2);
+  check('⑨b 派生结果不再触发 canon-too-long（旧卡不会被自己的草案顶死）',
+    a.errorCount === 0, JSON.stringify(a.issues.filter(i => i.level === 'error').map(i => i.code)));
+  check('⑨c 截断优先切在标点处（不把词切成两半）',
+    /[，、；。…]$/.test(d.rules[0].fact) || Array.from(d.rules[0].fact).length <= cons.CANON_MAX_FACT, d.rules[0].fact);
+}
+
+// ── ⑩ 反馈 bug 2：极性词表只收状态词，且同句才算 ─────────────────
+{
+  const mk = (rules, entries) => ({ data: { extensions: { cc_canon: { rules, source: 'model' } }, character_book: { entries } } });
+  const r1 = cons.auditCanon(mk([{ subject: '抵债契', fact: '期满债已清' }],
+    [{ name: '规矩', keys: ['规矩'], content: '三年抵债契早就满了，债主不再追索。', enabled: true }]));
+  check('⑩a 「早就满了」不再被判极性可疑（时间副词已移出词表）',
+    !r1.issues.some(i => i.code === 'canon-polarity-suspect'), JSON.stringify(r1.issues.map(i => i.code)));
+  const r2 = cons.auditCanon(mk([{ subject: '旧校舍', fact: '三年前已烧毁' }],
+    [{ name: '旧校舍', keys: ['旧校舍'], content: '旧校舍至今完好，是主角的据点。', enabled: true }]));
+  check('⑩b 「已烧毁」对「完好」仍然报警（真冲突不能被一并放过）',
+    r2.issues.some(i => i.code === 'canon-polarity-suspect'), JSON.stringify(r2.issues.map(i => i.code)));
+  const r3 = cons.auditCanon(mk([{ subject: '旧校舍', fact: '已烧毁' }],
+    [{ name: '杂记', keys: ['杂记'], content: '旧校舍是学校的旧楼。操场上那棵树至今完好。', enabled: true }]));
+  check('⑩c 实体与状态词不在同一句时不报（句级匹配）',
+    !r3.issues.some(i => i.code === 'canon-polarity-suspect'), JSON.stringify(r3.issues.map(i => i.code)));
+}
+
+// ── ⑪ 反馈 bug 3：纯规则条目不该被要求进铁律 ─────────────────────
+{
+  const card = { data: {
+    extensions: { cc_canon: { rules: [{ subject: '丹阁', fact: '掌炉火' }], source: 'model' } },
+    character_book: { entries: [
+      { name: '演出规范（常驻）', keys: [], content: '【演出规范】必须第三人称，禁写心理活动。', constant: true, enabled: true },
+      { name: '豁免条目', keys: ['豁免'], content: '与丹阁无关的设定。', enabled: true, skipCoverage: true },
+      { name: '丹阁', keys: ['丹阁'], content: '丹阁掌炉火，弟子分三等。', enabled: true },
+    ] },
+  } };
+  const r = cons.auditCanon(card);
+  const gap = r.issues.find(i => i.code === 'canon-coverage-gap');
+  check('⑪a 纯规则条目（constant + 【】）不进 coverage-gap',
+    !gap || (!/演出规范/.test(gap.message) && !/豁免条目/.test(gap.message)), gap ? gap.message : '(无 gap)');
+  check('⑪b skipCoverage:true 可手动豁免',
+    !gap || !/豁免条目/.test(gap.message), gap ? gap.message : '(无 gap)');
+  check('⑪c 规则条目也不进派生 canon（它们没有实体主题）',
+    cons.deriveCanonDraft(card).rules.every(x => x.subject !== '演出规范（常驻）' && x.subject !== '豁免条目'),
+    JSON.stringify(cons.deriveCanonDraft(card).rules.map(x => x.subject)));
+}
+
+// ── ⑫ 反馈 5：canon 落盘后被改过的世界书要能提示 stale ─────────────
+{
+  const card = { data: { name: 'X', extensions: { cc_world: { geo: '旧校舍' } }, character_book: { entries: [] } } };
+  const d = cons.deriveCanonDraft(card);
+  const c2 = JSON.parse(JSON.stringify(card));
+  c2.data.extensions.cc_canon = { rules: d.rules, source: 'derived', at: 1, fp: cons.canonFingerprint(c2) };
+  check('⑫a 内容没变时不报 stale',
+    !cons.auditCanon(c2).issues.some(i => i.code === 'canon-stale'), '');
+  c2.data.character_book.entries.push({ name: '新设定', keys: ['新设定'], content: '新设定正文。', enabled: true });
+  check('⑫b 改动世界书后报 canon-stale（铁律与条目脱钩要能被发现）',
+    cons.auditCanon(c2).issues.some(i => i.code === 'canon-stale'), '');
+  check('⑫c stale 只是 warning，不阻塞 valid',
+    cons.auditCanon(c2).issues.filter(i => i.code === 'canon-stale').every(i => i.level === 'warning'), '');
+  // 重传 canon 后 stale 消失
+  c2.data.extensions.cc_canon = { rules: cons.deriveCanonDraft(c2).rules, source: 'derived', at: 2, fp: cons.canonFingerprint(c2) };
+  check('⑫d 重传 canon（指纹更新）后 stale 消失',
+    !cons.auditCanon(c2).issues.some(i => i.code === 'canon-stale'), '');
+}
+
+// ── ⑬ 反馈 6：digest 首次不该只给空 canon ────────────────────────
+{
+  const card = { data: { name: 'X', description: '描述。', extensions: { cc_world: { geo: '旧校舍' } }, character_book: { entries: [] } } };
+  const dg = cons.canonDigest(card);
+  check('⑬a 没有落盘 canon 时 digest 给派生预览（与 validate 会写入的是同一份）',
+    dg.source === 'derived-preview' && dg.count > 0 && /尚未建立/.test(dg.note), JSON.stringify(dg));
+  const empty = cons.canonDigest({ data: {} });
+  check('⑬b 空卡 digest 说明「没有可提炼的设定」而不是沉默',
+    empty.count === 0 && /没有可提炼/.test(empty.note), JSON.stringify(empty));
+}
+
+// ── ⑭ 反馈 4：注入「设定铁律」顶爆预算时给可执行数值 ──────────────
+{
+  await call('cc_patch_book_meta', { token_budget: 10 });
+  const r = await call('cc_validate');
+  const w = (r.warnings || []).map(String).find(x => /token_budget: \d+/.test(x));
+  check('⑭a 超预算时给出具体的新预算值（不是只说「超了」）', !!w, JSON.stringify(w || (r.warnings || []).map(x => String(x).slice(0, 40))));
+  check('⑭b 建议值大于当前用量（照着调一定能过）',
+    !!w && Number((/token_budget: (\d+)/.exec(w) || [])[1]) > (r.lorebookTokens || 0), w || '');
+  await call('cc_patch_book_meta', { token_budget: 2400 });   // 复原，避免影响后续用例
+}
+
+// ── ⑮ 反馈 7：errors 与 consistency 里的同一条 error 要可区分 ─────
+{
+  const bad = await call('cc_validate', { canon: [{ subject: 'A', fact: 'x'.repeat(41) }] });
+  const errIssues = (bad.consistency && bad.consistency.issues || []).filter(i => i.level === 'error');
+  check('⑮ consistency 里 error 级 issue 标 inErrors=true（模型不会当两条分别处理）',
+    errIssues.length > 0 && errIssues.every(i => i.inErrors === true), JSON.stringify(errIssues.map(i => i.code)));
+  await call('cc_validate');   // 复原为派生草案
+}
+
+// ── ⑯ 反馈 8：revDrift 只在真的持有数字版本号时判定 ────────────────
+{
+  const src = readFileSync(new URL('../lib/agent.js', import.meta.url), 'utf8');
+  check('⑯ revDrift 用 typeof meta.rev === "number"（undefined 不再误报「外部修改」）',
+    /typeof meta\.rev === "number"[\s\S]{0,80}beforeRev !== meta\.rev/.test(src), '');
+}
+
+// ── ⑰ 反馈 9：fieldBrief 的 keys 截断要标出总数 ───────────────────
+{
+  await call('cc_add_lorebook_entries', { entries: [
+    { name: '多触发词条目', keys: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], content: '@@depth 4\n多触发词条目的正文。' },
+  ] });
+  const r = await call('cc_get_card', { digest: true });
+  const e = (r.fieldBrief.book.entries || []).find(x => x.name === '多触发词条目');
+  check('⑰a keys 截断带 keysTotal / keysTruncated（模型不会以为只有 6 个）',
+    !!e && e.keysTotal === 8 && e.keysTruncated === true && e.keys.length === 6,
+    JSON.stringify(e && { keys: e.keys.length, total: e.keysTotal, trunc: e.keysTruncated }));
 }
 
 // ── 汇总 ──────────────────────────────────────────────────────

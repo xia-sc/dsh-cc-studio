@@ -4,6 +4,33 @@
 
 格式：最新版本按「新增 / 修复」写；更早的小节按现象 → 根因 → 修法 → 生效方式。
 
+## 0.19.1
+
+**修复 0.19.0 设定铁律的 3 个 bug + 6 条体验改进（用户反馈）。**
+
+### 修复
+
+- **存量卡一 validate 就 `valid=false`（最严重）**：派生 canon 时 fact 被截成「40 字 + 省略号」= 41 字，而审计判 `> 40` 即 error —— 只要设定写得长一点，派生结果必然超限，所有没显式传过 canon 的卡都过不了校验。修法：截断结果保证 ≤ 上限（省略号占位），并优先切在标点处，不把词切成两半。
+- **极性词表把时间副词当极性词**：`早已 / 曾经 / 一直 / 从未 / 始终` 会让「三年抵债契早就满了」被判成「早已没了」。修法：词表只留状态词（完好 / 仍在 / 已毁 / 已烧毁…），并把匹配收窄到**同一句**内同时出现实体名与状态词。
+- **纯规则条目被算进 `canon-coverage-gap`**：常驻的「演出规范」这类指令条目没有实体主题，却每次 validate 都拖一条消不掉的 warning。修法：`constant` 且正文以「【」/「[」开头、或无 keys 且含指令词（必须 / 不要 / 禁写 / 每轮…）的条目跳过；另加条目级 `skipCoverage: true` 手动豁免。
+
+### 改进
+
+- **注入「设定铁律」顶爆预算时给可执行数值**：返回里直接给 `cc_patch_book_meta({ token_budget: N })` 的建议值（当前用量 + 10%，向上取整到百位）。
+- **canon 与条目脱钩的提示**：`cc_canon` 记录写入时的内容指纹；之后改了世界书 / 五维却没重传 canon → `canon-stale` warning（重传后消失）。
+- **`digest:true` 首次不再只给空 canon**：没有落盘 canon 时返回只读派生预览（`source:"derived-preview"`）并说明「cc_validate 会正式写入」。
+- **`errors[]` 与 `consistency.issues[]` 去重**：error 级 issue 标 `inErrors:true`，模型不会当两条分别处理。
+- **`revDrift` 误报**：`meta.rev` 是 `undefined` 时 `undefined !== null` 为 true，导致每次 `cc_get_card` 都报「草稿已被外部修改（rev undefined → 75）」；改成只有真的持有数字版本号才判定。
+- **`fieldBrief` 的 keys 截断标记**：补 `keysTotal` / `keysTruncated`，避免模型以为触发词只有前 6 个。
+
+### 测试
+
+- `tests/canon.test.mjs` 增加 ⑨–⑰ 覆盖上述 9 项；全量测试全绿。
+
+### 生效方式
+
+**改的是预设半（`lib/agent.js`）与共享纯函数（`lib/consistency.js`）：重启 `dsh web` 并刷新页面。**
+
 ## 0.19.0
 
 **设定铁律（Canon）：把「运行期不吃书」的约束编译进卡，而不是只在制卡期做校验。**
