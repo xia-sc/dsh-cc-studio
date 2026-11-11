@@ -4,6 +4,23 @@
 
 格式：最新版本按「新增 / 修复」写；更早的小节按现象 → 根因 → 修法 → 生效方式。
 
+## 0.20.0
+
+**移除设置页「插件更新」区块：dsh `0.2.2-rc.1` 已内置插件更新检查（用户要求）。**
+
+### 移除
+
+- **设置 → 角色卡工坊 → 插件更新**：整块 UI、宿主 `cc_checkUpdate` 端点、npm registry 查询（`parseSemver` / `compareVersions` / `fetchLatestFromNpm` / `NPM_LATEST_URL`）、客户端 `checkUpdate` / `markUpdateCopied` 与 `settings.update.*` 双语词表、以及回归测试 `tests/check-update.test.mjs` 一并删除。
+- 原因：dsh `0.2.2-rc.1` 起插件更新检查已经内置，设置页里再放一个同样的入口只会造成两个检查入口、两份版本判断，并让插件多一条不必要的出站请求。删掉后插件只剩导出弹层「导入到 SillyTavern」一处出站网络。
+
+### 测试
+
+- `npm test` 全量全绿；`tests/check-update.test.mjs` 随功能删除，其余测试不受影响。
+
+### 生效方式
+
+**改的是客户端半与宿主半：重启 `dsh web` 并刷新页面。**
+
 ## 0.19.2
 
 **修复 0.19.1 的 1 个 bug + 落实 3 条建议（用户反馈）。**

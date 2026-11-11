@@ -8,7 +8,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 
 | 项目 | 值 |
 | --- | --- |
-| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.19.2` |
+| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.20.0` |
 | 兼容 | DSH `>=0.2.0-rc.2`（含桌面版）、Node `>=22`、**零运行依赖**；逐版本实测见 [兼容与权限](#兼容与权限) |
 | 落盘 | `<DSH_HOME>/cc-library/`（角色卡）、`cc-drafts/`（会话草稿 + 创作锁 + 备份）、`cc-groups/`（关系分组）、`cc-books/`（组共享世界书）；`DSH_HOME` 默认 `~/.dsh` |
 | 文档 | 用户文档＝本文件；改代码前读 [AGENTS.md](./AGENTS.md)；历史 [CHANGELOG.md](./CHANGELOG.md) |
@@ -131,7 +131,7 @@ LLM 续写时最容易「上一段早晨、下一段直接夜晚」。CC 模式�
 - **支持范围**：dsh `>=0.2.0-rc.2`（0.1.x 整条线自 0.12.0 起不再支持）、Node `>=22`、零运行依赖、无 install 生命周期脚本。
 - **逐版本实测**（`package.json` 的 `dsh.compatibility.dshReleases`）：`0.2.0-rc.2`（下限，声明行世代）、`0.2.1-rc.2`、`0.2.1-rc.3`、`0.2.1-rc.5`、`0.2.2-rc.1` 全部 compatible。**未实测**、不进矩阵：`0.2.0-rc.1`、`0.2.1-alpha.1`、`0.2.1-rc.4`。
 - **落盘权限**：`<DSH_HOME>` 下 4 个目录（`cc-drafts/` / `cc-library/` / `cc-groups/` / `cc-books/`），只用 `DSH_HOME` 一个环境变量。
-- **网络**：仅两处出站 —— 设置页「检查更新」查 npm registry；导出弹层「导入到 SillyTavern」访问你填的本机 ST 地址（默认 `127.0.0.1:8000`）。两处都由宿主发起，浏览器不直连。
+- **网络**：仅一处出站 —— 导出弹层「导入到 SillyTavern」访问你填的本机 ST 地址（默认 `127.0.0.1:8000`），由宿主发起，浏览器不直连。插件更新检查自 0.20.0 起交给 dsh 内置功能。
 - **STORE 收录**：本插件的核心功能就是落盘与读 `DSH_HOME`，触发文件/凭据信号，因此走 `user-reviewed`（本机逐次确认）档位，不会为了扫器通过而改运行时代码。
 
 ## 开发与测试
@@ -147,6 +147,7 @@ npm test    # 全部测试文件串行；全绿才算过
 
 完整见 [CHANGELOG.md](./CHANGELOG.md)（保留 0.12.0 起）。
 
+- `0.20.0` **移除设置页「插件更新」区块**：dsh `0.2.2-rc.1` 起已内置插件更新检查，重复入口（含 `cc_checkUpdate` 端点与 npm 查询）一并删除，插件只剩 ST 导入一处出站请求。
 - `0.19.2` **修复 stale 死循环**：显式重传逐字相同的 canon 现在会刷新指纹并清掉 `canon-stale`；`cc_add_lorebook_entries` / `cc_update_lorebook_entry` 支持 `skipCoverage`（触发型设定不必进铁律）；`cc_validate` 超预算时返回结构化 `budgetHint`；两条 warning 都写清「怎么消」。
 - `0.19.1` **修复 0.19.0 的 3 个 bug**：派生 canon 必然超限（存量卡全部 `valid=false`）、极性词表把时间副词当极性词、纯规则条目被算进覆盖缺口；另加 `canon-stale` 指标、预算建议值、`digest` 派生预览等体验改进。
 - `0.19.0` **设定铁律（Canon）**：把设定压成 ≤12 条短句，编译进 Character's Note / Post-History / 世界书常驻条目，让 ST 运行期每轮都读到；`cc_validate` 增加 canon 门禁与一致性清单（工坊「校验」可见），`cc_get_card({digest:true})` 提供不会被上下文裁剪的事实摘要。

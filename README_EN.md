@@ -8,7 +8,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 
 | Item | Value |
 | --- | --- |
-| Package / version | `@xia-sc/dsh-cc-studio` `0.19.2` |
+| Package / version | `@xia-sc/dsh-cc-studio` `0.20.0` |
 | Compatibility | DSH `>=0.2.0-rc.2` (incl. Desktop), Node `>=22`, **zero runtime dependencies**; see [Compatibility & permissions](#compatibility--permissions) |
 | Storage | `<DSH_HOME>/cc-library/` (cards), `cc-drafts/` (session drafts + creation lock + backups), `cc-groups/` (relationship groups), `cc-books/` (group shared lorebook); `DSH_HOME` defaults to `~/.dsh` |
 | Docs | This file; read [AGENTS.md](./AGENTS.md) before changing code; history in [CHANGELOG.md](./CHANGELOG.md) |
@@ -131,7 +131,7 @@ Submit it with `cc_validate({canon:[{subject,fact}]})`; when omitted the tool de
 - **Supported**: dsh `>=0.2.0-rc.2` (the whole 0.1.x line is unsupported since 0.12.0), Node `>=22`, zero runtime dependencies, no install lifecycle scripts.
 - **Verified builds** (`dsh.compatibility.dshReleases`): `0.2.0-rc.2` (floor, declaration-row generation), `0.2.1-rc.2`, `0.2.1-rc.3`, `0.2.1-rc.5`, `0.2.2-rc.1` — all compatible. **Unverified** (not in the matrix): `0.2.0-rc.1`, `0.2.1-alpha.1`, `0.2.1-rc.4`.
 - **Storage permission**: four directories under `<DSH_HOME>` (`cc-drafts/` / `cc-library/` / `cc-groups/` / `cc-books/`); only one environment variable (`DSH_HOME`).
-- **Network**: two outbound paths only — the Settings "Check for updates" call to the npm registry, and the export dialog's import into the local ST address you enter (default `127.0.0.1:8000`). Both run in the host; the browser never connects directly.
+- **Network**: one outbound path only — the export dialog's import into the local ST address you enter (default `127.0.0.1:8000`). It runs in the host; the browser never connects directly. Update checks are delegated to dsh's built-in feature since 0.20.0.
 - **DSH STORE**: writing drafts/cards and reading `DSH_HOME` are core features and trip the file/credential signals, so the plugin is listed as `user-reviewed` (per-run confirmation). The runtime code is not changed to appease scanners.
 
 ## Development
@@ -147,6 +147,7 @@ npm test    # all test files, serial; must be green
 
 Full history: [CHANGELOG.md](./CHANGELOG.md) (0.12.0 onwards).
 
+- `0.20.0` **Removes the Settings "Plugin updates" block**: dsh `0.2.2-rc.1` ships a built-in update check, so the duplicate entry (including the `cc_checkUpdate` endpoint and the npm query) is gone; the plugin now has a single outbound path (ST import).
 - `0.19.2` **Fixes the stale loop**: re-submitting a byte-identical canon now refreshes the fingerprint and clears `canon-stale`; `cc_add_lorebook_entries` / `cc_update_lorebook_entry` accept `skipCoverage` (trigger-only settings need no canon rule); `cc_validate` returns a structured `budgetHint` when over budget; both warnings now say how to resolve them.
 - `0.19.1` **Fixes 3 bugs from 0.19.0**: derived canon always exceeded its own limit (every existing card became `valid=false`), the polarity word list treated time adverbs as polarity words, and pure-rule entries were counted as coverage gaps; also adds `canon-stale`, a concrete budget suggestion, and a derived preview in `digest`.
 - `0.19.0` **Setting canon**: compress the setting into ≤12 short rules and compile them into Character's Note / Post-History / a world-book constant entry so ST reads them every turn; `cc_validate` gains canon gates and a consistency list (visible in the Studio "Validate" panel), and `cc_get_card({digest:true})` returns a fact digest that never gets context-pruned.

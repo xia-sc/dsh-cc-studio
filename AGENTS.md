@@ -58,11 +58,11 @@ tests/*.test.mjs      回归测试，不随包发布
 
 ### 3.1 宿主 `lib/index.js`
 
-- 端点：`validate` / `ping` / `cc_isCcMode` / 草稿 6 个 / 库 6 个 / 分组 7 个 / 共享书 4 个 / 容器导入导出 8 个 / `cc_exportJson` / `cc_exportBook` / `cc_listTargets` / `cc_stProbe` / `cc_stImport` / `cc_checkUpdate`。新增端点必须同时提供客户端入口。
+- 端点：`validate` / `ping` / `cc_isCcMode` / 草稿 6 个 / 库 6 个 / 分组 7 个 / 共享书 4 个 / 容器导入导出 8 个 / `cc_exportJson` / `cc_exportBook` / `cc_listTargets` / `cc_stProbe` / `cc_stImport`。新增端点必须同时提供客户端入口。
 - 三条导入路径（JSON/PNG/CHARX）都走 `normalizeDraft` → `upgradeCardToV3`（V2/V1 自动升级，返回 `upgradedFrom`）；`cc_setDraft` 故意不升级（它是草稿镜像）。
 - 草稿槽 key 必须与 Tools 侧一致：浏览器显式传 `sessionId`，回退 `default` 时 `source` 报 `fallback`（前端据此不渲染该槽并告警）。
 - 删除库条目要删两个根里的同名副本；导入/载入/覆盖前备份；目标槽非空必须显式 `overwrite:true`。
-- 版本号唯一真源是 `package.json`（`pluginMeta()`），客户端不硬编码。
+- 版本号唯一真源是 `package.json`；客户端不硬编码。**不要再加插件更新检查**：0.20.0 起该功能已下架，交给 dsh 0.2.2-rc.1 内置的更新检查，避免重复入口与多余出站请求。
 
 ### 3.2 预设半 `lib/agent.js`
 
