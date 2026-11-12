@@ -88,7 +88,8 @@ tests/*.test.mjs      回归测试，不随包发布
 - 修改写入口先过 `isReadOnly()`（锁 active 或只读预览）；预览期间 `pullDraft` 只更新 `llm*`，不动显示中的草稿。
 - i18n：`zh` / `en` 两张表键集必须一致，UI 层不许出现中文字面量；新增文案两边都加。
 - 导出是独立弹层（`exportOpen` / `openExport(target)` / `closeExport()`，不改 `cur`）；三个入口（左下角、总览页、已存卡卡片）都打开同一弹层；卡片导出走 `cardId`，不要求先载入。共享书作用域走 `exportScope()`（库卡按 `meta.groupId`，草稿按当前分组）。弹层底部是 ST 导入区块（见 §2 远程导入）。**导出别再变回中栏整页，也别再要求「先载入再导出」。**
-- 破坏性动作（清空卡）二次确认在按钮侧；拿不到确认框一律不动数据。
+- 破坏性动作（清空卡）二次确认在按钮侧；拿不到确认框一律不动数据。
+- **体检报告只有一处渲染**（0.23.1）：总览章节的 `auditReport()` 按 结构 / 时间锚定 / 设定铁律 / 未结案钩子 / 世界书 / 其他 六组铺开（`auditGroups()` 归类、`AUDIT_FIX` 提供 `workshop.fix.*` 修法），每条带「去修 →」调 `scrollToSection`。导出弹层只放 `auditDigest()` 摘要 —— 同一份清单别在两处各铺一遍（导出弹层原来是平铺字符串，已删）。结构类问题来自宿主的 `structural.errors/warnings`，**不只**来自 `consistency.issues`；`store.validate` 的快照必须同时留 `valid` 与 `structural`，否则报告里结构组永远是空的。
 
 ## 4. 版本兼容
 
