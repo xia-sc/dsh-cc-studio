@@ -289,6 +289,28 @@ check('⑩d 顶部锚点栏渲染出 7 个 tab（与章节一一对应）',
     'avatars=' + avatarEls(tree).length);
 }
 
+// —— 0.22.0：库卡片不挂静态描边（照原型只在 hover 时显边）——
+// 现象：未选中的卡每张都有一圈浅白细边，暗色主题下像一排白框（用户："选中再离开会留白边"）。
+// 根因：卡片静态写了 `border:1px solid var(--dsw-alias-border-l1)`，原型是透明边 + hover 才显。
+{
+  const cardOf = (tree, name) => flatten(tree).find((n) => n.props && n.props.title === name && n.props.style && n.props.style.cursor === 'pointer');
+  const card = cardOf(tree, '陆昭');
+  check('⑬ 未选中的库卡片默认没有描边（border: transparent，不再挂 l1）',
+    !!card && String(card.props.style.border).indexOf('transparent') >= 0 && String(card.props.style.border).indexOf('border-l1') < 0,
+    card && String(card.props.style.border));
+  const ps = { borderColor: 'transparent' };
+  card.props.onMouseEnter({ currentTarget: { style: ps } });
+  check('⑬b hover 才显一圈细边', String(ps.borderColor).indexOf('border-l1') >= 0, ps.borderColor);
+  card.props.onMouseLeave({ currentTarget: { style: ps } });
+  check('⑬c 移开后描边回到透明', ps.borderColor === 'transparent', ps.borderColor);
+  check('⑬d 卡片不给浏览器留焦点环（onMouseDown 阻止抢焦点）', typeof card.props.onMouseDown === 'function', '');
+  store.setCurrentLibraryId('lib-c');
+  tree = redraw();
+  const curCard = cardOf(tree, '谢无咎');
+  check('⑬e 当前卡是品牌紫描边（页面里只有这一处「选中」）',
+    !!curCard && String(curCard.props.style.border).indexOf('#7c5cff') >= 0, curCard && String(curCard.props.style.border));
+}
+
 // —— 收起工坊：整棵工坊树不再渲染（面板开关本身没被这次改动碰坏）——
 store.setPanel(false);
 check('⑨ 收起工坊后不再渲染任何步骤项', navButtons(redraw()).length === 0, String(navButtons(redraw()).length));
