@@ -8,7 +8,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 
 | Item | Value |
 | --- | --- |
-| Package / version | `@xia-sc/dsh-cc-studio` `0.21.0` |
+| Package / version | `@xia-sc/dsh-cc-studio` `0.22.0` |
 | Compatibility | DSH `>=0.2.0-rc.2` (incl. Desktop), Node `>=22`, **zero runtime dependencies**; see [Compatibility & permissions](#compatibility--permissions) |
 | Storage | `<DSH_HOME>/cc-library/` (cards), `cc-drafts/` (session drafts + creation lock + backups), `cc-groups/` (relationship groups), `cc-books/` (group shared lorebook); `DSH_HOME` defaults to `~/.dsh` |
 | Docs | This file; read [AGENTS.md](./AGENTS.md) before changing code; history in [CHANGELOG.md](./CHANGELOG.md) |
@@ -61,7 +61,7 @@ dsh plugin --profile web remove @xia-sc/dsh-cc-studio        # uninstall
 
 ### Studio (client)
 
-- **Layout**: capsule → fullscreen studio; 3-page nav (5D World / Character / Lorebook) plus a bottom-left **Validate & Export**; collapsible 268px saved-cards sidebar; collapsed live `card.json` preview and CBS cheatsheet at the bottom.
+- **Layout**: capsule → full-screen studio; **250px character-library rail on the left** (pick a card, collapses to a 40px icon bar) + **top anchor bar** (Overview / Character / World / Lorebook / Greetings / Relations / Shared book) + a persistent action group on its right (Validate / Export / Save / Clear); the seven sections render on **one scrolling page** (scroll to see the whole card, the anchor bar follows) with the `card.json` preview and CBS cheat-sheet folded at the bottom.
 - **Document-style editing**: borderless auto-growing textareas, editable in place; long fields open a `⛶` modal with a snapshot so Cancel really rolls back.
 - **5D worldbuilding**: Timeline / Factions / Geography / Power / Daily → `autoLorebook` generates entries with `@@position / @@depth / @@activate`.
 - **ID-based CRUD**: save (overwrite when an ID is loaded) / save as new / rename / new / load / delete, with search and highlight; persisted to `cc-library/<id>.json`.
@@ -162,6 +162,7 @@ npm test    # all test files, serial; must be green
 
 Full history: [CHANGELOG.md](./CHANGELOG.md) (0.12.0 onwards).
 
+- `0.22.0` **Workshop layout rework**: the left nav column became a top anchor bar with a single scrolling page (scroll to see the whole card); the character library moved to a 250px left rail; Validate/Export/Save/Clear now live in the anchor bar; the host `validate` endpoint gained time-anchoring and lorebook-quality checks (write gate separated from content audit).
 - `0.21.0` **Unsettled-hook detection**: at card-authoring time, scans the three opening fields for "object + unfinished state" (porridge still warm / phone still on) and suggests closing it in the first message; zero runtime tokens, never blocks export. The computable half of the anti detail-loop.
 - `0.20.1` **Plugin metadata**: adds `locale/zh.json` / `locale/en.json` so Plugin Manager and Settings show "角色卡工坊" / "Character card studio" with their descriptions before activation; also records dsh `0.2.2-rc.2` as verified in the compatibility matrix.
 - `0.20.0` **Removes the Settings "Plugin updates" block**: dsh `0.2.2-rc.1` ships a built-in update check, so the duplicate entry (including the `cc_checkUpdate` endpoint and the npm query) is gone; the plugin now has a single outbound path (ST import).

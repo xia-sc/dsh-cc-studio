@@ -245,10 +245,12 @@ check('⑤ 入口按钮不随弹层开关改变外观（不许造出第二处「
   String(entryNow.props['aria-current']) + ' / ' + String(entryNow.props.style.background));
 
 // ⑥ 弹层本身：四枚导出 + 一枚校验，一处都不少
-const ACTION_KEYS = ['action.exportJson', 'action.exportPng', 'action.embedPng', 'action.exportCharx', 'action.validate'];
-check('⑥ 弹层内仍渲染出 5 枚动作按钮（JSON / PNG / 写入 PNG / CHARX / 校验）',
-  ACTION_KEYS.every((k) => byLabel(tree, k).length === 1),
-  ACTION_KEYS.map((k) => k + ':' + byLabel(tree, k).length).join(', '));
+// 0.22.0：校验 / 导出 / 保存 收口到顶部锚点栏常驻，所以「校验」在全局会有 2 枚
+// （锚点栏 + 弹层内）。这里只保证四枚导出动作各恰好 1 枚、校验入口仍在。
+const ACTION_KEYS = ['action.exportJson', 'action.exportPng', 'action.embedPng', 'action.exportCharx'];
+check('⑥ 弹层内仍渲染出 4 枚导出动作 + 校验入口',
+  ACTION_KEYS.every((k) => byLabel(tree, k).length === 1) && byLabel(tree, 'action.validate').length >= 1,
+  ACTION_KEYS.map((k) => k + ':' + byLabel(tree, k).length).join(', ') + ' validate:' + byLabel(tree, 'action.validate').length);
 check('⑥b 弹层写明了「导出的是当前工坊里的卡」',
   textNodes(tree, 'workshop.export.currentHint').length === 1, String(textNodes(tree, 'workshop.export.currentHint').length));
 check('⑥c 弹层标题与校验徽章仍在（就是原来那个「校验与导出」）',

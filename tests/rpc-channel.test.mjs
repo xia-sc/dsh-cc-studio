@@ -107,7 +107,13 @@ async function post(path, body, { contentType = 'application/json', method = 'PO
 
 // 2) 真实端点 dispatch（validate 是纯函数，不碰磁盘）
 {
-  const card = { spec: 'chara_card_v3', spec_version: '3.0', data: { name: 'Aria', group_only_greetings: [] } };
+  // 0.22.0：宿主校验补了时间锚定（error 级），valid=true 的卡必须带这三项。
+  const card = { spec: 'chara_card_v3', spec_version: '3.0', data: {
+    name: 'Aria', group_only_greetings: [],
+    system_prompt: '【时间线规则】每段以 [时间：YYYY-MM-DD HH:MM] 开头。',
+    post_history_instructions: '生成前自检：先确认上一段时间。',
+    first_mes: '[时间：2026-01-01 08:00]\n开场。',
+  } };
   const r = await post('/dsh-cc-studio-rpc/validate', JSON.stringify({ type: 'client-request', rpcId: 'rid-2', method: 'validate', payload: { args: { card } } }));
   check('POST validate → 200', r.status === 200, `status=${r.status}`);
   check('validate 返回 valid=true', r.json && r.json.result && r.json.result.ok === true && r.json.result.value.valid === true,
@@ -118,6 +124,16 @@ async function post(path, body, { contentType = 'application/json', method = 'PO
     !!r.json && !!r.json.result.value.consistency && Array.isArray(r.json.result.value.consistency.issues)
     && r.json.result.value.consistency.issues.some(i => i.code === 'canon-missing' && i.level === 'warning'),
     JSON.stringify(r.json && r.json.result.value && r.json.result.value.consistency && r.json.result.value.consistency.issues));
+
+  // 0.22.0 契约：结构合法但缺时间锚定 → valid=false（导出判定的口径），
+  // 而 structural.valid=true —— cc_setDraft 的写盘门禁只看结构，否则创作中的草稿会被整条拒掉。
+  const bare = { spec: 'chara_card_v3', spec_version: '3.0', data: { name: 'Bare', group_only_greetings: [] } };
+  const rb = await post('/dsh-cc-studio-rpc/validate', JSON.stringify({ type: 'client-request', rpcId: 'rid-2b', method: 'validate', payload: { args: { card: bare } } }));
+  const vb = rb.json && rb.json.result && rb.json.result.value;
+  check('缺时间锚定 → valid=false 且 structural.valid=true（写盘门禁与内容体检分离）',
+    !!vb && vb.valid === false && vb.structural && vb.structural.valid === true
+    && (vb.errors || []).some(e => /system_prompt/.test(String(e))),
+    JSON.stringify(vb && { valid: vb.valid, structural: vb.structural, errors: vb.errors }));
 }
 
 // 3) 非法卡：validate 端点把校验结果当成功值返回（不是 fail 帧）

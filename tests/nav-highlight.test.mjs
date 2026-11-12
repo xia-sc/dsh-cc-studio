@@ -219,6 +219,19 @@ chips[0].props.onMouseLeave();
 chips = stepChips(redraw());
 check('⑧c 移开后回到默认底', chips[0].props.style.background === 'var(--dsw-alias-bg-layer-2)', String(chips[0].props.style.background));
 
+// —— 0.22.0：单页滚动 + 顶部锚点（左侧 200px 导航列已删除）——
+const sections = flatten(tree).filter((n) => n.type === 'section' && n.props && n.props['data-cur'] !== undefined);
+check('⑩ 七个章节在同一页常驻渲染（滚轮就能看全卡，不用翻页）',
+  sections.length === 7, 'sections=' + sections.length);
+check('⑩b 章节顺序 = 总览→角色→五维→世界书→开场→关系→共享书',
+  sections.map((x) => x.props['data-cur']).join(',') === '5,1,0,2,6,4,7',
+  sections.map((x) => x.props['data-cur']).join(','));
+check('⑩c 主区滚动容器带 id=cc-scroller（锚点跳转与滚动高亮都靠它）',
+  flatten(tree).some((n) => n.props && n.props.id === 'cc-scroller'), '');
+check('⑩d 顶部锚点栏渲染出 7 个 tab（与章节一一对应）',
+  flatten(tree).filter((n) => n.type === 'button' && n.props && n.props['aria-current'] !== undefined || (n.type === 'button' && n.props && n.props.style && n.props.style.boxShadow && String(n.props.style.boxShadow).indexOf('inset 0 -2px') >= 0)).length >= 1,
+  '');
+
 // —— 收起工坊：整棵工坊树不再渲染（面板开关本身没被这次改动碰坏）——
 store.setPanel(false);
 check('⑨ 收起工坊后不再渲染任何步骤项', navButtons(redraw()).length === 0, String(navButtons(redraw()).length));

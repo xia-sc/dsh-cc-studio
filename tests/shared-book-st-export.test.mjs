@@ -272,9 +272,11 @@ store.openExport();           // 0.14.0：导出改成独立弹层（不再有 c
 await tick();
 tree = redraw();
 const stBtnExportPage = byLabel(tree, 'export.book.buttonSt');
+// 0.22.0：七个章节改为单页常驻渲染，所以「共享书章节 + 导出弹层」会同时存在于 DOM 里 → 全局 2 份。
+// 这里只验证「两处入口都能按目标渲染」，不再要求全局唯一。
 check('①b 导出弹层里的共享书块同样按目标渲染（同一个实现，两处入口）',
-  stBtnExportPage.length === 1 && byLabel(tree, 'export.book.button').length === 1
-  && byLabel(tree, 'CCv3 native').length === 1,
+  stBtnExportPage.length >= 1 && byLabel(tree, 'export.book.button').length >= 1
+  && byLabel(tree, 'CCv3 native').length >= 1,
   'st=' + stBtnExportPage.length + ' ccv3=' + byLabel(tree, 'export.book.button').length
   + ' native=' + byLabel(tree, 'CCv3 native').length);
 
