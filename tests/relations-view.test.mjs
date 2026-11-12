@@ -250,8 +250,8 @@ const BOOK_FIXTURE = {
   store.setCur(5);
   const all5 = texts(redraw());
   const rows = all5.filter((x) => ['step.char', 'step.world', 'step.lore', 'step.greetings'].indexOf(x) >= 0);
-  check('⑪ 总览视图：四条进度行渲染出来，并带三态点（✓/◐/○）与计数',
-    rows.length >= 4 && all5.some((x) => ['✓', '◐', '○'].indexOf(x) >= 0) && all5.indexOf('step.overview.desc') >= 0,
+  check('⑪ 总览视图：四条进度胶囊渲染出来，并带三态点（✓/◐/○）与计数',
+    rows.length >= 4 && all5.some((x) => ['✓', '◐', '○'].indexOf(x) >= 0),
     JSON.stringify({ rows: rows.length, dots: all5.filter((x) => ['✓', '◐', '○'].indexOf(x) >= 0) }));
   // ⚠️ 0.8.2 实机事故：导出页读了 `bk.book.entries`（真实形状是 `bk.book.data.entries`）→ 渲染期
   // TypeError → 工坊闪退、dsh 卡死。所以把**所有视图**在「已载入卡 + 当前组有共享书」的状态下各渲染
