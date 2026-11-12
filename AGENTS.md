@@ -13,10 +13,11 @@ lib/draft-lock.js  草稿锁判定（纯函数，两半 import）
 lib/compat/        兼容层：core.js + adapters/* + registry.js + remote.js（纯函数、零 IO）
 presets/cc.patch.yml  预设的声明行（唯一载体；插件不写用户目录）
 cordis.patch.yml      宿主组合里的插件行
+locale/               插件元数据：zh.json / en.json 只放 meta.title + meta.description（插件管理器在未激活时读它）
 tests/*.test.mjs      回归测试，不随包发布
 ```
 
-三个入口由 `package.json.exports` 固定：`.` → `lib/index.js`、`./client` → `lib/client.js`、`./agent` → `lib/agent.js`。改包名要同步 5 处：`package.json.name`、三处加载方、`lib/client.js` 里 `__ModuleLoader__.load({ id })` 的 `id`（宿主按包名精确匹配，对不上整个客户端半加载失败）。
+三个入口由 `package.json.exports` 固定：`.` → `lib/index.js`、`./client` → `lib/client.js`、`./agent` → `lib/agent.js`。locale 也由 exports 导出（`./locale/*.json`）并列入 `files`，漏一处 = 本地看着正常、发布后标题描述回退到中文 `description`。改包名要同步 5 处：`package.json.name`、三处加载方、`lib/client.js` 里 `__ModuleLoader__.load({ id })` 的 `id`（宿主按包名精确匹配，对不上整个客户端半加载失败）。
 
 ## 2. 硬约束
 

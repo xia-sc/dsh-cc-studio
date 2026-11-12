@@ -8,7 +8,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 
 | 项目 | 值 |
 | --- | --- |
-| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.20.0` |
+| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.20.1` |
 | 兼容 | DSH `>=0.2.0-rc.2`（含桌面版）、Node `>=22`、**零运行依赖**；逐版本实测见 [兼容与权限](#兼容与权限) |
 | 落盘 | `<DSH_HOME>/cc-library/`（角色卡）、`cc-drafts/`（会话草稿 + 创作锁 + 备份）、`cc-groups/`（关系分组）、`cc-books/`（组共享世界书）；`DSH_HOME` 默认 `~/.dsh` |
 | 文档 | 用户文档＝本文件；改代码前读 [AGENTS.md](./AGENTS.md)；历史 [CHANGELOG.md](./CHANGELOG.md) |
@@ -147,6 +147,7 @@ npm test    # 全部测试文件串行；全绿才算过
 
 完整见 [CHANGELOG.md](./CHANGELOG.md)（保留 0.12.0 起）。
 
+- `0.20.1` **插件元数据**：新增 `locale/zh.json` / `locale/en.json`，插件管理器与设置页在未激活时也能显示「角色卡工坊」/「Character card studio」及对应描述；同时把 dsh `0.2.2-rc.2` 实测通过写入兼容矩阵。
 - `0.20.0` **移除设置页「插件更新」区块**：dsh `0.2.2-rc.1` 起已内置插件更新检查，重复入口（含 `cc_checkUpdate` 端点与 npm 查询）一并删除，插件只剩 ST 导入一处出站请求。
 - `0.19.2` **修复 stale 死循环**：显式重传逐字相同的 canon 现在会刷新指纹并清掉 `canon-stale`；`cc_add_lorebook_entries` / `cc_update_lorebook_entry` 支持 `skipCoverage`（触发型设定不必进铁律）；`cc_validate` 超预算时返回结构化 `budgetHint`；两条 warning 都写清「怎么消」。
 - `0.19.1` **修复 0.19.0 的 3 个 bug**：派生 canon 必然超限（存量卡全部 `valid=false`）、极性词表把时间副词当极性词、纯规则条目被算进覆盖缺口；另加 `canon-stale` 指标、预算建议值、`digest` 派生预览等体验改进。

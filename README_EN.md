@@ -8,7 +8,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 
 | Item | Value |
 | --- | --- |
-| Package / version | `@xia-sc/dsh-cc-studio` `0.20.0` |
+| Package / version | `@xia-sc/dsh-cc-studio` `0.20.1` |
 | Compatibility | DSH `>=0.2.0-rc.2` (incl. Desktop), Node `>=22`, **zero runtime dependencies**; see [Compatibility & permissions](#compatibility--permissions) |
 | Storage | `<DSH_HOME>/cc-library/` (cards), `cc-drafts/` (session drafts + creation lock + backups), `cc-groups/` (relationship groups), `cc-books/` (group shared lorebook); `DSH_HOME` defaults to `~/.dsh` |
 | Docs | This file; read [AGENTS.md](./AGENTS.md) before changing code; history in [CHANGELOG.md](./CHANGELOG.md) |
@@ -147,6 +147,7 @@ npm test    # all test files, serial; must be green
 
 Full history: [CHANGELOG.md](./CHANGELOG.md) (0.12.0 onwards).
 
+- `0.20.1` **Plugin metadata**: adds `locale/zh.json` / `locale/en.json` so Plugin Manager and Settings show "角色卡工坊" / "Character card studio" with their descriptions before activation; also records dsh `0.2.2-rc.2` as verified in the compatibility matrix.
 - `0.20.0` **Removes the Settings "Plugin updates" block**: dsh `0.2.2-rc.1` ships a built-in update check, so the duplicate entry (including the `cc_checkUpdate` endpoint and the npm query) is gone; the plugin now has a single outbound path (ST import).
 - `0.19.2` **Fixes the stale loop**: re-submitting a byte-identical canon now refreshes the fingerprint and clears `canon-stale`; `cc_add_lorebook_entries` / `cc_update_lorebook_entry` accept `skipCoverage` (trigger-only settings need no canon rule); `cc_validate` returns a structured `budgetHint` when over budget; both warnings now say how to resolve them.
 - `0.19.1` **Fixes 3 bugs from 0.19.0**: derived canon always exceeded its own limit (every existing card became `valid=false`), the polarity word list treated time adverbs as polarity words, and pure-rule entries were counted as coverage gaps; also adds `canon-stale`, a concrete budget suggestion, and a derived preview in `digest`.

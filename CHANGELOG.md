@@ -4,14 +4,24 @@
 
 格式：最新版本按「新增 / 修复」写；更早的小节按现象 → 根因 → 修法 → 生效方式。
 
-## 未发布
+## 0.20.1
 
-**兼容性审计：dsh `0.2.2-rc.2` 实测通过，加入兼容矩阵。**
+**插件元数据（locale 中英标题/描述）+ dsh 0.2.2-rc.2 兼容矩阵收录。**
 
-- **审计方式**：隔离环境（`DSH_HOME` / `HOME` / `USERPROFILE` 指向临时目录，profile 只组合 `dsh-base` + `dsh-web-app` + 本插件）对 dsh `0.2.2-rc.2`（Node 24.21 / hostProtocol 4）全量验证：宿主 `fiberPhase:active`；RPC 线协议（`ping` / `cc_isCcMode` / `cc_listTargets`，未知端点仍回 200 + `unknown-endpoint`）；三个挂载点（胶囊 / 全屏工坊 / 设置分区）；预设 roster 出现「CC 模式」且无 broken；`npm test` 全绿。
-- **升级指南**（`v0.2.2-rc.1/` 17 条）只命中三条：macOS Desktop 浮层窗口区域（`shell.overlay` 未声明 `data-window-drag-exclude`，仅 macOS 需另测，Windows/Web 不变）、`BundleInfo.updatable`（插件 0.20.0 已无更新检查，无关）、内置 preset 关闭 `interrupt_agent`（CC 模式仍保留，属行为差异）。
-- **与 rc.2 内置 `standard` 的预设差异**（均不 broken）：`tool-office` / `tool-schedule` / `tool-plugin-market` 行缺席（能力取舍，下限 `0.2.0-rc.2` 解释见预设注释）、`tool-fs.applyPatch` 默认 `false` 等价、`tool-subagent-control.interrupt` 默认 `true`（CC 模式多一个 `interrupt_agent`）。
-- **生效方式**：只改兼容声明与文档，无需重启 dsh 或刷新页面。
+### 新增
+
+- **`locale/zh.json` / `locale/en.json`**：插件管理器与设置页的插件行只从包**导出的** `locale/*.json` 读 `meta.title` / `meta.description`（宿主 `readPluginMeta`，不需要激活插件）。此前本仓库没有 locale 目录，英文界面回退到 `package.json` 的中文 `description`。现在中文行显示「角色卡工坊」、英文行显示「Character card studio」，各自带一句说明用法的描述。
+- `package.json`：`exports` 增加 `./locale/*.json`、`files` 增加 `locale/*.json`。漏一处 = 本地目录安装看着正常、发布后标题描述回退。
+- `tests/locale-meta.test.mjs`：钉住两份 JSON 合法、中英不互相复制、locale 顶层只放 `meta`（UI 词表的唯一真源仍是 `lib/client.js` 的 `zh` / `en`，不制造第三份）、以及 `exports` / `files` 两处声明。
+
+### 兼容性
+
+- **dsh `0.2.2-rc.2` 实测通过，加入兼容矩阵。** 审计方式：隔离环境（`DSH_HOME` / `HOME` / `USERPROFILE` 指向临时目录，profile 只组合 `dsh-base` + `dsh-web-app` + 本插件）对 dsh `0.2.2-rc.2`（Node 24.21 / hostProtocol 4）全量验证：宿主 `fiberPhase:active`；RPC 线协议（`ping` / `cc_isCcMode` / `cc_listTargets`，未知端点仍回 200 + `unknown-endpoint`）；三个挂载点（胶囊 / 全屏工坊 / 设置分区）；预设 roster 出现「CC 模式」且无 broken；`npm test` 全绿。
+- 与 rc.2 内置 `standard` 的预设差异均不 broken：`tool-office` / `tool-schedule` / `tool-plugin-market` 行缺席（能力取舍，下限 `0.2.0-rc.2` 的解释见预设注释）、`tool-fs.applyPatch` 默认 `false` 等价、`tool-subagent-control.interrupt` 默认 `true`（CC 模式多一个 `interrupt_agent`）。升级指南（`v0.2.2-rc.1/` 17 条）只命中 macOS 浮层拖拽区、`BundleInfo.updatable`（0.20.0 已无更新检查，无关）与内置 preset 的 `interrupt_agent` 差异三项。
+
+### 生效方式
+
+**只改包内资源与文档：重启 dsh 即生效**（目录安装直接读 `locale/*.json`；已发布版本需升级到 0.20.1）。
 
 ## 0.20.0
 

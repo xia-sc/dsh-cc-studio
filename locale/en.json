@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Character card studio",
+    "description": "Opens a full-screen studio from the capsule above the composer. With the CC mode preset the model interviews you first, then turns the idea into a CCv3 card for SillyTavern, exported as JSON, PNG or CHARX or pushed straight to a local SillyTavern."
+  }
+}

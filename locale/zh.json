@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "角色卡工坊",
+    "description": "从输入框上方的胶囊打开全屏工坊，配合「CC 模式」预设让模型先问再填，把点子做成可导入 SillyTavern 的 CCv3 角色卡，导出 JSON / PNG / CHARX，或直接推送到本机 SillyTavern。"
+  }
+}
