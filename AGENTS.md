@@ -104,6 +104,7 @@ tests/*.test.mjs      回归测试，不随包发布
 - **每个 bug 都要回归测试 + CHANGELOG 顶部一条**：现象 → 根因 → 修法 → 生效方式（重启 dsh / 刷新页面 / 两者）。
 - 预设行只改 `presets/cc.patch.yml`，并同步 `tests/preset-install.test.mjs` 第 3 节行集快照。
 - 改落盘路径两半同步（`dataRoots` / `safeDraftFile`）；卡组逻辑只动 `lib/group-layer.js`；兼容层只动 `lib/compat/`。
+- **版本号规则（SemVer）**：`X.Y.Z` —— `X`（主版本号）只在**不兼容的 API 或架构变更**时递增，且在 dsh 发布 `1.x.x` 之前**保持 `0`**；`Y`（次版本号）在**新增功能**时递增；`Z`（修订号）**只在修 Bug 或做兼容性优化**时递增。拿不准时问一句：这次改动是「给用户新增了能力」还是「修坏的东西 / 对齐上游」——前者动 `Y`，后者动 `Z`；只改文档、测试、注释不动任何位。
 - 版本三处同步：`package.json`、`README.md` / `README_EN.md`、`CHANGELOG.md` 顶部小节。`lib/agent.js` 的 `BUILD` 也要同步（有测试钉住）。
 - **文档保持简短**：本文件与 README 不写会随代码漂移的精确计数（行数、断言总数、端点个数、词表键数）；需要时以 `npm test` 输出与源码为准。CHANGELOG 只保留最近几个版本（当前从 0.12.0 起），更早的看 git 历史。
 - manifest 契约（STORE 门禁）由 `tests/preset-install.test.mjs` 钉住：canonical `repository`、`engines.node`、完整 SemVer 的 dshReleases、零依赖、无 install 脚本、`files` 非空、宿主/预设半只 import `node:` 与相对路径。不要为商城扫描改运行时代码。
