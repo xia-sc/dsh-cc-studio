@@ -8,7 +8,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 
 | Item | Value |
 | --- | --- |
-| Package / version | `@xia-sc/dsh-cc-studio` `0.20.1` |
+| Package / version | `@xia-sc/dsh-cc-studio` `0.21.0` |
 | Compatibility | DSH `>=0.2.0-rc.2` (incl. Desktop), Node `>=22`, **zero runtime dependencies**; see [Compatibility & permissions](#compatibility--permissions) |
 | Storage | `<DSH_HOME>/cc-library/` (cards), `cc-drafts/` (session drafts + creation lock + backups), `cc-groups/` (relationship groups), `cc-books/` (group shared lorebook); `DSH_HOME` defaults to `~/.dsh` |
 | Docs | This file; read [AGENTS.md](./AGENTS.md) before changing code; history in [CHANGELOG.md](./CHANGELOG.md) |
@@ -114,6 +114,21 @@ Submit it with `cc_validate({canon:[{subject,fact}]})`; when omitted the tool de
 
 **Capability boundary**: the plugin only performs computable checks (length / duplicates / coverage / polarity words) and **does not judge semantic contradictions** — "the debt is settled" and "we still reconcile at year end" can coexist. Semantic conflicts need a human (or a reviewing subagent) to compare rule by rule.
 
+### Unsettled-hook detection (anti detail-loop, 0.21.0)
+
+Small models latch onto a bowl of porridge: if a detail is in an **unfinished state** in the first message ("the porridge is still warm", "the phone is still on"), the model treats it as a pending todo and recycles it every turn, reinforcing itself.
+
+The seed of the loop is not in the runtime — it is in the **opening**. So this layer runs at card-authoring time with zero runtime tokens:
+
+- Scans `first_mes` / `alternate_greetings` / `group_only_greetings` for "object + unfinished state" (still warm / not turned off / not finished / half-done / simmering; food word + 还/在/正/没/热/凉/剩).
+- If a hit has **no closing marker within that segment and the next two** (already poured out / turned off / finished / over…), one summary warning with up to 5 samples and how to fix it.
+- **Does not scan** `mes_example` (few-shot examples are not current scene state) or `scenario` (a setting document with many static objects and high false-positive risk).
+- Heuristic only, **never blocks export** (`valid` is unaffected); visible in the Studio "Validate" panel.
+
+Two ways to fix: close it in the opening ("the porridge has been poured out"), or delete the hook.
+
+**If it still loops after importing into ST, that is a runtime problem.** In-card rules are secondary; the runtime outcome depends on the model and ST's sampler settings (repetition penalties etc.) — no card can guarantee it, and this plugin does not inject anything at runtime.
+
 ### Relationships & shared lorebook
 
 - **Relationships**: direction × type × strength; nodes are saved cards or in-card NPCs; group membership lives in the library entry's `meta.groupId`. Rendered into the `<!-- cc-relations:begin … -->` marker section, idempotent and previewable.
@@ -147,6 +162,7 @@ npm test    # all test files, serial; must be green
 
 Full history: [CHANGELOG.md](./CHANGELOG.md) (0.12.0 onwards).
 
+- `0.21.0` **Unsettled-hook detection**: at card-authoring time, scans the three opening fields for "object + unfinished state" (porridge still warm / phone still on) and suggests closing it in the first message; zero runtime tokens, never blocks export. The computable half of the anti detail-loop.
 - `0.20.1` **Plugin metadata**: adds `locale/zh.json` / `locale/en.json` so Plugin Manager and Settings show "角色卡工坊" / "Character card studio" with their descriptions before activation; also records dsh `0.2.2-rc.2` as verified in the compatibility matrix.
 - `0.20.0` **Removes the Settings "Plugin updates" block**: dsh `0.2.2-rc.1` ships a built-in update check, so the duplicate entry (including the `cc_checkUpdate` endpoint and the npm query) is gone; the plugin now has a single outbound path (ST import).
 - `0.19.2` **Fixes the stale loop**: re-submitting a byte-identical canon now refreshes the fingerprint and clears `canon-stale`; `cc_add_lorebook_entries` / `cc_update_lorebook_entry` accept `skipCoverage` (trigger-only settings need no canon rule); `cc_validate` returns a structured `budgetHint` when over budget; both warnings now say how to resolve them.
