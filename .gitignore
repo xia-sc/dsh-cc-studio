@@ -5,3 +5,5 @@ dist/
 .DS_Store
 .playwright-mcp/
 .compat-tmp/
+release-notes.md
+release-title.txt
