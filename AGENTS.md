@@ -67,6 +67,7 @@ tests/*.test.mjs      回归测试，不随包发布
 - 草稿槽 key 必须与 Tools 侧一致：浏览器显式传 `sessionId`，回退 `default` 时 `source` 报 `fallback`（前端据此不渲染该槽并告警）。
 - 删除库条目要删两个根里的同名副本；导入/载入/覆盖前备份；目标槽非空必须显式 `overwrite:true`。
 - 版本号唯一真源是 `package.json`；客户端不硬编码。**不要再加插件更新检查**：0.20.0 起该功能已下架，交给 dsh 0.2.2-rc.1 内置的更新检查，避免重复入口与多余出站请求。
+- `cc_promptSession`（0.24.0）：「让模型修」的宿主半。把客户端拼好的一段文本当**用户消息**发进会话 —— 走 `ctx.get("sessionController").prompt({sessionId, content:[{type:"text", text}], requestId}, signal)`，与用户在输入框打字等价（写 durable `user/message`，agent 随即开始跑），**不新增权限**（RPC 围栏照旧）。宿主半不许 import dsh 包，所以服务用 `ctx.get` 取，缺失时回 `no-session-controller`。发送前必须挡住：空文本（`empty-prompt`）、无 sessionId（`no-session`）、超过 `PROMPT_MAX_CHARS`（`prompt-too-long`）；下游 RemoteError 一律包成 `prompt-failed` + `details.remoteCode`，别把原始 code 当端点 code。
 - `validate` 返回 `{valid, errors, warnings, structural:{valid,errors}, consistency, canon}`：**`valid` = 能不能导出**（结构 + 内容体检），**`structural.valid` = 能不能写草稿**。`cc_setDraft` 的写盘门禁只认后者 —— 2026-11 把时间锚定检查加进 `validateCard` 时，写盘门禁连带变严、工坊自动保存整条链路失败，必须分离开。
 
 ### 3.2 预设半 `lib/agent.js`
@@ -89,6 +90,7 @@ tests/*.test.mjs      回归测试，不随包发布
 - i18n：`zh` / `en` 两张表键集必须一致，UI 层不许出现中文字面量；新增文案两边都加。
 - 导出是独立弹层（`exportOpen` / `openExport(target)` / `closeExport()`，不改 `cur`）；三个入口（左下角、总览页、已存卡卡片）都打开同一弹层；卡片导出走 `cardId`，不要求先载入。共享书作用域走 `exportScope()`（库卡按 `meta.groupId`，草稿按当前分组）。弹层底部是 ST 导入区块（见 §2 远程导入）。**导出别再变回中栏整页，也别再要求「先载入再导出」。**
 - 破坏性动作（清空卡）二次确认在按钮侧；拿不到确认框一律不动数据。
+- **「让模型修」的提示模板只有一份**（0.24.0）：`MODEL_FIX_RULES` + `modelFixTail()` 是唯一来源，体检条目（`buildFixPrompt`）与动作栏弹框（`buildCustomPrompt`）都调它；规则里那条「只改相关字段、不要重写整张卡」是这段能力的质量核心，别删。入口只在 `isCcMode && currentSessionId` 时可用（非 CC 模式下模型手里没有 cc_* 工具），禁用时必须用 tooltip 说明原因。发送走 `store.promptModel` → `cc_promptSession`，**不要直连 composer、不要操作输入框 DOM**。
 - **体检报告只有一处渲染**（0.23.1）：总览章节的 `auditReport()` 按 结构 / 时间锚定 / 设定铁律 / 未结案钩子 / 世界书 / 其他 六组铺开（`auditGroups()` 归类、`AUDIT_FIX` 提供 `workshop.fix.*` 修法），每条带「去修 →」调 `scrollToSection`。导出弹层只放 `auditDigest()` 摘要 —— 同一份清单别在两处各铺一遍（导出弹层原来是平铺字符串，已删）。结构类问题来自宿主的 `structural.errors/warnings`，**不只**来自 `consistency.issues`；`store.validate` 的快照必须同时留 `valid` 与 `structural`，否则报告里结构组永远是空的。
 
 ## 4. 版本兼容

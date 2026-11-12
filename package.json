@@ -1,6 +1,6 @@
 {
   "name": "@xia-sc/dsh-cc-studio",
-  "version": "0.23.0",
+  "version": "0.24.0",
   "description": "CCv3 角色卡工坊：融合工坊 + CC 模式 + JSON/PNG/CHARX + 中英双语（跟随全局）",
   "icon": "./icon.svg",
   "keywords": [
@@ -42,7 +42,7 @@
     "icon.svg"
   ],
   "scripts": {
-    "test": "node tests/rpc-channel.test.mjs && node tests/preset-install.test.mjs && node tests/cc-detection.test.mjs && node tests/client-greetings.test.mjs && node tests/draft-slot-sync.test.mjs && node tests/draft-lock-client.test.mjs && node tests/nav-highlight.test.mjs && node tests/library-dialogs.test.mjs && node tests/library-grouping.test.mjs && node tests/audit-report.test.mjs && node tests/release-notes.test.mjs && node tests/clear-card.test.mjs && node tests/export-entry.test.mjs && node tests/close-button.test.mjs && node tests/tools-contract.test.mjs && node tests/time-anchor.test.mjs && node tests/canon.test.mjs && node tests/hygiene.test.mjs && node tests/draft-lock.test.mjs && node tests/relations.test.mjs && node tests/relations-view.test.mjs && node tests/shared-book.test.mjs && node tests/shared-book-st-export.test.mjs && node tests/compat-core.test.mjs && node tests/compat-adapter.test.mjs && node tests/st-compat.test.mjs && node tests/st-import.test.mjs && node tests/promote-draft-sync.test.mjs && node tests/group-scope.test.mjs && node tests/group-metrics.test.mjs && node tests/group-checks.test.mjs && node tests/group-consistency.test.mjs && node tests/group-layer-guard.test.mjs && node tests/data-root.test.mjs && node tests/locale-meta.test.mjs",
+    "test": "node tests/rpc-channel.test.mjs && node tests/preset-install.test.mjs && node tests/cc-detection.test.mjs && node tests/client-greetings.test.mjs && node tests/draft-slot-sync.test.mjs && node tests/draft-lock-client.test.mjs && node tests/nav-highlight.test.mjs && node tests/library-dialogs.test.mjs && node tests/library-grouping.test.mjs && node tests/audit-report.test.mjs && node tests/model-fix.test.mjs && node tests/prompt-session.test.mjs && node tests/release-notes.test.mjs && node tests/clear-card.test.mjs && node tests/export-entry.test.mjs && node tests/close-button.test.mjs && node tests/tools-contract.test.mjs && node tests/time-anchor.test.mjs && node tests/canon.test.mjs && node tests/hygiene.test.mjs && node tests/draft-lock.test.mjs && node tests/relations.test.mjs && node tests/relations-view.test.mjs && node tests/shared-book.test.mjs && node tests/shared-book-st-export.test.mjs && node tests/compat-core.test.mjs && node tests/compat-adapter.test.mjs && node tests/st-compat.test.mjs && node tests/st-import.test.mjs && node tests/promote-draft-sync.test.mjs && node tests/group-scope.test.mjs && node tests/group-metrics.test.mjs && node tests/group-checks.test.mjs && node tests/group-consistency.test.mjs && node tests/group-layer-guard.test.mjs && node tests/data-root.test.mjs && node tests/locale-meta.test.mjs",
     "prepublishOnly": "npm test"
   },
   "dsh": {

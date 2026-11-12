@@ -8,7 +8,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 
 | Item | Value |
 | --- | --- |
-| Package / version | `@xia-sc/dsh-cc-studio` `0.23.0` |
+| Package / version | `@xia-sc/dsh-cc-studio` `0.24.0` |
 | Compatibility | DSH `>=0.2.0-rc.2` (incl. Desktop), Node `>=22`, **zero runtime dependencies**; see [Compatibility & permissions](#compatibility--permissions) |
 | Storage | `<DSH_HOME>/cc-library/` (cards), `cc-drafts/` (session drafts + creation lock + backups), `cc-groups/` (relationship groups), `cc-books/` (group shared lorebook); `DSH_HOME` defaults to `~/.dsh` |
 | Docs | This file; read [AGENTS.md](./AGENTS.md) before changing code; history in [CHANGELOG.md](./CHANGELOG.md) |
@@ -66,6 +66,7 @@ dsh plugin --profile web remove @xia-sc/dsh-cc-studio        # uninstall
 - **5D worldbuilding**: Timeline / Factions / Geography / Power / Daily → `autoLorebook` generates entries with `@@position / @@depth / @@activate`.
 - **ID-based CRUD**: save (overwrite when an ID is loaded) / save as new / rename / new / load / delete, with search and highlight; persisted to `cc-library/<id>.json`.
 - **LLM draft lock**: while active the studio is read-only and load/import only open a preview; overwriting actions back up the draft to `cc-drafts/backups/` (up to 20 per slot).
+- **Fix with the model**: every audit item carries "Fix with model", and the action bar adds "Ask the model" — send the problem or a one-line request to the model (CC mode + an open session required) and it edits the draft with its tools.
 - **Import / export**: `⬆ Import JSON/PNG/CHARX` (V2/V1 cards are upgraded to CCv3), `⬇ JSON`, `⬇ PNG`, `⬆ Embed into PNG` (strips old `ccv3/chara` chunks), `⬇ CHARX`.
 - **Bilingual + light/dark**: follows `Settings → General → Language` live.
 
@@ -162,6 +163,7 @@ npm test    # all test files, serial; must be green
 
 Full history: [CHANGELOG.md](./CHANGELOG.md) (0.12.0 onwards).
 
+- `0.24.0` **Fix with the model**: "Fix" no longer just scrolls to a section — the audit item or the action bar sends the problem to the model; the Host gained `cc_promptSession` (via `sessionController.prompt`, equal to a user message), with empty / no-session / non-CC / too-long rejected before sending.
 - `0.23.0` **Consolidated library entries, visible groups, audit report**: Rename and + Group moved from the left ⋯ menu to the top action bar and now open an input dialog (no inline input, no `window.prompt`); Save-as-new removed; the ⋯ menu only imports. Library cards are grouped into sections (one small heading per group with a count), and the collapsed avatar strip separates groups with tick marks. The Overview audit is now a six-group report (Structure / Time anchoring / Setting canon / Unsettled hooks / Lorebook / Other) where every item carries a one-line "How to fix" and a jump-to-section button; the export dialog only keeps a summary. Also fixes the dead end where the relations view had no way to pick a group after 0.22.0 flattened the list.
 - `0.22.1` **Fix: anchor highlight not following scroll**: after opening the workshop, manually scrolling the body left the top anchor highlight frozen (the scroll listener was never attached); clicking an anchor no longer gets its highlight overwritten by sections passed during the smooth scroll, and scrolling to the bottom now highlights the last section.
 - `0.22.0` **Workshop layout rework**: the left nav column became a top anchor bar with a single scrolling page (scroll to see the whole card); the character library moved to a 250px left rail; Validate/Export/Save/Clear now live in the anchor bar; the host `validate` endpoint gained time-anchoring and lorebook-quality checks (write gate separated from content audit).
