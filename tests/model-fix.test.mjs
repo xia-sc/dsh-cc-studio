@@ -55,7 +55,11 @@ const quoteEl = {
   parentNode: null,
 };
 const quoteTextNode = { nodeType: 3, parentNode: quoteEl };
-const fakeScroller = { contains: () => true };
+const fakeScroller = {
+  contains: () => true,
+  getBoundingClientRect: () => ({ left: 300, top: 100 }),
+  scrollLeft: 0, scrollTop: 200, clientWidth: 800, clientHeight: 600,
+};
 const fakeSelection = {
   rangeCount: 1,
   toString: () => QUOTE_TEXT,
@@ -238,6 +242,14 @@ let tree = redraw();
   const bubble = btns(tree, '✨ workshop.fixModel.quoteBtn');
   check('⑫ 选中正文后浮出「让模型改」小按钮（只认 #cc-scroller 内的选区）',
     bubble.length === 1, 'bubble=' + bubble.length + ' listeners=' + (listeners['mouseup'] || []).length);
+  // 0.24.0 实测：首版用 position:fixed + 视口坐标，overlay 的 backdrop-filter 让浮条飘到窗口左上角。
+  // 现在必须是 absolute（相对主区）且坐标是「滚动容器内容坐标」。
+  const wrap = flatten(tree).filter((x) => x.props && x.props.style && x.props.style.position === 'absolute'
+    && typeof x.props.style.left === 'number' && typeof x.props.style.top === 'number')[0];
+  const bs = wrap && wrap.props.style;
+  check('⑫b 浮条用 absolute + 滚动容器内容坐标（不再 fixed 飘到窗口左上角）',
+    !!bs && bs.position === 'absolute' && Number(bs.top) > 100 && Number(bs.left) >= 8,
+    bs ? 'pos=' + bs.position + ' left=' + bs.left + ' top=' + bs.top : 'no style');
   bubble[0].props.onClick({});
   tree = redraw();
   check('⑬ 弹框里显示引用原文与位置（用户知道自己在改哪一段）',

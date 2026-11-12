@@ -17,6 +17,7 @@
 
 ### 修复
 
+- **选中浮条飘到窗口左上角**（用户截图）：首版浮条用 `position:fixed` + 选区视口坐标，但工坊 overlay 带 `backdrop-filter` —— 它会把 fixed 后代的包含块改成 overlay 自身，坐标全错。修法：浮条改 `position:absolute` 渲染进 `#cc-scroller`（主区补 `position:relative`），坐标换算成「滚动容器内容坐标」，选区贴顶时翻到下方；另外 textarea / input 里的选区在 Chrome 中 `getBoundingClientRect()` 全 0，字段一律回退到元素自身 rect 定位。
 - **「去修」跳过去没有意义**（用户反馈）：用户并不知道时间锚定 / canon / 台账这些标准，跳到对应章节仍然得自己编。现在跳转降级为文字链「自己改 →」，主按钮换成「让模型修」。
 
 ### 说明
@@ -28,7 +29,7 @@
 ### 测试
 
 - 新增 `tests/prompt-session.test.mjs`：端点契约（透传 / 空内容 / 缺会话 / 无 `sessionController` / RemoteError 透出 / 长度上限）。
-- 新增 `tests/model-fix.test.mjs`：两个入口的按钮与禁用态、消息内容、弹框流程、选中即引用（浮条 → 弹框 → 消息带引用原文与位置）、提示模板只有一份。
+- 新增 `tests/model-fix.test.mjs`：两个入口的按钮与禁用态、消息内容、弹框流程、选中即引用（浮条定位用内容坐标、弹框引用、消息带原文与位置）、提示模板只有一份。
 
 ### 生效方式
 
