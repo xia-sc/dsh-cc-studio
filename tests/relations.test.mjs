@@ -383,8 +383,8 @@ check('⑩ 关系/分组的新交互不再依赖 window.prompt（内嵌 webview 
   clientSrc.indexOf('window.prompt(t("workshop.group.prompt")') < 0 && clientSrc.indexOf('window.prompt(t("workshop.rel.nodePrompt")') < 0, '');
 check('⑩b 打开面板时会拉分组列表（否则 groups 恒为空 → 卡片上的归组下拉只有「未分组」、新建的组也不出现）',
   clientSrc.indexOf('store.refreshLibrary(); store.refreshGroups();') > 0, '');
-check('⑩c 分组面板标题上有「关系」入口（直接进那个组的关系视图，不再靠先选分组）',
-  clientSrc.indexOf('store.openRelationsFor(sec.id)') > 0, '');
+check('⑩c 关系视图有可达的分组入口（0.23.0：分组折叠视图下线后，入口改到关系章节的分组下拉）',
+  clientSrc.indexOf('store.openRelationsFor(sec.id)') > 0 || clientSrc.indexOf('store.openRelationsFor(v)') > 0, '');
 
 // ——————————————————————————————————————————————————————————————
 // ⑪ B4 回归：保存一张**已归组**的卡，不许把它踢出分组

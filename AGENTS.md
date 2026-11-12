@@ -82,7 +82,7 @@ tests/*.test.mjs      回归测试，不随包发布
 ### 3.3 浏览器 `lib/client.js`
 
 - 三个挂载点：`conversation.input.dock`（胶囊）、`shell.overlay`（工坊）、`settings.section`（设置页）。
-- **工坊布局（0.22.0）**：左侧 250px 角色库（选对象，可折叠成 56px 头像条：`»` + 一列头像，点头像即载入，折叠时不渲染文字）+ 顶部横向锚点栏（选章节：总览/角色/五维/世界书/开场/关系/共享书）+ 锚点栏右侧常驻「校验 / 导出 / 保存 / 清空」。七个章节**常驻渲染在同一页**（`section[data-cur]`），滚动容器是 `#cc-scroller`；点击锚点走 `scrollToSection`（**用 rect 差算位置，不能用 `offsetTop`** —— `.sec` 的 offsetParent 不是滚动容器），滚动高亮由 `#cc-scroller` 的 scroll 监听反推（**按顶部 24px 判定，不能用中线** —— 会漏掉 ~300px 高的短章节）。**别再退回「左侧导航列 + 分页渲染」**：用户明确说左列占掉了黄金横向空间。
+- **工坊布局（0.22.0）**：左侧 250px 角色库（选对象，可折叠成 56px 头像条：`»` + 一列头像，点头像即载入，折叠时不渲染文字）+ 顶部横向锚点栏（选章节：总览/角色/五维/世界书/开场/关系/共享书）+ 锚点栏右侧常驻「校验 / 导出 / 保存 / 清空」。七个章节**常驻渲染在同一页**（`section[data-cur]`），滚动容器是 `#cc-scroller`；点击锚点走 `scrollToSection`（**用 rect 差算位置，不能用 `offsetTop`** —— `.sec` 的 offsetParent 不是滚动容器），滚动高亮由 `#cc-scroller` 的 scroll 监听反推（**按顶部 24px 判定，不能用中线** —— 会漏掉 ~300px 高的短章节；监听 effect 依赖 `[s.panelOpen]`，**不能依赖 `[s.cur]`** —— 面板关着时 Workshop 也挂在 overlay 上，首帧拿不到 `#cc-scroller`，打开面板时 `cur` 没变就不会重绑，监听器一次都装不上；点击锚点后的平滑滚动窗口内不反推，滚轮/触摸/按键立即解锁；滚到底直接认最后一节）。**别再退回「左侧导航列 + 分页渲染」**：用户明确说左列占掉了黄金横向空间。0.23.0：重命名 / ＋ 组在动作栏右侧，点击开 `inputDialog` 输入弹框；左侧「⋯」菜单只留「导入」；「另存为新」已删（保存只有 `cc_saveToLibrary` 一条路径）；`renderGroupedList` 已删，关系章节自带「选择分组」下拉。
 - CC 模式探测只有 `useCcPreset()` 一份；状态带会话归属（`ccSessionId` / `ccSource`），未知时绝不沿用上一个会话的结论；组件读 store 必须走 `useStoreSnapshot()`，且放在 `useCcPreset` 之前（effect 顺序会丢「切会话清状态」那次 emit）。
 - 状态在 `store`（`createStore` + `subscribe/getSnapshot`）；设置存 `localStorage:dsh-cc-studio-settings`。
 - 修改写入口先过 `isReadOnly()`（锁 active 或只读预览）；预览期间 `pullDraft` 只更新 `llm*`，不动显示中的草稿。

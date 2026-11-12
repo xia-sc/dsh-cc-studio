@@ -8,7 +8,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 
 | Item | Value |
 | --- | --- |
-| Package / version | `@xia-sc/dsh-cc-studio` `0.22.0` |
+| Package / version | `@xia-sc/dsh-cc-studio` `0.23.0` |
 | Compatibility | DSH `>=0.2.0-rc.2` (incl. Desktop), Node `>=22`, **zero runtime dependencies**; see [Compatibility & permissions](#compatibility--permissions) |
 | Storage | `<DSH_HOME>/cc-library/` (cards), `cc-drafts/` (session drafts + creation lock + backups), `cc-groups/` (relationship groups), `cc-books/` (group shared lorebook); `DSH_HOME` defaults to `~/.dsh` |
 | Docs | This file; read [AGENTS.md](./AGENTS.md) before changing code; history in [CHANGELOG.md](./CHANGELOG.md) |
@@ -162,6 +162,8 @@ npm test    # all test files, serial; must be green
 
 Full history: [CHANGELOG.md](./CHANGELOG.md) (0.12.0 onwards).
 
+- `0.23.0` **Library entries consolidated**: Rename and + Group moved from the left ⋯ menu to the top action bar and now open an input dialog (no inline input / `window.prompt`); Save as New was removed; the ⋯ menu keeps only Import. Also fixes the dead end left by the 0.22.0 flat list — the relations view now has its own group picker.
+- `0.22.1` **Fix: anchor highlight not following scroll**: after opening the workshop, manually scrolling the body left the top anchor highlight frozen (the scroll listener was never attached); clicking an anchor no longer gets its highlight overwritten by sections passed during the smooth scroll, and scrolling to the bottom now highlights the last section.
 - `0.22.0` **Workshop layout rework**: the left nav column became a top anchor bar with a single scrolling page (scroll to see the whole card); the character library moved to a 250px left rail; Validate/Export/Save/Clear now live in the anchor bar; the host `validate` endpoint gained time-anchoring and lorebook-quality checks (write gate separated from content audit).
 - `0.21.0` **Unsettled-hook detection**: at card-authoring time, scans the three opening fields for "object + unfinished state" (porridge still warm / phone still on) and suggests closing it in the first message; zero runtime tokens, never blocks export. The computable half of the anti detail-loop.
 - `0.20.1` **Plugin metadata**: adds `locale/zh.json` / `locale/en.json` so Plugin Manager and Settings show "角色卡工坊" / "Character card studio" with their descriptions before activation; also records dsh `0.2.2-rc.2` as verified in the compatibility matrix.

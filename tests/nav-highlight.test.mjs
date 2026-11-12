@@ -111,7 +111,14 @@ function render() {
   effectQueue.length = 0;
   return { tree, effects };
 }
-function run(effects) { effects.forEach((fn) => { try { fn(); } catch (e) { console.log('FAIL  effect 抛错: ' + e.message); } }); }
+function run(effects) {
+  const cleanups = [];
+  effects.forEach((fn) => {
+    try { const c = fn(); if (typeof c === 'function') cleanups.push(c); }
+    catch (e) { console.log('FAIL  effect 抛错: ' + e.message); }
+  });
+  return cleanups;
+}
 function redraw() { return render().tree; }
 
 function flatten(node, out) {
@@ -234,6 +241,112 @@ check('⑩c 主区滚动容器带 id=cc-scroller（锚点跳转与滚动高亮�
 check('⑩d 顶部锚点栏渲染出 7 个 tab（与章节一一对应）',
   flatten(tree).filter((n) => n.type === 'button' && n.props && n.props['aria-current'] !== undefined || (n.type === 'button' && n.props && n.props.style && n.props.style.boxShadow && String(n.props.style.boxShadow).indexOf('inset 0 -2px') >= 0)).length >= 1,
   '');
+
+// —— 0.22.1 回归：滚下方正文时，顶部锚点高亮必须跟着走 ——
+// 现象（用户截图）：打开工坊、手动滚正文，顶部锚点高亮一动不动；点锚点本身能跳。
+// 根因：滚动监听 effect 依赖 [s.cur]，而 Workshop 关着时也挂在 shell.overlay 上 ——
+//   首帧渲染时 #cc-scroller 还没进 DOM，effect 里 getElementById 拿到 null 就 return；
+//   打开面板时 cur 没变（默认 0），effect 不重跑 → scroll 监听器一次都没装上。
+// 修法：依赖改 [s.panelOpen]（开了才绑、关了解绑），回调里用 getSnapshot 读 cur；
+//   平滑滚动窗口内不反推，用户一滚轮/触摸/按键立刻解锁。
+{
+  // ① 依赖守卫（假 React 不执行依赖比较，这条只能读源码）
+  const effSrc = src.slice(src.indexOf('滚轮滚动时反推'), src.indexOf('打开工坊自动跑一次校验'));
+  check('⑭ 滚动监听按面板开关绑定（依赖 [s.panelOpen]，不再跟 cur 重建）',
+    /\},\s*\[s\.panelOpen\]\);/.test(effSrc) && !/\},\s*\[s\.cur\]\);/.test(effSrc) && effSrc.indexOf('if(!s.panelOpen) return;') > 0,
+    (/\},\s*\[s\.[a-zA-Z]+\]\);/.exec(effSrc) || [''])[0]);
+
+  // ② 行为：假 DOM —— 7 个 section + 一个滚动容器
+  const ORDER = ['5', '1', '0', '2', '6', '4', '7'];
+  const BASE = { 5: -300, 1: 80, 0: 560, 2: 880, 6: 1200, 4: 1500, 7: 1800 };
+  let scrollTop = 0;
+  const listeners = {};
+  const scEl = {
+    scrollTop: 0, clientHeight: 800, scrollHeight: 4000, lastScrollTo: null,
+    addEventListener(type, fn) { (listeners[type] || (listeners[type] = [])).push(fn); },
+    removeEventListener(type, fn) { listeners[type] = (listeners[type] || []).filter((x) => x !== fn); },
+    querySelectorAll() {
+      return ORDER.map((cur) => ({
+        getAttribute(k) { return k === 'data-cur' ? cur : null; },
+        getBoundingClientRect() { return { top: 100 + BASE[cur] - scrollTop }; },
+      }));
+    },
+    getBoundingClientRect() { return { top: 100 }; },
+    scrollTo(o) { this.lastScrollTo = o; },
+  };
+  const prevDocument = globalThis.document;
+  globalThis.document = {
+    getElementById(id) {
+      if (id === 'cc-scroller') return scEl;
+      const cur = String(id || '').replace('cc-sec-', '');
+      return { getBoundingClientRect() { return { top: 100 + (BASE[cur] || 0) }; } };
+    },
+  };
+  // 90ms 节流：文件顶部已把 setTimeout 换成不触发的桩，这里收集起来手动 flush
+  const prevTimeout = globalThis.setTimeout;
+  let timers = [];
+  globalThis.setTimeout = function (fn) { timers.push(fn); return timers.length; };
+  function flush() {
+    const q = timers; timers = [];
+    q.forEach((fn) => { try { fn(); } catch (e) { console.log('FAIL  scroll 回调抛错: ' + e.message); } });
+  }
+
+  // 打开面板后渲染一轮，只跑滚动监听那条 effect（不动其它 effect，避免触发校验请求）
+  const cleanups = [];
+  render().effects.forEach((fn) => {
+    if (String(fn).indexOf('cc-scroller') >= 0) {
+      const c = fn();
+      if (typeof c === 'function') cleanups.push(c);
+    }
+  });
+  check('⑭b 面板打开后 scroll 监听真的装到了 #cc-scroller 上（旧代码这里是空的）',
+    (listeners.scroll || []).length === 1 && (listeners.wheel || []).length === 1 && (listeners.touchstart || []).length === 1,
+    'scroll=' + (listeners.scroll || []).length + ' wheel=' + (listeners.wheel || []).length + ' touchstart=' + (listeners.touchstart || []).length);
+
+  // 手动滚到「角色」附近：高亮自己切过去
+  // （先发一次 wheel：③ 那步点锚点留下的平滑滚动窗口还在，真实用户滚动时正是这个事件解锁）
+  store.setCur(0);
+  (listeners.wheel || []).forEach((fn) => fn());
+  scrollTop = 500; scEl.scrollTop = 500;
+  (listeners.scroll || []).forEach((fn) => fn());
+  flush();
+  check('⑭c 手动滚动后高亮反推到可见章节（cur 0 → 1）', store.getSnapshot().cur === 1, String(store.getSnapshot().cur));
+
+  // 点锚点「世界书」：立刻跳过去；平滑滚动途中经过「角色」也不许改高亮
+  const loreTab = navButtons(redraw()).find((b) => NAV_CUR[b.children[0]] === 2);
+  check('⑭d 锚点 tab 仍可点（scrollToSection 入口在）', !!loreTab && typeof loreTab.props.onClick === 'function', '');
+  loreTab.props.onClick({});
+  check('⑭e 点锚点后 cur 立刻是目标章节', store.getSnapshot().cur === 2, String(store.getSnapshot().cur));
+  scrollTop = 300; scEl.scrollTop = 300;   // 途中：可见的其实是「角色」
+  (listeners.scroll || []).forEach((fn) => fn());
+  flush();
+  check('⑭f 平滑滚动途中不反推（高亮留在目标章节，不会一路乱跳）', store.getSnapshot().cur === 2, String(store.getSnapshot().cur));
+
+  // 用户自己动滚轮：立刻解锁，反推恢复
+  (listeners.wheel || []).forEach((fn) => fn());
+  (listeners.scroll || []).forEach((fn) => fn());
+  flush();
+  check('⑭g 用户滚轮后反推恢复（cur 跟着可见章节回到 1）', store.getSnapshot().cur === 1, String(store.getSnapshot().cur));
+
+  // 滚到底：最后一节够不到顶部，也要能亮
+  scrollTop = 3200; scEl.scrollTop = 3200;
+  (listeners.scroll || []).forEach((fn) => fn());
+  flush();
+  check('⑭h 滚到底直接认最后一节（共享书，cur=7）', store.getSnapshot().cur === 7, String(store.getSnapshot().cur));
+
+  // 关掉面板：监听必须解绑（关着的时候不许再改 cur）
+  store.setPanel(false);
+  redraw();
+  cleanups.forEach((fn) => { try { fn(); } catch (e) {} });
+  check('⑭i 面板关闭后 scroll/wheel/touchstart/keydown 全部解绑',
+    (listeners.scroll || []).length === 0 && (listeners.wheel || []).length === 0 && (listeners.touchstart || []).length === 0 && (listeners.keydown || []).length === 0,
+    'scroll=' + (listeners.scroll || []).length);
+  store.setPanel(true);
+  redraw();
+
+  globalThis.setTimeout = prevTimeout;
+  if (prevDocument === undefined) delete globalThis.document; else globalThis.document = prevDocument;
+}
 
 // —— 0.22.0 回归：**hooks 必须在 early return 之前** ——
 // 假 React 不校验 hook 顺序，所以这条只能靠源码顺序守卫。
