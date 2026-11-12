@@ -11,6 +11,7 @@
 ### 新增
 
 - **体检每条「让模型修」**（替代原来的「去修 →」跳转）：把「问题 + 参考 + 建议方向 + 规则」拼成一条消息发进当前会话。规则里写明：先 `cc_get_card({digest:true})` 看现状、只改相关字段、**不要重写整张卡**、用对应写入工具、改完 `cc_validate` 复检。
+- **选中即引用**：在工坊正文（卡内世界书条目、角色字段、五维、开场 / 备选 / 群聊、Character's Note）里拖选一段文字，选区上方浮出「✨ 让模型改」；点开弹框写「哪里不好」，消息里会带上**引用原文 + 位置**（如 `character_book.entries[0]`、`data.description`），模型据此只改这一处。只认 `#cc-scroller` 内、至少 4 个字的选区 —— 单击、拖滚动条、选中标题都不会误弹。
 - **动作栏「✨ 让模型改」**：用户觉得哪里不合理，写一句话（弹框）连同卡名 / 当前章节一起发给模型，不用自己先找到那个字段。两个入口共用同一份提示模板（`MODEL_FIX_RULES` + `modelFixTail()`，测试钉住只有一份）。
 - **宿主端点 `cc_promptSession`**：走宿主 `sessionController.prompt`（与用户在输入框打字等价：写 durable `user/message`，agent 随即开始跑），不新增权限，受既有 RPC 围栏保护。空内容、缺会话、部署里没有 `sessionController`、超过 4000 字，都会在发出去之前被挡住并给出确切错误码。
 
@@ -27,7 +28,7 @@
 ### 测试
 
 - 新增 `tests/prompt-session.test.mjs`：端点契约（透传 / 空内容 / 缺会话 / 无 `sessionController` / RemoteError 透出 / 长度上限）。
-- 新增 `tests/model-fix.test.mjs`：两个入口的按钮与禁用态、消息内容、弹框流程、提示模板只有一份。
+- 新增 `tests/model-fix.test.mjs`：两个入口的按钮与禁用态、消息内容、弹框流程、选中即引用（浮条 → 弹框 → 消息带引用原文与位置）、提示模板只有一份。
 
 ### 生效方式
 

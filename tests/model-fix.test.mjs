@@ -46,8 +46,39 @@ globalThis.localStorage = {
   removeItem(k) { storage.delete(k); },
 };
 
+// —— 假 DOM：工坊的「选中即引用」需要 window.getSelection 与 #cc-scroller ——
+const listeners = {};
+const QUOTE_TEXT = '蓝黑色的头发垂在肩上';
+const quoteEl = {
+  nodeType: 1,
+  getAttribute: (name) => (name === 'data-cc-ref' ? 'character_book.entries[0] · 云中君' : null),
+  parentNode: null,
+};
+const quoteTextNode = { nodeType: 3, parentNode: quoteEl };
+const fakeScroller = { contains: () => true };
+const fakeSelection = {
+  rangeCount: 1,
+  toString: () => QUOTE_TEXT,
+  getRangeAt: () => ({
+    commonAncestorContainer: quoteTextNode,
+    getBoundingClientRect: () => ({ left: 120, top: 320, width: 80, height: 18 }),
+  }),
+};
+globalThis.document = {
+  addEventListener(name, fn) { (listeners[name] = listeners[name] || []).push(fn); },
+  removeEventListener(name, fn) { listeners[name] = (listeners[name] || []).filter((x) => x !== fn); },
+  getElementById(id) { return id === 'cc-scroller' ? fakeScroller : null; },
+  createElement() { return { setAttribute() {}, appendChild() {}, textContent: '' }; },
+  head: { appendChild() {} },
+  documentElement: { appendChild() {} },
+};
+
 let registration = null;
-globalThis.window = { __ModuleLoader__: { load(def) { registration = def; } } };
+globalThis.window = {
+  __ModuleLoader__: { load(def) { registration = def; } },
+  getSelection: () => fakeSelection,
+  innerWidth: 1200,
+};
 new Function('window', src)(globalThis.window);
 if (!registration) { console.log('FAIL  bundle 没有调用 window.__ModuleLoader__.load'); process.exit(1); }
 
@@ -115,6 +146,7 @@ function flatten(node, out) {
   return out;
 }
 const btns = (tree, label) => flatten(tree).filter((n) => n.type === 'button' && n.children && n.children[0] === label);
+const textNodes = (tree) => flatten(tree).map((n) => (n.children && n.children[0]) || '').filter((x) => typeof x === 'string');
 const sentTexts = () => calls.filter((x) => x.endpoint === 'cc_promptSession').map((x) => String((x.payload && x.payload.args && x.payload.args.text) || ''));
 
 // —— 打开工坊 + 跑一次校验 ——
@@ -197,6 +229,40 @@ let tree = redraw();
     (texts[0] || '').slice(0, 100).replace(/\n/g, ' / '));
   check('⑨ 发送后弹框关闭（不留在界面上挡视线）',
     flatten(redraw()).filter((n) => n.type === 'textarea' && n.props && n.props.rows === 5).length === 0, '');
+}
+
+// —— ⑫ 选中正文 → 浮出小按钮 → 弹框写「哪里不好」→ 带着引用发出去 ——
+{
+  (listeners['mouseup'] || []).forEach((fn) => { try { fn(); } catch (e) {} });
+  tree = redraw();
+  const bubble = btns(tree, '✨ workshop.fixModel.quoteBtn');
+  check('⑫ 选中正文后浮出「让模型改」小按钮（只认 #cc-scroller 内的选区）',
+    bubble.length === 1, 'bubble=' + bubble.length + ' listeners=' + (listeners['mouseup'] || []).length);
+  bubble[0].props.onClick({});
+  tree = redraw();
+  check('⑬ 弹框里显示引用原文与位置（用户知道自己在改哪一段）',
+    textNodes(tree).some((x) => String(x).indexOf(QUOTE_TEXT) >= 0)
+      && textNodes(tree).some((x) => String(x).indexOf('character_book.entries[0]') >= 0),
+    textNodes(tree).filter((x) => String(x).indexOf(QUOTE_TEXT) >= 0).length + ' hits');
+  const box = flatten(tree).filter((n) => n.type === 'textarea' && n.props && n.props.rows === 5)[0];
+  box.props.onChange({ target: { value: '这段太长了，压到 50 字以内' } });
+  tree = redraw();
+  const send = btns(tree, 'workshop.fixModel.send')[0];
+  calls.length = 0;
+  send.props.onClick({});
+  await new Promise((r) => setTimeout(r, 0));
+  const texts = sentTexts();
+  check('⑭ 发出的消息含：引用原文 + 位置 + 用户描述 + 自定义模板表头',
+    texts.length === 1 && texts[0].indexOf(QUOTE_TEXT) >= 0
+      && texts[0].indexOf('character_book.entries[0]') >= 0
+      && texts[0].indexOf('这段太长了，压到 50 字以内') >= 0
+      && texts[0].indexOf('workshop.fixModel.headCustom') >= 0,
+    (texts[0] || '').slice(0, 140).replace(/\n/g, ' / '));
+  tree = redraw();
+  check('⑮ 发送后引用与浮条都清掉（不会带到下一次）',
+    btns(tree, '✨ workshop.fixModel.quoteBtn').length === 0
+      && flatten(tree).filter((n) => n.type === 'textarea' && n.props && n.props.rows === 5).length === 0,
+    '');
 }
 
 // —— ⑩ 源码守卫：提示模板只有一份 ——

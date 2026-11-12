@@ -66,7 +66,7 @@ dsh plugin --profile web remove @xia-sc/dsh-cc-studio        # uninstall
 - **5D worldbuilding**: Timeline / Factions / Geography / Power / Daily → `autoLorebook` generates entries with `@@position / @@depth / @@activate`.
 - **ID-based CRUD**: save (overwrite when an ID is loaded) / save as new / rename / new / load / delete, with search and highlight; persisted to `cc-library/<id>.json`.
 - **LLM draft lock**: while active the studio is read-only and load/import only open a preview; overwriting actions back up the draft to `cc-drafts/backups/` (up to 20 per slot).
-- **Fix with the model**: every audit item carries "Fix with model", and the action bar adds "Ask the model" — send the problem or a one-line request to the model (CC mode + an open session required) and it edits the draft with its tools.
+- **Fix with the model**: every audit item carries "Fix with model", selecting a passage in the studio body pops up "Ask the model" (quoting the text and its location), and the action bar adds "Ask the model" — send the problem or a one-line request to the model (CC mode + an open session required) and it edits the draft with its tools.
 - **Import / export**: `⬆ Import JSON/PNG/CHARX` (V2/V1 cards are upgraded to CCv3), `⬇ JSON`, `⬇ PNG`, `⬆ Embed into PNG` (strips old `ccv3/chara` chunks), `⬇ CHARX`.
 - **Bilingual + light/dark**: follows `Settings → General → Language` live.
 
