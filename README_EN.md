@@ -61,7 +61,7 @@ dsh plugin --profile web remove @xia-sc/dsh-cc-studio        # uninstall
 
 ### Studio (client)
 
-- **Layout**: capsule → full-screen studio; **250px character-library rail on the left** (pick a card, collapses to a 40px icon bar) + **top anchor bar** (Overview / Character / World / Lorebook / Greetings / Relations / Shared book) + a persistent action group on its right (Validate / Export / Save / Clear); the seven sections render on **one scrolling page** (scroll to see the whole card, the anchor bar follows) with the `card.json` preview and CBS cheat-sheet folded at the bottom.
+- **Layout**: capsule → full-screen studio; **250px character-library rail on the left** (pick a card, collapses to a 56px avatar strip) + **top anchor bar** (Overview / Character / World / Lorebook / Greetings / Relations / Shared book) + a persistent action group on its right (Validate / Export / Save / Clear); the seven sections render on **one scrolling page** (scroll to see the whole card, the anchor bar follows) with the `card.json` preview and CBS cheat-sheet folded at the bottom.
 - **Document-style editing**: borderless auto-growing textareas, editable in place; long fields open a `⛶` modal with a snapshot so Cancel really rolls back.
 - **5D worldbuilding**: Timeline / Factions / Geography / Power / Daily → `autoLorebook` generates entries with `@@position / @@depth / @@activate`.
 - **ID-based CRUD**: save (overwrite when an ID is loaded) / save as new / rename / new / load / delete, with search and highlight; persisted to `cc-library/<id>.json`.

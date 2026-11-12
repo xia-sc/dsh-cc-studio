@@ -71,6 +71,12 @@ new Function('window', src)(globalThis.window);
 if (!registration) { console.log('FAIL  bundle 没有调用 window.__ModuleLoader__.load'); process.exit(1); }
 
 const calls = [];
+// 假角色库：折叠态的头像条要靠真实条目数来断言，空库时「渲染了 0 个头像」与「根本没写头像条」分不清。
+const FAKE_LIB = [
+  { id: 'lib-a', name: '陆昭', loreCount: 5, groupId: 'g1', tags: [] },
+  { id: 'lib-b', name: '白十三', loreCount: 3, groupId: 'g1', tags: [] },
+  { id: 'lib-c', name: '谢无咎', loreCount: 3, groupId: '', tags: [] },
+];
 const fakeCtx = {
   effect(fn) { try { fn(); } catch (e) { console.log('FAIL  effect 抛错: ' + e.message); } return () => {}; },
   locale: { register() { return () => {}; }, bind() { return (k) => k; } },
@@ -78,7 +84,12 @@ const fakeCtx = {
     inject(name, cb) { cb(); return () => {}; },
     register(opts, comp) { registered[opts.name] = { opts, comp }; return () => {}; },
   },
-  connection: { rpc: { call(channel, endpoint, payload) { calls.push({ endpoint, payload }); return Promise.resolve({ ok: false, error: { code: 'internal', message: 'no handler' } }); } } },
+  connection: { rpc: { call(channel, endpoint, payload) {
+    calls.push({ endpoint, payload });
+    if (endpoint === 'cc_listLibrary') return Promise.resolve({ ok: true, value: { entries: FAKE_LIB } });
+    if (endpoint === 'cc_listGroups') return Promise.resolve({ ok: true, value: { groups: [] } });
+    return Promise.resolve({ ok: false, error: { code: 'internal', message: 'no handler' } });
+  } } },
 };
 const registered = {};
 
@@ -241,6 +252,41 @@ check('⑩d 顶部锚点栏渲染出 7 个 tab（与章节一一对应）',
   while ((mm = re.exec(body))) hooks.push(mm.index);
   check('⑪b Workshop 里没有任何 React hook 落在 early return 之后',
     hooks.every((at) => at < retIdx), hooks.filter((at) => at > retIdx).join(','));
+}
+
+// —— 0.22.0：左栏折叠态照原型做（56px 图标条）——
+// 现象：折叠后 40px 里写「已存角色 7」，中文被挤成竖排字，比展开态更吵（用户截图）。
+// 修法：折叠 = 顶部「»」+ 一列头像方块，点头像即载入；文字（标题/搜索/副标题）全部不渲染。
+{
+  const avatarEls = (tree) => flatten(tree).filter((n) => n.props && n.props.style && String(n.props.style.background || '').indexOf('linear-gradient(135deg') === 0);
+  await store.refreshLibrary();
+  redraw();
+  check('⑫ 展开态按库条目渲染卡片头像（假库 3 张）', avatarEls(redraw()).length === FAKE_LIB.length, 'avatars=' + avatarEls(redraw()).length);
+
+  store.toggleLibraryCollapsed();
+  tree = redraw();
+  const flat = flatten(tree);
+  check('⑫b 折叠后只剩图标条：「角色库」标题与搜索框都不再渲染（不再出现竖排文字）',
+    src.indexOf('writingMode') < 0
+      && !flat.some((n) => n.children && n.children[0] === 'workshop.library.title')
+      && !flat.some((n) => n.type === 'input' && String(n.props.placeholder || '').indexOf('workshop.library.searchPlaceholder') >= 0),
+    'vertical=' + (src.indexOf('writingMode') >= 0) + ' inputs=' + flat.filter((n) => n.type === 'input').length);
+  const avatars = avatarEls(tree);
+  check('⑫c 折叠条一列头像，数量与库条目一致', avatars.length === FAKE_LIB.length, 'avatars=' + avatars.length);
+  check('⑫d 折叠条首格是「»」展开按钮（点回去回到 250px 卡片列表）',
+    flat.some((n) => n.type === 'button' && n.children[0] === '»'), '');
+  const before = calls.filter((c) => c.endpoint === 'cc_loadFromLibrary').length;
+  avatars[0].props.onClick();
+  await new Promise((r) => realSetTimeout(r, 0));
+  check('⑫e 头像整块可点 = 载入该卡（与展开态卡片同一个入口）',
+    calls.filter((c) => c.endpoint === 'cc_loadFromLibrary').length > before, '');
+
+  store.toggleLibraryCollapsed();
+  tree = redraw();
+  check('⑫f 展开后卡片列表回来（头像 + 搜索框都在，不残留折叠条）',
+    avatarEls(tree).length === FAKE_LIB.length && flatten(tree).some((n) => n.type === 'input')
+      && !flatten(tree).some((n) => n.type === 'button' && n.children[0] === '»'),
+    'avatars=' + avatarEls(tree).length);
 }
 
 // —— 收起工坊：整棵工坊树不再渲染（面板开关本身没被这次改动碰坏）——
