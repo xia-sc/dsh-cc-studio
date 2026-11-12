@@ -282,68 +282,20 @@ check('⑧ 点左侧写作步骤只切 cur，弹层仍开着（导航与导出�
   store.getSnapshot().cur === 0 && exportOpen() === true && byLabel(tree, 'action.exportJson').length === 1,
   'cur=' + store.getSnapshot().cur + ' open=' + exportOpen());
 
-// ⑨ 已存角色卡片上的「导出」：0.14.1 起**直接导出这张卡**，与「载入」解绑
-const cardExport = byLabel(tree, 'workshop.library.export');
-check('⑨ 已存角色卡片上的「导出」还在原位（有卡片时恰 1 枚）', cardExport.length === 1, String(cardExport.length));
-check('⑨b 它带上了说明用的 tooltip（打开导出弹层，不需要先载入）',
-  cardExport[0].props.title === 'workshop.library.exportTip', String(cardExport[0].props.title));
-const curBeforeCard = store.getSnapshot().cur;
-const beforeCard = calls.length;
-cardExport[0].props.onClick({});
-await tick(); await tick(); await tick();   // cc_getLibraryEntry → openExport → cc_getBook（目标组共享书）
-check('⑨c 点它打开导出弹层（不改 cur），并把导出目标指向这张已存卡',
-  exportOpen() === true && store.getSnapshot().cur === curBeforeCard
-  && store.getSnapshot().exportTarget && store.getSnapshot().exportTarget.id === 'abcdef1234',
-  'open=' + exportOpen() + ' target=' + JSON.stringify(store.getSnapshot().exportTarget && store.getSnapshot().exportTarget.id));
-const added = calls.slice(beforeCard).map((c) => c.endpoint);
-check('⑨d 只读这张卡（cc_getLibraryEntry）；不载入草稿槽（不碰 cc_loadFromLibrary）',
-  added.indexOf('cc_getLibraryEntry') >= 0 && added.indexOf('cc_loadFromLibrary') < 0,
-  added.join(',') || '(无新增 RPC)');
-const bookCall = calls.slice(beforeCard).filter((c) => c.endpoint === 'cc_getBook')[0];
-check('⑨d2 库卡属于别的分组：顺带拉那个组的共享书（cc_getBook groupId=g-lib），不动工坊当前组',
-  !!bookCall && bookCall.payload.args.groupId === 'g-lib'
-  && String(store.getSnapshot().currentGroupId) === '',
-  bookCall ? JSON.stringify(bookCall.payload.args) : 'no cc_getBook');
-tree = redraw();
-check('⑨e 打开弹层后当前草稿没被换掉（卡片名不会变成工坊里的卡名）',
-  store.getSnapshot().currentLibraryId == null, String(store.getSnapshot().currentLibraryId));
-check('⑨f 点完按钮自己先变（「已打开 ✓」）—— 视线在右侧也看得见反应',
-  byLabel(tree, 'workshop.library.exportJumped').length === 1, String(byLabel(tree, 'workshop.library.exportJumped').length));
-check('⑨g 弹层顶部说明「正在导出已存角色」，不再要求先载入（jumpedOther 已删）',
-  textNodes(tree, 'workshop.export.savedCardHint').length === 1 && textNodes(tree, 'workshop.export.currentHint').length === 0,
-  'saved=' + textNodes(tree, 'workshop.export.savedCardHint').length + ' hint=' + textNodes(tree, 'workshop.export.currentHint').length);
-const savedTitle = textNodes(tree, 'workshop.export.title')[0];
-const savedName = savedTitle && savedTitle.children && savedTitle.children[1];
-check('⑨g1 弹层标题显示的是这张已存卡的名字',
-  !!savedName && savedName.children[0] === '· 测试卡', savedName ? String(savedName.children[0]) : 'missing');
-const libBookNode = flatten(tree).filter((n) => n.children && String(n.children[0]) === '库组书')[0];
-const libGroupBadge = flatten(tree).filter((n) => n.children && String(n.children[0]) === '· g-lib')[0];
-check('⑨g3 弹层共享书块用这张卡所属分组的书（库组书 + 组名徽章），不是工坊当前组',
-  !!libBookNode && !!libGroupBadge, (libBookNode ? 'book=库组书 ' : 'no-book ') + (libGroupBadge ? 'group=ok' : 'no-group'));
-check('⑨g2 从卡片打开弹层后左下角入口按钮没有被一起点亮（还是「两处看起来像选中」的坑）',
-  !isActive(byLabel(tree, 'step.export')[0].props.style) && byLabel(tree, 'step.export')[0].props['aria-current'] == null,
-  String(byLabel(tree, 'step.export')[0].props.style.background));
-const jumpTimer = timers.filter(function (x) { return x.ms === 6000; }).slice(-1)[0];
-check('⑨h 反馈会自己收起（安排了一个 6s 的清除定时器，不常驻打扰）', !!jumpTimer, timers.length + ' timers');
-if (jumpTimer) {
-  jumpTimer.fn();
-  tree = redraw();
-  check('⑨i 收起后按钮文案复原；弹层仍指着那张已存卡（提示不退回草稿口径）',
-    byLabel(tree, 'workshop.library.export').length === 1 && byLabel(tree, 'workshop.library.exportJumped').length === 0
-    && textNodes(tree, 'workshop.export.savedCardHint').length === 1 && textNodes(tree, 'workshop.export.currentHint').length === 0,
-    'export=' + byLabel(tree, 'workshop.library.export').length + ' saved=' + textNodes(tree, 'workshop.export.savedCardHint').length);
-}
-// ⑨j 弹层里的 JSON 导出带着 cardId —— 导出的是那张已存卡，不是当前草稿
-const dlLib = downloads.length;
-byLabel(tree, 'action.exportJson')[0].props.onClick({});
+// ⑨ 0.22.0：卡片按原型简化 —— 整块可点 = 载入；载入/导出/删除/分组都收口到顶部动作区
+const libCards = flatten(tree).filter((n) => n.type === 'div' && n.props && n.props.title === '测试卡');
+check('⑨ 卡片只剩「头像 + 名字 + 一行副标题」（卡片内部没有任何按钮）',
+  libCards.length === 1 && byLabel(tree, 'workshop.library.export').length === 0
+  && byLabel(tree, 'workshop.library.load').length === 0
+  && flatten(libCards[0]).filter((n) => n.type === 'button').length === 0,
+  'cards=' + libCards.length + ' exportBtn=' + byLabel(tree, 'workshop.library.export').length
+  + ' loadBtn=' + byLabel(tree, 'workshop.library.load').length);
+const beforeCardLoad = calls.length;
+libCards[0].props.onClick({});
 await tick(); await tick();
-const lastExportCall = calls.filter((c) => c.endpoint === 'cc_exportJson').slice(-1)[0];
-check('⑨j 弹层内点 JSON：请求带 cardId；groupId/stWorld 用该卡所属分组（g-lib / 库组书），并正常下载',
-  downloads.length === dlLib + 1 && !!lastExportCall
-  && lastExportCall.payload.args.cardId === 'abcdef1234'
-  && lastExportCall.payload.args.groupId === 'g-lib'
-  && lastExportCall.payload.args.stWorld === '库组书',
-  lastExportCall ? JSON.stringify(lastExportCall.payload.args) : 'no call');
+check('⑨b 点卡片整块 = 载入这张卡（不再需要单独的「载入」按钮）',
+  calls.slice(beforeCardLoad).some((c) => c.endpoint === 'cc_loadFromLibrary'),
+  calls.slice(beforeCardLoad).map((c) => c.endpoint).join(',') || '(无新增 RPC)');
 
 // ⑩ 关闭弹层：✕ / 点遮罩都只动 store.exportOpen，工坊回到原页面
 byAria(tree, 'export.close')[0].props.onClick({});

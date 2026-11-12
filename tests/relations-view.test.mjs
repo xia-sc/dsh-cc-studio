@@ -170,13 +170,13 @@ check('⑤ 边上不可见的字段也要出来：note 与 mutual 的对等箭�
   joined.indexOf('她的名字是他给的') >= 0 && joined.indexOf('他认不出任何人') >= 0 && joined.indexOf('⇄') >= 0 && joined.indexOf('→') >= 0,
   '');
 // 0.9.0：类型/强度/方向三个内联下拉挪进了二级弹窗 —— 列表回到「一行只读 + 一枚编辑」的形态
-const inlineSelects = flatten(tree).filter((n) => n.type === 'select').length;
+const inlineSelects = flatten(tree).filter((n) => n.type === 'select' && n.props.title !== 'workshop.group.assign').length;
 const editBtns = flatten(tree).filter((n) => n.type === 'button' && n.children[0] === 'workshop.rel.edit').length;
 check('⑥ 关系列表是只读一行 + 每行一枚「编辑」（不再有 3×N 个内联下拉，那正是把整页占满的东西）',
   inlineSelects === 0 && editBtns === 6, JSON.stringify({ selects: inlineSelects, editBtns: editBtns }));
 const addBtn = flatten(tree).filter((n) => n.type === 'button' && n.children[0] === 'workshop.rel.add')[0];
 if (addBtn) addBtn.props.onClick({});
-const selCounts = flatten(redraw()).filter((n) => n.type === 'select')
+const selCounts = flatten(redraw()).filter((n) => n.type === 'select' && n.props.title !== 'workshop.group.assign')
   .map((sel) => flatten(sel).filter((c) => c && c.type === 'option').length);
 check('⑥b 点「＋ 添加关系」开弹窗后，从/到两个下拉各列出全部 6 个节点（默认已选好当前卡 → 对方）',
   selCounts.filter((n) => n === 6).length === 2, JSON.stringify(selCounts));
