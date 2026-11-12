@@ -232,6 +232,25 @@ check('⑩d 顶部锚点栏渲染出 7 个 tab（与章节一一对应）',
   flatten(tree).filter((n) => n.type === 'button' && n.props && n.props['aria-current'] !== undefined || (n.type === 'button' && n.props && n.props.style && n.props.style.boxShadow && String(n.props.style.boxShadow).indexOf('inset 0 -2px') >= 0)).length >= 1,
   '');
 
+// —— 0.22.0 回归：**hooks 必须在 early return 之前** ——
+// 假 React 不校验 hook 顺序，所以这条只能靠源码顺序守卫。
+// 踩过的坑：把滚动监听 effect 加在 `if(!s.panelOpen) return null;` 之后 →
+// 面板关着 0 个 hook、点开 1 个，真实浏览器抛「Rendered more hooks than during the previous render」，
+// 工坊白屏、点胶囊「没反应」（而 npm test 全绿）。
+{
+  const body = src.slice(src.indexOf('function Workshop(props){'), src.indexOf('function SettingsView(props){'));
+  const retIdx = body.indexOf('if(!s.panelOpen) return null;');
+  const hookIdx = body.indexOf('滚轮滚动时反推');
+  check('⑪ 滚动监听 effect 在 Workshop 的 early return 之前（否则真实浏览器白屏）',
+    retIdx > 0 && hookIdx > 0 && hookIdx < retIdx, 'ret=' + retIdx + ' hook=' + hookIdx);
+  const hooks = [];
+  const re = /React\.use(State|Effect|Ref|Memo|Callback)\(/g;
+  let mm;
+  while ((mm = re.exec(body))) hooks.push(mm.index);
+  check('⑪b Workshop 里没有任何 React hook 落在 early return 之后',
+    hooks.every((at) => at < retIdx), hooks.filter((at) => at > retIdx).join(','));
+}
+
 // —— 收起工坊：整棵工坊树不再渲染（面板开关本身没被这次改动碰坏）——
 store.setPanel(false);
 check('⑨ 收起工坊后不再渲染任何步骤项', navButtons(redraw()).length === 0, String(navButtons(redraw()).length));
