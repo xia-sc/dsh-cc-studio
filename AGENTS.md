@@ -94,8 +94,9 @@ tests/*.test.mjs      回归测试，不随包发布
 | `0.2.1-rc.2` | compatible | prompt 变量收窄到 `provider` / `model`（`{{cwd}}` 会让每轮失败） |
 | `0.2.1-rc.3` / `0.2.1-rc.5` | compatible | 契约包逐字节不变，实测全绿 |
 | `0.2.2-rc.1` | compatible | 必须适配：`tool-subagent-control` 删了 `./list-agents` 子入口（预设已删该行）；`modelSelectionSettings` 拆成 `modelSelection` + `modelDiscovery`（两代双写） |
+| `0.2.2-rc.2` | compatible | 审计通过（隔离实测：宿主 active / RPC 线协议 / 三个挂载点 / 预设 roster 无 broken / `npm test` 全绿）。rc.2 的 `standard` 新增 `tool-office`、`tool-subagent-control` 显式 `interrupt:false`，属能力差异，不 broken；契约包与 rc.1 逐字节可用 |
 
-没测过的版本只进 README 的「未实测」白名单，不进矩阵。升级时：`dsh --profile <名字> --dump-config` 看组合（不 mount）；diff 契约包与预设块；对目标版本的 `standard.patch.yml` 逐行对；最后按 §6 做隔离实测。
+没测过的版本只进 README 的「未实测」白名单，不进矩阵。升级时：`dsh --profile <名字> --dump-config` 看组合（不 mount）；diff 契约包与预设块；对目标版本的 `standard.patch.yml` 逐行对；最后按 §6 做隔离实测。每次审计的踩坑与可复现命令骨架记在 [COMPAT-AUDIT.md](./COMPAT-AUDIT.md)。
 
 ## 5. 日常改动规则
 
@@ -120,4 +121,4 @@ npm test    # 全部测试文件串行；全绿才算过
 - **改预设**：只改 `presets/cc.patch.yml`，重启即生效；用 `node tests/preset-install.test.mjs` 看行集/变量白名单。
 - **验证预设没 broken**：`dsh --profile <名字> --dump-config` 确认 `preset-cc` 被组合进来，再看 GUI「Agent 预设」或 `POST /api/pluginInventory/list`（带 `broken`）。
 - **验证 RPC**：`/` 与 RPC 都受会话 cookie 保护；用 `dsh web` 打印的 token 访问 `/?token=…` 换 cookie，再带信封 POST。
-- **整套隔离实测**：三个环境变量指向临时目录，建 `profiles/<名字>/package.json` 声明 `dsh.profile.bundles`，把本仓库 symlink 进 `node_modules/@xia-sc/dsh-cc-studio`，用目标 dsh 版本启动 `web --no-open --port <空闲端口>`，再用 playwright/curl 验三个挂载点与关键流程。
+- **整套隔离实测**：三个环境变量指向临时目录，建 `profiles/<名字>/package.json` 声明 `dsh.profile.bundles`，把本仓库 symlink 进 `node_modules/@xia-sc/dsh-cc-studio`，用目标 dsh 版本启动 `web --no-open --port <空闲端口>`，再用 playwright/curl 验三个挂载点与关键流程。沙箱/asar 环境下的具体做法（复制代替 symlink、cmd 重定向日志、token 换 cookie、预置 workspace.json 等）见 [COMPAT-AUDIT.md](./COMPAT-AUDIT.md)。
