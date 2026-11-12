@@ -137,7 +137,7 @@ let btns = navButtons(tree);
 const iWorld = curIndex(tree, 0), iLore = curIndex(tree, 2);
 
 check('① 左侧卡片结构导航渲染出 7 项（总览/角色/世界观/世界书/开场与示例/关系与分组/共享世界书），顶部胶囊仍是 3 个',
-  btns.length === 7 && stepChips(tree).length === 3,
+  btns.length === 7 && stepChips(tree).length === 0,
   'nav=' + btns.length + ' chips=' + stepChips(tree).length + ' keys=' + btns.map((b) => b.children[0]).join(','));
 check('② 初始只有「世界观」一项是选中态（cur=0；剩下的都是透明底）',
   iWorld >= 0 && onlyIndex(btns, iWorld), JSON.stringify(activeFlags(btns)));
@@ -206,18 +206,10 @@ btns = navButtons(redraw());
 check('⑦d 悬停选中项不会顶掉选中样式', onlyIndex(btns, iLore), JSON.stringify(activeFlags(btns)));
 btns[iLore].props.onMouseLeave();
 
-// —— 顶部胶囊同款：悬停有反馈、选中唯一 ——
-let chips = stepChips(redraw());
-check('⑧ 顶部胶囊只有当前步是品牌底', chips.filter((c) => String(c.props.style.background) === '#7c5cff').length === 1,
-  chips.map((c) => String(c.props.style.background)).join(','));
-chips[0].props.onMouseEnter();
-chips = stepChips(redraw());
-check('⑧b 顶部胶囊悬停有反馈（非当前步才变）',
-  chips[0].props.style.background === 'var(--dsw-alias-bg-layer-1)' && chips[2].props.style.background === '#7c5cff',
-  chips.map((c) => String(c.props.style.background)).join(','));
-chips[0].props.onMouseLeave();
-chips = stepChips(redraw());
-check('⑧c 移开后回到默认底', chips[0].props.style.background === 'var(--dsw-alias-bg-layer-2)', String(chips[0].props.style.background));
+// —— 0.22.0：顶部旧的「1.总览 2.角色 3.世界书」写作步骤胶囊已删除（由锚点栏取代）——
+check('⑧ 顶部不再渲染旧写作步骤胶囊（避免与锚点栏重复）',
+  stepChips(redraw()).length === 0, String(stepChips(redraw()).length));
+
 
 // —— 0.22.0：单页滚动 + 顶部锚点（左侧 200px 导航列已删除）——
 const sections = flatten(tree).filter((n) => n.type === 'section' && n.props && n.props['data-cur'] !== undefined);

@@ -373,8 +373,9 @@ byLabel(tree, 'step.export')[0].props.onClick({});
 tree = redraw();
 const chips = flatten(tree).filter((n) => n.type === 'span' && typeof n.children[0] === 'string' && /^\d\. step\./.test(n.children[0]));
 const navBtns = flatten(tree).filter((n) => n.type === 'button' && ['step.world', 'step.char', 'step.lore'].indexOf(n.children[0]) >= 0);
-check('⑪ 顶部胶囊与左侧导航都只有 3 个写作步骤（导出不再是第 4 步）',
-  chips.length === 3 && navBtns.length === 3, 'chips=' + chips.length + ' nav=' + navBtns.length);
+// ⑪ 0.22.0：顶部旧的写作步骤胶囊已删除；章节导航只剩顶部锚点栏（导出是动作，不是章节）
+check('⑪ 顶部旧胶囊已删除，锚点栏里仍是那三个写作章节',
+  chips.length === 0 && navBtns.length === 3, 'chips=' + chips.length + ' nav=' + navBtns.length);
 
 // ⑫ 收起工坊：整棵树不再渲染（面板开关没被这次改动碰坏）
 store.setPanel(false);
