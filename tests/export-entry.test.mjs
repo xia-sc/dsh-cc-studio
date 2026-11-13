@@ -65,7 +65,7 @@ globalThis.localStorage = {
 
 // —— 装载 bundle（client.js 是 window.__ModuleLoader__ 外壳）——
 let registration = null;
-globalThis.window = { __ModuleLoader__: { load(def) { registration = def; } } };
+globalThis.window = { __ModuleLoader__: { load(def) { registration = def; } }, confirm: function () { return true; } };
 new Function('window', src)(globalThis.window);
 if (!registration) { console.log('FAIL  bundle 没有调用 window.__ModuleLoader__.load'); process.exit(1); }
 

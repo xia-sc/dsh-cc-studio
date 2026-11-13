@@ -270,7 +270,11 @@ r = await call('cc_save_to_library', {});
 check('⑦e 载入后不传 id 保存 → **updated 同一张**，不再新建重复卡（P0-4）',
   r.ok === true && r.action === 'updated' && r.id === firstId, JSON.stringify({ action: r.action, id: r.id, firstId }));
 r = await call('cc_list_library', {});
-check('⑦f 库里仍然只有 1 张（没有重复卡）', r.count === 1, 'count=' + r.count);
+// 0.24.3：cc_validate 通过会自动落库，所以「库里总共几张」不再恒为 1；这里钉的是
+// 「载入后保存不会**新建**」——同一个 id 只许出现一次（重复卡才是 P0-4 的 bug）。
+check('⑦f 库里 firstId 恰好一条（载入后保存没有新建重复卡）',
+  r.entries.filter(e => e.id === firstId).length === 1,
+  'count=' + r.count + ' ids=' + r.entries.map(e => e.id).join(','));
 
 r = await call('cc_rename_in_library', { id: firstId, name: '回环卡改名' });
 check('⑦g 改名同时同步 meta.name 与 draft.data.name（单一事实来源）',
@@ -279,9 +283,11 @@ const loaded = await call('cc_get_library_entry', { id: firstId, includeDraft: t
 check('⑦h 库里那份 draft 的 data.name 也改了（导出后就是新名字）',
   loaded.draft.data.name === '回环卡改名', String(loaded.draft.data.name));
 
+const beforeDelete = (await call('cc_list_library', {})).count;
 r = await call('cc_delete_from_library', { id: firstId });
 check('⑦i 删除返回 remaining 与 originCleared',
-  r.ok === true && r.remaining === 0 && r.originCleared === true, JSON.stringify({ remaining: r.remaining, originCleared: r.originCleared }));
+  r.ok === true && r.remaining === beforeDelete - 1 && r.originCleared === true,
+  JSON.stringify({ remaining: r.remaining, before: beforeDelete, originCleared: r.originCleared }));
 
 // ——————————————————————————————————————————————————————————————
 // ⑧ sidecar 两半互通（工具半写、宿主半读，路径必须算成同一个）

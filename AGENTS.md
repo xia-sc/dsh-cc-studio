@@ -80,6 +80,7 @@ tests/fixtures/       L2 组合快照（由 npm run fixture:dump 生成）
 - 写类返回必须带 `cardName` / `cardId` / `draftStatus.sessionKey`；`rev` 在草稿文件里（跨进程唯一真相），盘上 rev 变化要 `revDrift` 重载，`expectedRev` 不符直接拒绝；空改动不落盘、不涨 rev。
 - 返回前统一 `sanitizeJson()`（任何嵌套 `undefined` / `NaN` / `-0` 会让整次调用失败）；`changed` 用 `assignIfChanged()`。
 - `cc_validate` 通过后必须引导 `cc_release_draft`（persona、终态 `next`、首次上锁 warning 三处都要保留）。
+- `cc_validate` 通过（`valid=true`）会**自动落库**（有来源 id 更新原卡、没有就新建；`autoSave:false` 关闭，失败只追加 warning）—— 0.24.3 的用户反馈是「模型忘记保存、切卡就被覆盖」；别改回「只提醒」。返回里的 `savedToLibrary` 是回执。
 - `cc_validate` 的 `canon` 参数（0.19.0）：显式传了就用它（`source:model`，写世界书「设定铁律」条目）；没传且卡里没有就 `deriveCanonDraft` 兜底（`source:derived`，**不**写世界书条目）；两者都会把铁律注入 `depth_prompt` / `post_history_instructions` 并写 `system_prompt` 指引。`cc_get_card({digest:true})` 是核对一致性时的小体积入口（整份 draft 会被 pruner 裁剪）。
 - 与宿主共享同一份草稿文件与同一套落盘根；两半的解析/截断（如 `GREETING_MAX = 10`）必须一致。
 
