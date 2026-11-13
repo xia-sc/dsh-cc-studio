@@ -192,9 +192,6 @@ let tree = redraw();
   check('④ 非 CC 模式 → 「让模型修」禁用并说明原因',
     fixBtns.length === 1 && fixBtns[0].props.disabled === true && String(fixBtns[0].props.title).indexOf('workshop.fixModel.noCc') >= 0,
     'disabled=' + (fixBtns[0] && fixBtns[0].props.disabled) + ' title=' + (fixBtns[0] && fixBtns[0].props.title));
-  // disabled 的按钮在真实浏览器里点不动；这里直接调 onClick 证明还有第二道闸（store 里也会挡）
-  const topBtn = btns(tree, '✨ workshop.fixModel.open')[0];
-  check('④b 动作栏「✨ 让模型改」同样禁用', !!topBtn && topBtn.props.disabled === true, topBtn && String(topBtn.props.disabled));
 }
 
 // ⑤ 没有会话：禁用
@@ -207,41 +204,23 @@ let tree = redraw();
     fixBtns[0] && String(fixBtns[0].props.title));
 }
 
-// —— ⑥「✨ 让模型改」弹框 ——
+// —— ⑫ 选中正文 → 浮出小按钮 → 弹框写「哪里不好」→ 带着引用发出去 ——
 {
   store.setSessionId('s-1');
   store.applyCcVerdict('s-1', true, 'host');
   tree = redraw();
-  const topBtn = btns(tree, '✨ workshop.fixModel.open')[0];
-  check('⑥ 动作栏有「✨ 让模型改」，且可用', !!topBtn && !topBtn.props.disabled, topBtn && String(topBtn.props.disabled));
-  topBtn.props.onClick({});
-  tree = redraw();
-  const boxes = flatten(tree).filter((n) => n.type === 'textarea' && n.props && n.props.rows === 5);
-  check('⑦ 点开是弹框：一个多行输入 + 空内容时发不出去',
-    boxes.length === 1 && btns(tree, 'workshop.fixModel.send')[0].props.disabled === true,
-    'boxes=' + boxes.length);
-  boxes[0].props.onChange({ target: { value: '时间锚定那块按标准补一下' } });
-  tree = redraw();
-  const sendBtn = btns(tree, 'workshop.fixModel.send')[0];
-  check('⑦b 输入内容后可以发送', !!sendBtn && sendBtn.props.disabled !== true, sendBtn && String(sendBtn.props.disabled));
-  calls.length = 0;
-  sendBtn.props.onClick({});
-  await new Promise((r) => setTimeout(r, 0));
-  const texts = sentTexts();
-  check('⑧ 发出的消息含用户描述 + 自定义模板表头（不是体检那套）',
-    texts.length === 1 && texts[0].indexOf('时间锚定那块按标准补一下') >= 0 && texts[0].indexOf('workshop.fixModel.headCustom') >= 0,
-    (texts[0] || '').slice(0, 100).replace(/\n/g, ' / '));
-  check('⑨ 发送后弹框关闭（不留在界面上挡视线）',
-    flatten(redraw()).filter((n) => n.type === 'textarea' && n.props && n.props.rows === 5).length === 0, '');
-}
-
-// —— ⑫ 选中正文 → 浮出小按钮 → 弹框写「哪里不好」→ 带着引用发出去 ——
-{
   (listeners['mouseup'] || []).forEach((fn) => { try { fn(); } catch (e) {} });
   tree = redraw();
   const bubble = btns(tree, '✨ workshop.fixModel.quoteBtn');
   check('⑫ 选中正文后浮出「让模型改」小按钮（只认 #cc-scroller 内的选区）',
     bubble.length === 1, 'bubble=' + bubble.length + ' listeners=' + (listeners['mouseup'] || []).length);
+  bubble[0].props.onClick({});
+  const dlgTree = redraw();
+  check('⑫a 弹框刚打开时发不出去（必须先写一句「哪里不好」）',
+    btns(dlgTree, 'workshop.fixModel.send')[0].props.disabled === true, '');
+  // 复位：⑬ 起用「选中 → 浮条」的真实路径重新打开
+  (listeners['mouseup'] || []).forEach((fn) => { try { fn(); } catch (e) {} });
+  tree = redraw();
   // 0.24.0 实测：首版用 position:fixed + 视口坐标，overlay 的 backdrop-filter 让浮条飘到窗口左上角。
   // 现在必须是 absolute（相对主区）且坐标是「滚动容器内容坐标」。
   const wrap = flatten(tree).filter((x) => x.props && x.props.style && x.props.style.position === 'absolute'
@@ -276,6 +255,12 @@ let tree = redraw();
       && flatten(tree).filter((n) => n.type === 'textarea' && n.props && n.props.rows === 5).length === 0,
     '');
 }
+
+// —— ⑯ 守卫：动作栏不再有「✨ 让模型改」独立入口（用户要求删掉，只保留选中即引用）——
+check('⑯ 动作栏不再有「✨ 让模型改」入口（用户要求删掉，只保留选中即引用）',
+  src.indexOf('workshop.fixModel.open') < 0
+    && btns(redraw(), '✨ workshop.fixModel.open').length === 0,
+  'src=' + (src.indexOf('workshop.fixModel.open') < 0) + ' btn=' + btns(redraw(), '✨ workshop.fixModel.open').length);
 
 // —— ⑩ 源码守卫：提示模板只有一份 ——
 // 规则清单只有一份：数组定义 1 处；rule1 这个键在 zh / en 两张表各一次（共 3 次字符串出现）。
