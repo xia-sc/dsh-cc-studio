@@ -32,8 +32,7 @@ process.env.USERPROFILE = tmpHome;
 
 const mod = await import('../lib/agent.js');
 
-const results = [];
-function check(name, pass, detail) { results.push({ name, pass: !!pass, detail }); }
+import { check, finish } from './harness.mjs';
 
 const tools = new Map();
 mod.apply({
@@ -689,7 +688,4 @@ check('⑭k 参数声明：id 必填、全部字段声明、additionalProperties
 // —— 收尾：清掉临时落盘根 ——
 rmSync(tmpHome, { recursive: true, force: true });
 
-const failed = results.filter(r => !r.pass);
-for (const r of results) console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.name}  ${r.detail === undefined || r.detail === '' ? '' : '— ' + String(r.detail).slice(0, 170)}`);
-console.log(`\n${results.length - failed.length}/${results.length} passed`);
-process.exit(failed.length === 0 ? 0 : 1);
+finish();

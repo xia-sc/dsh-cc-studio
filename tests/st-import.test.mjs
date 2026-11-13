@@ -28,8 +28,7 @@ process.env.DSH_HOME = sandboxHome;
 const compat = await import('../lib/compat/index.js');
 const host = await import('../lib/index.js');
 
-const results = [];
-function check(name, pass, detail){ results.push({ name, pass: !!pass, detail }); }
+import { check, finish } from './harness.mjs';
 
 // ============================================================
 // ① 纯函数
@@ -526,10 +525,4 @@ process.env.HOME = originalHome;
 process.env.USERPROFILE = originalUserProfile;
 process.env.DSH_HOME = originalDshHome;
 
-let passed = 0;
-for(const r of results){
-  if(r.pass) passed++;
-  console.log((r.pass ? 'PASS  ' : 'FAIL  ') + r.name + (r.detail ? '  — ' + r.detail : ''));
-}
-console.log('\n' + passed + '/' + results.length + ' passed');
-if(passed !== results.length) process.exit(1);
+finish();

@@ -23,10 +23,7 @@ import { readFileSync } from 'node:fs';
 
 const src = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 
-const results = [];
-function check(name, pass, detail) {
-  results.push({ name, pass: !!pass, detail });
-}
+import { check, finish, createFakeReact } from './harness.mjs';
 
 // 从源码里摘出真实实现执行（client.js 是 window.__ModuleLoader__ 外壳，无法直接 import）
 function grabFunction(name) {
@@ -167,21 +164,9 @@ const ccSessionIdOfProps = new Function(`${grabFunction('ccSessionIdOfProps')}; 
 // ============================================================
 // 6) 运行时回归：真把 bundle 装进假 React / 假 slot / 假 RPC 跑
 // ============================================================
-const effectQueue = [];
+const { React, effectQueue, hooks } = createFakeReact();
 const intervals = [];
 const timeouts = [];
-const React = {
-  createElement(type, props) {
-    return { type, props: props || {}, children: Array.prototype.slice.call(arguments, 2) };
-  },
-  useState(init) { return [typeof init === 'function' ? init() : init, function () {}]; },
-  useCallback(fn) { return fn; },
-  useEffect(fn) { effectQueue.push(fn); },
-  useMemo(fn) { return fn(); },
-  useRef(init) { return { current: init }; },
-  // 0.12.4：组件快照走 useSyncExternalStore（生产路径）；测试里只需返回当前快照。
-  useSyncExternalStore(subscribe, getSnapshot) { return getSnapshot(); },
-};
 const realSetTimeout = globalThis.setTimeout;
 const realSetInterval = globalThis.setInterval;
 const realClearTimeout = globalThis.clearTimeout;
@@ -555,7 +540,4 @@ delete globalThis.window;
     `preset.yml=${JSON.stringify(presetName)} zh=${JSON.stringify(zhLabel)} en=${JSON.stringify(enLabel)}`);
 }
 
-const failed = results.filter((r) => !r.pass);
-for (const r of results) console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.name}  ${r.detail === undefined || r.detail === '' ? '' : '— ' + String(r.detail).slice(0, 100)}`);
-console.log(`\n${results.length - failed.length}/${results.length} passed`);
-process.exit(failed.length === 0 ? 0 : 1);
+finish();

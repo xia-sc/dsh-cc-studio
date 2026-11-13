@@ -21,8 +21,7 @@ process.env.USERPROFILE = tmpHome;
 const mod = await import('../lib/agent.js');
 const compat = await import('../lib/compat/index.js');
 
-const results = [];
-function check(name, pass, detail){ results.push({ name, pass: !!pass, detail }); }
+import { check, finish } from './harness.mjs';
 
 const tools = new Map();
 mod.apply({ get(){ return null; }, tools: { register(def){ tools.set(def.name, def); } } });
@@ -188,10 +187,4 @@ const call = (n, a) => tools.get(n).execute(a || {}, exec);
 
 rmSync(tmpHome, { recursive: true, force: true });
 
-let passed = 0;
-for(const r of results){
-  if(r.pass) passed++;
-  console.log((r.pass ? 'PASS  ' : 'FAIL  ') + r.name + (r.detail ? '  — ' + r.detail : ''));
-}
-console.log('\n' + passed + '/' + results.length + ' passed');
-if(passed !== results.length) process.exit(1);
+finish();

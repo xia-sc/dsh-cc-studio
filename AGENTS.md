@@ -16,6 +16,9 @@ cordis.patch.yml      宿主组合里的插件行
 locale/               插件元数据：zh.json / en.json 只放 meta.title + meta.description（插件管理器在未激活时读它）
 ROADMAP.md            待办与决策记录（不是承诺清单；每条做完就删）
 tests/*.test.mjs      回归测试，不随包发布
+scripts/              开发脚本：L2 组合快照 / L3 真机 smoke（不随包发布）
+tests/harness.mjs     测试共享骨架（check / finish / readRepo / loadClient）
+tests/fixtures/       L2 组合快照（由 npm run fixture:dump 生成）
 ```
 
 三个入口由 `package.json.exports` 固定：`.` → `lib/index.js`、`./client` → `lib/client.js`、`./agent` → `lib/agent.js`。locale 也由 exports 导出（`./locale/*.json`）并列入 `files`，漏一处 = 本地看着正常、发布后标题描述回退到中文 `description`。改包名要同步 5 处：`package.json.name`、三处加载方、`lib/client.js` 里 `__ModuleLoader__.load({ id })` 的 `id`（宿主按包名精确匹配，对不上整个客户端半加载失败）。
@@ -34,7 +37,7 @@ tests/*.test.mjs      回归测试，不随包发布
 - 命名约束来自 `dsh-client-connection`：channel `/^\/[A-Za-z0-9._~-]+$/`、endpoint 每段 `/^[A-Za-z0-9_$.-]+$/`。未知端点回 200 + 失败帧（`details.code="unknown-endpoint"`），不是 404。
 - 改协议前先对 `@deepseek-ai/dsh-client-connection` 的 `parseConnectionResponse` / `assertTarget`。
 
-**预设只有一层声明。** 唯一载体是 `presets/cc.patch.yml`（`dsh.bundle.patch` 第 2 层），插件**不往用户目录写任何预设文件**；`apply()` 零写盘。`tests/preset-install.test.mjs` 钉住行集快照、与目标 dsh 内置 `standard` 的对齐（有意差异只允许 `tool-schedule` / `tool-plugin-market` 两行缺席，且要写进文件注释）、prompt 变量白名单（只有 `provider` / `model`）、写类工具的严格 JSON 规则。写错一个包名 = 整份预设 `broken`（roster 里看得到「CC 模式」但带诊断、组不出会话）。`0.1.x` 时代的目录安装已整体删除，不要带回来（有源码级守卫）。
+**预设只有一层声明。** 唯一载体是 `presets/cc.patch.yml`（`dsh.bundle.patch` 第 2 层），插件**不往用户目录写任何预设文件**；`apply()` 零写盘。`tests/preset-install.test.mjs` 钉住行集快照、与目标 dsh 内置 `standard` 的对齐（有意差异只允许 `tool-schedule` / `tool-plugin-market` 两行缺席，且要写进文件注释）、prompt 变量白名单（只有 `provider` / `model`）、写类工具的严格 JSON 规则；persona 的长度与必留锚点由 `tests/persona-budget.test.mjs` 钉住（上限 2200 字符 —— 它是**每轮**成本，别再抄一遍工具清单）。写错一个包名 = 整份预设 `broken`（roster 里看得到「CC 模式」但带诊断、组不出会话）。`0.1.x` 时代的目录安装已整体删除，不要带回来（有源码级守卫）。
 
 **落盘根只有一套。** `dataRoots(sub)` → `[主根, 旧根]`（主根 = `DSH_HOME` 或 `~/.dsh`）：写只写主根，读依次回退。草稿 `cc-drafts/`、角色库 `cc-library/`、分组 `cc-groups/`、共享书 `cc-books/` 全走它。宿主半与预设半各有一份同构实现（`dataRoots` / `safeDraftFile` 必须算出同一路径）。
 
@@ -128,6 +131,11 @@ npm test    # 全部测试文件串行；全绿才算过
 
 测试只跑纯函数与源码守卫（不启动 dsh、不写真实用户目录），所以还要手工验证：
 
+- **改测试**：统一用 `tests/harness.mjs`（`check` / `finish` / `readRepo` / `createFakeReact` / `loadClient`），新测试不要再抄汇总块或假 React；**测试里不许 spawn 子进程**（禁子进程的沙箱 / 受限 CI 会 `EPERM`，`release-notes` 曾因此跑不完），需要子进程的验证放 L3 的 `scripts/e2e-smoke.mjs`。
+- **L2 组合快照**：改 `presets/cc.patch.yml` 后跑 `npm run fixture:dump`（要本机 dsh；CI 用 `--if-installed` 跳过）重生成 `tests/fixtures/preset-composition.json`，否则 `tests/preset-composition.test.mjs` 会红 —— 它钉的是「这份 patch 在目标 dsh 上真能组合出来」。
+- **L3 真机 smoke**：`npm run e2e` 起真实 web、换 cookie、走 RPC / 写草稿 / 导出，并验客户端资源：boot 的 entry URL 取到的是 `__ModuleLoader__` 外壳、批次 `rev` 改坏必须 404、主资源 200。不进 `npm test`，没装 dsh 时加 `--if-installed`。
+- **CI**：`.github/workflows/e2e.yml`（手动触发）在 ubuntu-latest 上 `npm i -g @deepseek-ai/dsh`（Node 24），再用 `DSH_EXE` / `DSH_BIN` 跑上面两条；`publish.yml` 不跑 L2 重生成与 L3。
+- **DOM 三挂载点**：`npm run e2e` 只验到 boot 清单与 RPC；要看真渲染，用 Playwright MCP 打开实例的 token URL（`node scripts/e2e-smoke.mjs --keep` 保留实例后手工起 web），按「选工作区 → 选 CC 模式 → 胶囊出现 → 点开工坊 overlay → 设置 → 角色卡工坊」看。2026-11 实测三处都在（见 ROADMAP 4.1）。
 - **改宿主/客户端**：重启 `dsh web` + 刷新页面。客户端资源 URL 含 `??` 与批次 `rev`，缺一个就 404。
 - **改预设**：只改 `presets/cc.patch.yml`，重启即生效；用 `node tests/preset-install.test.mjs` 看行集/变量白名单。
 - **验证预设没 broken**：`dsh --profile <名字> --dump-config` 确认 `preset-cc` 被组合进来，再看 GUI「Agent 预设」或 `POST /api/pluginInventory/list`（带 `broken`）。

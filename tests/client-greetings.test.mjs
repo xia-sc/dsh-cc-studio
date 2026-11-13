@@ -20,10 +20,7 @@ const src = readFileSync(url('../lib/client.js'), 'utf8');
 const agentSrc = readFileSync(url('../lib/agent.js'), 'utf8');
 const indexSrc = readFileSync(url('../lib/index.js'), 'utf8');
 
-const results = [];
-function check(name, pass, detail) {
-  results.push({ name, pass: !!pass, detail });
-}
+import { check, finish } from './harness.mjs';
 
 // 从源码里摘出真实实现执行（client.js 是 window.__ModuleLoader__ 外壳，无法直接 import）
 function grabFunction(source, name) {
@@ -256,7 +253,4 @@ for (const id of ['expandIdea', 'expandWorld', 'setCustomTag', 'addCustomTag', '
   check('中文插值输出与改造前逐字一致', fBad.length === 0, fBad.map(([n, got, want]) => `${n}: got=${JSON.stringify(got)} want=${JSON.stringify(want)}`).join(' | '));
 }
 
-const failed = results.filter((r) => !r.pass);
-for (const r of results) console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.name}  ${r.detail === undefined || r.detail === '' ? '' : '— ' + r.detail}`);
-console.log(`\n${results.length - failed.length}/${results.length} passed`);
-process.exit(failed.length === 0 ? 0 : 1);
+finish();

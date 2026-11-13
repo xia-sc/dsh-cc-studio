@@ -19,10 +19,7 @@ import { dirname, join, resolve } from 'node:path';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-const results = [];
-function check(name, pass, detail) {
-  results.push({ name, pass: !!pass, detail });
-}
+import { check, finish } from './harness.mjs';
 
 const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 
@@ -80,7 +77,4 @@ for (const [lang, entry] of [['zh', zh], ['en', en]]) {
 check('package.json exports 导出 ./locale/*.json', manifest.exports && manifest.exports['./locale/*.json'] === './locale/*.json', '');
 check('package.json files 包含 locale/*.json', Array.isArray(manifest.files) && manifest.files.includes('locale/*.json'), '');
 
-const failed = results.filter((r) => !r.pass);
-for (const r of results) console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.name}  ${r.detail === undefined || r.detail === '' ? '' : '— ' + String(r.detail).slice(0, 110)}`);
-console.log(`\n${results.length - failed.length}/${results.length} passed`);
-process.exit(failed.length === 0 ? 0 : 1);
+finish();

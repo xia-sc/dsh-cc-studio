@@ -13,30 +13,12 @@ import { readFileSync } from 'node:fs';
 
 const src = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 
-const results = [];
-function check(name, pass, detail) {
-  results.push({ name, pass: !!pass, detail });
-}
+import { check, finish, createFakeReact } from './harness.mjs';
 
-// —— 假 React ——
-const effectQueue = [];
-const hooks = { slots: [], idx: 0 };
-const React = {
-  createElement(type, props) { return { type, props: props || {}, children: Array.prototype.slice.call(arguments, 2) }; },
-  useState(init) {
-    const i = hooks.idx++;
-    if (!(i in hooks.slots)) hooks.slots[i] = typeof init === 'function' ? init() : init;
-    return [hooks.slots[i], function (v) { hooks.slots[i] = typeof v === 'function' ? v(hooks.slots[i]) : v; }];
-  },
-  useRef(init) {
-    const i = hooks.idx++;
-    if (!(i in hooks.slots)) hooks.slots[i] = { current: init };
-    return hooks.slots[i];
-  },
-  useCallback(fn) { return fn; },
-  useEffect(fn) { effectQueue.push(fn); },
-  useMemo(fn) { return fn(); },
-};
+// —— 假 React + 真实定时器 ——
+// 本文件用 `await tick()`（真实 setTimeout 0）等 refreshLibrary 落地，所以不能走 loadClient 的
+// 假定时器（它会吞掉 setTimeout，tick 永远不 resolve，顶成 unsettled top-level await）。
+const { React, effectQueue, hooks } = createFakeReact();
 
 const storage = new Map();
 globalThis.localStorage = {
@@ -208,7 +190,4 @@ check('⑨c 删掉分组折叠视图后，关系章节有自己的分组选择�
 
 delete globalThis.window;
 
-const failed = results.filter((r) => !r.pass);
-for (const r of results) console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.name}  ${r.detail === undefined || r.detail === '' ? '' : '— ' + String(r.detail).slice(0, 160)}`);
-console.log(`\n${results.length - failed.length}/${results.length} passed`);
-process.exit(failed.length === 0 ? 0 : 1);
+finish();

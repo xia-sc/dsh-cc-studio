@@ -1,0 +1,86 @@
+# e2e 冒烟（L2 组合快照 + L3 真机 smoke）
+#
+# 为什么单独一个 workflow、不并进 publish.yml：
+#   - publish.yml 只跑 `npm test` —— 那是 L1 与 L2 的**离线比对**，不需要 dsh；
+#   - L2 的「重生成 fixture」与 L3 的「起一个真实 web 实例」需要一份 dsh 安装 + 网络 +
+#     端口，耗时且偶发（浏览器资源、端口、进程清理），不该拖住发布流程。
+#
+# 触发：手动（Actions → e2e smoke → Run workflow），或 `gh workflow run e2e.yml`。
+#
+# dsh 从哪来：npm 上的 `@deepseek-ai/dsh`（CLI 版，依赖里自带 dsh-base / dsh-web-app /
+# dsh-persona 等 shipped bundles），不需要桌面版安装包。脚本通过 `DSH_EXE` / `DSH_BIN`
+# 两个环境变量找到它（见 scripts/lib/dsh.mjs 的 findDsh）。
+#
+# 版本：默认装 npm 上的最新；要复现某次审计就填 dsh_version。
+# 注意 CI 装的版本可能与 tests/fixtures/preset-composition.json 记录的版本不同 —— 那时
+# 组合快照的 diff 只报警告（不是失败），因为版本差异本身是预期的。
+name: e2e smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      dsh_version:
+        description: '要安装的 @deepseek-ai/dsh 版本（留空 = npm 最新）'
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'   # @deepseek-ai/dsh 的 engines 是 >=24.9.0
+
+      - name: Install dsh CLI
+        run: |
+          set -euo pipefail
+          ver='${{ inputs.dsh_version }}'
+          if [ -z "$ver" ]; then
+            npm install -g @deepseek-ai/dsh
+          else
+            npm install -g "@deepseek-ai/dsh@$ver"
+          fi
+          dsh_bin="$(npm root -g)/@deepseek-ai/dsh/lib/bin.js"
+          test -f "$dsh_bin"
+          echo "DSH_BIN=$dsh_bin" >> "$GITHUB_ENV"
+          echo "DSH_EXE=$(command -v node)" >> "$GITHUB_ENV"
+          node "$dsh_bin" --version
+
+      - name: L2 组合快照（重生成并与仓库比对）
+        run: |
+          set -euo pipefail
+          node scripts/dump-config.mjs --out "$RUNNER_TEMP/preset-composition.json"
+          if diff -u tests/fixtures/preset-composition.json "$RUNNER_TEMP/preset-composition.json"; then
+            echo "组合快照与仓库一致"
+          else
+            echo "::warning::组合快照与仓库不一致（dsh 版本不同，或预设行改了没跑 npm run fixture:dump）"
+          fi
+
+      - name: L3 真机 smoke
+        run: node scripts/e2e-smoke.mjs --keep
+
+      - name: Upload e2e logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs
+          path: |
+            .compat-tmp/**/web.log
+            .compat-tmp/**/dump.yml
+            .compat-tmp/**/version.txt
+          if-no-files-found: ignore
+          retention-days: 7

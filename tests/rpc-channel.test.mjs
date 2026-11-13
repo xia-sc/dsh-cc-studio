@@ -33,10 +33,7 @@ process.env.DSH_HOME = sandboxHome;
 
 const host = await import('../lib/index.js');
 
-const results = [];
-function check(name, pass, detail) {
-  results.push({ name, pass: !!pass, detail });
-}
+import { check, finish } from './harness.mjs';
 
 let route = null;
 let rejection = undefined; // undefined = 放行
@@ -564,7 +561,4 @@ try {
   rmSync(sandboxHome, { recursive: true, force: true });
 } catch {}
 
-const failed = results.filter((r) => !r.pass);
-for (const r of results) console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.name}  ${r.detail === undefined ? '' : '— ' + r.detail}`);
-console.log(`\n${results.length - failed.length}/${results.length} passed`);
-process.exit(failed.length === 0 ? 0 : 1);
+finish();

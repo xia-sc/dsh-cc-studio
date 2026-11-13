@@ -15,8 +15,7 @@
  */
 import * as compat from '../lib/compat/index.js';
 
-const results = [];
-function check(name, pass, detail) { results.push({ name, pass: !!pass, detail }); }
+import { check, finish } from './harness.mjs';
 
 // —— 样本：一张带 V3 独有字段、卡内世界书、装饰器的卡 ——
 const CARD = {
@@ -205,7 +204,4 @@ const CARD = {
   check('⑥c normalizeNewlines 把 CRLF/CR 归一成 LF', compat.normalizeNewlines('a\r\nb\rc') === 'a\nb\nc', '');
 }
 
-const failed = results.filter(r => !r.pass);
-for (const r of results) console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.name}  ${r.detail === undefined || r.detail === '' ? '' : '— ' + String(r.detail).slice(0, 180)}`);
-console.log(`\n${results.length - failed.length}/${results.length} passed`);
-process.exit(failed.length === 0 ? 0 : 1);
+finish();

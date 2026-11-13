@@ -6,36 +6,19 @@
  *   而 `.github/scripts/release-notes.mjs` 把小节第一行非空行原样当标题。
  * 修法：标题只认正文行 —— 跳过 Markdown 标题与空行；顺带给 0.23.0 补回摘要段。
  *
- * 本文件用临时目录跑真实脚本（脚本读 cwd 下的 CHANGELOG.md），不碰仓库文件。
+ * 0.24.x（ROADMAP 4.1 L1）：脚本已抽出 `buildRelease()` 纯函数，本测试直接 import 它，
+ * **不再起子进程、不写临时目录** —— 之前的 `execFileSync` 在禁子进程的沙箱 / 受限 CI
+ * 里直接 EPERM，`npm test` 跑不完。
  *
  * 运行：node tests/release-notes.test.mjs   （全绿退出码 0）
  */
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const script = fileURLToPath(new URL('../.github/scripts/release-notes.mjs', import.meta.url));
-
-const results = [];
-function check(name, pass, detail) {
-  results.push({ name, pass: !!pass, detail });
-}
+import { readFileSync } from 'node:fs';
+import { check, finish } from './harness.mjs';
+import { buildRelease } from '../.github/scripts/release-notes.mjs';
 
 function runWith(changelog) {
-  const dir = mkdtempSync(join(tmpdir(), 'cc-relnotes-'));
-  try {
-    writeFileSync(join(dir, 'CHANGELOG.md'), changelog, 'utf8');
-    const out = execFileSync(process.execPath, [script, '0.0.1'], { cwd: dir, encoding: 'utf8' });
-    return {
-      out,
-      title: readFileSync(join(dir, 'release-title.txt'), 'utf8').trim(),
-      notes: readFileSync(join(dir, 'release-notes.md'), 'utf8').trim(),
-    };
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  const r = buildRelease('0.0.1', changelog);
+  return { title: r.title, notes: r.notes.trim() };
 }
 
 // ① 事故形态：小节第一行就是 ### 小标题
@@ -69,7 +52,11 @@ function runWith(changelog) {
     !!m && m[1].trim().indexOf('#') !== 0, m ? m[1].slice(0, 40) : 'MISS');
 }
 
-const failed = results.filter((r) => !r.pass);
-for (const r of results) console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.name}  ${r.detail === undefined || r.detail === '' ? '' : '— ' + String(r.detail).slice(0, 160)}`);
-console.log(`\n${results.length - failed.length}/${results.length} passed`);
-process.exit(failed.length === 0 ? 0 : 1);
+// ⑤ 纯函数不依赖 cwd：版本号带 v 前缀也能解析（CLI 与测试同一份逻辑）
+{
+  const r = buildRelease('v0.0.1', '# 更新日志\n\n## 0.0.1\n\n**入口收敛。**\n');
+  check('⑤ 版本号带 v 前缀时照常解析', r.title === '入口收敛', r.title);
+  check('⑤b 小节不存在时 notes 仍以换行结尾（写文件不会粘行）', r.notes.endsWith('\n'), JSON.stringify(r.notes));
+}
+
+finish();

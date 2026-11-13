@@ -29,8 +29,7 @@ process.env.USERPROFILE = tmpHome;
 const host = await import('../lib/index.js');
 const agent = await import('../lib/agent.js');
 
-const results = [];
-function check(name, pass, detail) { results.push({ name, pass: !!pass, detail }); }
+import { check, finish } from './harness.mjs';
 
 const tools = new Map();
 agent.apply({ get() { return null; }, tools: { register(d) { tools.set(d.name, d); } } });
@@ -422,7 +421,4 @@ check('⑪c 两半 assignCardToGroup 同构：宿主半入组（自动补节点�
 // —— 收尾：清掉临时落盘根 ——
 rmSync(tmpHome, { recursive: true, force: true });
 
-const failed = results.filter(r => !r.pass);
-for (const r of results) console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.name}  ${r.detail === undefined || r.detail === '' ? '' : '— ' + String(r.detail).slice(0, 160)}`);
-console.log(`\n${results.length - failed.length}/${results.length} passed`);
-process.exit(failed.length === 0 ? 0 : 1);
+finish();

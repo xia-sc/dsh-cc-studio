@@ -20,10 +20,7 @@ import { readFileSync } from 'node:fs';
 
 const src = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 
-const results = [];
-function check(name, pass, detail) {
-  results.push({ name, pass: !!pass, detail });
-}
+import { check, finish, createFakeReact } from './harness.mjs';
 
 // —— 源码级：旧入口的残留物必须一起消失，否则「归一」会在下一次改动里悄悄长回来 ——
 const zhSrc = src.slice(src.indexOf('var zh='), src.indexOf('var en='));
@@ -47,26 +44,7 @@ globalThis.Blob = function Blob(parts, opts) { this.parts = parts; this.type = o
 globalThis.URL = { createObjectURL() { return 'blob:test'; }, revokeObjectURL() {} };
 
 // —— 假 React：hook 槽位按渲染顺序保留（这样 setExportOpen / setHover 之后重渲染能看到新值）——
-const effectQueue = [];
-const hooks = { slots: [], idx: 0 };
-const React = {
-  createElement(type, props) {
-    return { type, props: props || {}, children: Array.prototype.slice.call(arguments, 2) };
-  },
-  useState(init) {
-    const i = hooks.idx++;
-    if (!(i in hooks.slots)) hooks.slots[i] = typeof init === 'function' ? init() : init;
-    return [hooks.slots[i], function (v) { hooks.slots[i] = typeof v === 'function' ? v(hooks.slots[i]) : v; }];
-  },
-  useRef(init) {
-    const i = hooks.idx++;
-    if (!(i in hooks.slots)) hooks.slots[i] = { current: init };
-    return hooks.slots[i];
-  },
-  useCallback(fn) { return fn; },
-  useEffect(fn) { effectQueue.push(fn); },
-  useMemo(fn) { return fn(); },
-};
+const { React, effectQueue, hooks } = createFakeReact();;
 
 // —— 定时器全部收集起来不触发（否则 1s 的 DOM 轮询会掺进断言里）——
 const realSetTimeout = globalThis.setTimeout;
@@ -341,7 +319,4 @@ delete globalThis.window;
 delete globalThis.document;
 delete globalThis.Blob;
 
-const failed = results.filter((r) => !r.pass);
-for (const r of results) console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.name}  ${r.detail === undefined || r.detail === '' ? '' : '— ' + String(r.detail).slice(0, 160)}`);
-console.log(`\n${results.length - failed.length}/${results.length} passed`);
-process.exit(failed.length === 0 ? 0 : 1);
+finish();

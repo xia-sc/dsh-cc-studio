@@ -4,6 +4,30 @@
 
 格式：最新版本按「新增 / 修复」写；更早的小节按现象 → 根因 → 修法 → 生效方式。
 
+## 0.24.2
+
+**测试护栏 + persona 精简：补上「全绿但线上坏」的缺口，并给每轮提示词减负。**
+
+### 变更
+
+- **persona 精简 19.7%**（`presets/cc.patch.yml`）：2634 → 2115 字符。删掉重复表述（「时间锚定」语义 3 处 → 1 处、`cc_validate` 5 处 → 3 处、整段工具名清单），语义一条没删 —— JSON 卫生、六步顺序、canon + canonDigest、release 收口、时间锚定三件套都在。它是**每轮**都进 system prompt 的 `prefix`，不是首轮一次。新增 `tests/persona-budget.test.mjs` 钉住字符上限与必留锚点。
+
+### 修复
+
+- **受限环境里 `npm test` 跑不完**：`release-notes.test.mjs` 用 `execFileSync` 跑真实脚本，禁子进程的沙箱 / 受限 CI 里直接 `EPERM`，整条 `&&` 链从这里断掉。修法 —— `release-notes.mjs` 抽出 `buildRelease(version, changelogText)` 纯函数、CLI 只做 IO，测试改为 import。
+
+### 测试基建
+
+- `tests/harness.mjs`：`check` / `finish` / `readRepo` / `createFakeReact` / `loadClient` 收敛 37 个测试文件的汇总块与十几份假 React（净 -425 行）。
+- `tests/entry-guards.test.mjs`：三入口可加载、客户端 bundle id = 包名、`exports` 三入口、`dsh.bundle.patch` 两层文件存在（用 import / 装载代替 `node --check`，不依赖子进程）。
+- L2 组合快照：`scripts/dump-config.mjs`（`npm run fixture:dump`）在隔离 DSH_HOME 上真跑 `dsh --profile <p> --dump-config`，把 preset-cc 的行集 / 包名 / 版本落到 `tests/fixtures/preset-composition.json`；`tests/preset-composition.test.mjs` 离线比对。
+- L3 真机 smoke：`scripts/e2e-smoke.mjs`（`npm run e2e`）起真实 `dsh web`，换 token / cookie 后走 RPC、写草稿、导出，并验客户端资源（`__ModuleLoader__` 外壳、批次 rev 改坏 404、主资源 200）。
+- CI：`.github/workflows/e2e.yml`（手动触发）在 ubuntu-latest 上装 npm 版 `@deepseek-ai/dsh` 跑 L2 / L3；`publish.yml` 仍只跑 `npm test`。
+
+### 生效方式
+
+**用户侧无行为变化。** 重启 dsh 让精简后的 persona 生效；其余只涉及测试与开发脚本。
+
 ## 0.24.1
 
 **动作栏删掉「让模型改」+ 体检随切卡刷新：继续给工坊收口。**

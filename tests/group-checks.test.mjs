@@ -28,8 +28,7 @@ const host = await import('../lib/index.js');
 const agent = await import('../lib/agent.js');
 const layer = await import('../lib/group-layer.js');
 
-const results = [];
-function check(name, pass, detail) { results.push({ name, pass: !!pass, detail }); }
+import { check, finish } from './harness.mjs';
 function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 
 function entry(content, keys, extra) {
@@ -181,7 +180,4 @@ check('⑧d message 仍是旧文案（发现 N 个问题 / 体检通过）',
 // —— 收尾：清掉临时落盘根 ——
 rmSync(tmpHome, { recursive: true, force: true });
 
-const failed = results.filter(r => !r.pass);
-for (const r of results) console.log((r.pass ? 'PASS' : 'FAIL') + '  ' + r.name + '  ' + (r.detail === undefined || r.detail === '' ? '' : '— ' + String(r.detail).slice(0, 170)));
-console.log('\n' + (results.length - failed.length) + '/' + results.length + ' passed');
-process.exit(failed.length === 0 ? 0 : 1);
+finish();

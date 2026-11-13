@@ -31,10 +31,7 @@ const src = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 // 工具半也要看：共享书相关提示里必须点名「SillyTavern 要用哪一份」（下面是 URL 被替换前先读好）
 const agentSrc = readFileSync(new URL('../lib/agent.js', import.meta.url), 'utf8');
 
-const results = [];
-function check(name, pass, detail) {
-  results.push({ name, pass: !!pass, detail });
-}
+import { check, finish, createFakeReact } from './harness.mjs';
 
 const zhSrc = src.slice(src.indexOf('var zh='), src.indexOf('var en='));
 const enSrc = src.slice(src.indexOf('var en='), src.indexOf('function h(type,props)'));
@@ -64,26 +61,7 @@ globalThis.Blob = function Blob(parts, opts) { this.parts = parts; this.type = o
 globalThis.URL = { createObjectURL(b) { lastBlob = b; return 'blob:test'; }, revokeObjectURL() {} };
 
 // —— 假 React：hook 槽位按渲染顺序保留 ——
-const effectQueue = [];
-const hooks = { slots: [], idx: 0 };
-const React = {
-  createElement(type, props) {
-    return { type, props: props || {}, children: Array.prototype.slice.call(arguments, 2) };
-  },
-  useState(init) {
-    const i = hooks.idx++;
-    if (!(i in hooks.slots)) hooks.slots[i] = typeof init === 'function' ? init() : init;
-    return [hooks.slots[i], function (v) { hooks.slots[i] = typeof v === 'function' ? v(hooks.slots[i]) : v; }];
-  },
-  useRef(init) {
-    const i = hooks.idx++;
-    if (!(i in hooks.slots)) hooks.slots[i] = { current: init };
-    return hooks.slots[i];
-  },
-  useCallback(fn) { return fn; },
-  useEffect(fn) { effectQueue.push(fn); },
-  useMemo(fn) { return fn(); },
-};
+const { React, effectQueue, hooks } = createFakeReact();;
 
 const realSetTimeout = globalThis.setTimeout;
 const realSetInterval = globalThis.setInterval;
@@ -432,7 +410,4 @@ delete globalThis.window;
 delete globalThis.document;
 delete globalThis.Blob;
 
-const failed = results.filter((r) => !r.pass);
-for (const r of results) console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.name}  ${r.detail === undefined || r.detail === '' ? '' : '— ' + String(r.detail).slice(0, 160)}`);
-console.log(`\n${results.length - failed.length}/${results.length} passed`);
-process.exit(failed.length === 0 ? 0 : 1);
+finish();

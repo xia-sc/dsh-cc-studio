@@ -13,10 +13,7 @@ import { readFileSync, existsSync } from 'node:fs';
 
 const read = (rel) => readFileSync(new URL('../' + rel, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
-const results = [];
-function check(name, pass, detail) {
-  results.push({ name, pass: !!pass, detail });
-}
+import { check, finish } from './harness.mjs';
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 const patchText = read('presets/cc.patch.yml');
@@ -293,7 +290,4 @@ const blockOf = (id) => {
     readmeText.includes('## 兼容与权限'), '');
 }
 
-const failed = results.filter((r) => !r.pass);
-for (const r of results) console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.name}  ${r.detail === undefined || r.detail === '' ? '' : '— ' + String(r.detail).slice(0, 110)}`);
-console.log(`\n${results.length - failed.length}/${results.length} passed`);
-process.exit(failed.length === 0 ? 0 : 1);
+finish();

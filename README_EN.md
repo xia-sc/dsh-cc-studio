@@ -8,7 +8,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 
 | Item | Value |
 | --- | --- |
-| Package / version | `@xia-sc/dsh-cc-studio` `0.24.1` |
+| Package / version | `@xia-sc/dsh-cc-studio` `0.24.2` |
 | Compatibility | DSH `>=0.2.0-rc.2` (incl. Desktop), Node `>=22`, **zero runtime dependencies**; see [Compatibility & permissions](#compatibility--permissions) |
 | Storage | `<DSH_HOME>/cc-library/` (cards), `cc-drafts/` (session drafts + creation lock + backups), `cc-groups/` (relationship groups), `cc-books/` (group shared lorebook); `DSH_HOME` defaults to `~/.dsh` |
 | Docs | This file; read [AGENTS.md](./AGENTS.md) before changing code; history in [CHANGELOG.md](./CHANGELOG.md) |
@@ -163,6 +163,7 @@ npm test    # all test files, serial; must be green
 
 Full history: [CHANGELOG.md](./CHANGELOG.md) (0.12.0 onwards).
 
+- `0.24.2` **Persona trimmed by 19.7%** (2634 → 2115 chars, deduplicated without losing any rule) + **test infrastructure**: shared `tests/harness.mjs`, `release-notes` turned into a pure function (so `npm test` finishes in restricted environments), L2 composition snapshot, L3 live smoke, and a manual-trigger e2e workflow.
 - `0.24.1` **Removed the action-bar "Ask the model" button** (duplicated the selection bubble) and **fixed the audit not refreshing when switching cards**: the result is keyed by card id + rev and is invalidated plus re-run after a load or a model write.
 - `0.24.0` **Fix with the model**: "Fix" no longer just scrolls to a section — the audit item or the action bar sends the problem to the model; the Host gained `cc_promptSession` (via `sessionController.prompt`, equal to a user message), with empty / no-session / non-CC / too-long rejected before sending.
 - `0.23.0` **Consolidated library entries, visible groups, audit report**: Rename and + Group moved from the left ⋯ menu to the top action bar and now open an input dialog (no inline input, no `window.prompt`); Save-as-new removed; the ⋯ menu only imports. Library cards are grouped into sections (one small heading per group with a count), and the collapsed avatar strip separates groups with tick marks. The Overview audit is now a six-group report (Structure / Time anchoring / Setting canon / Unsettled hooks / Lorebook / Other) where every item carries a one-line "How to fix" and a jump-to-section button; the export dialog only keeps a summary. Also fixes the dead end where the relations view had no way to pick a group after 0.22.0 flattened the list.

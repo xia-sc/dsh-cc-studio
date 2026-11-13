@@ -16,42 +16,10 @@ import { readFileSync } from 'node:fs';
 
 const src = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 
-const results = [];
-function check(name, pass, detail) {
-  results.push({ name, pass: !!pass, detail });
-}
+import { check, finish, loadClient } from './harness.mjs';
 
 // —— 假 React ——
-const effectQueue = [];
-const hooks = { slots: [], idx: 0 };
-const React = {
-  createElement(type, props) { return { type, props: props || {}, children: Array.prototype.slice.call(arguments, 2) }; },
-  useState(init) {
-    const i = hooks.idx++;
-    if (!(i in hooks.slots)) hooks.slots[i] = typeof init === 'function' ? init() : init;
-    return [hooks.slots[i], function (v) { hooks.slots[i] = typeof v === 'function' ? v(hooks.slots[i]) : v; }];
-  },
-  useRef(init) {
-    const i = hooks.idx++;
-    if (!(i in hooks.slots)) hooks.slots[i] = { current: init };
-    return hooks.slots[i];
-  },
-  useCallback(fn) { return fn; },
-  useEffect(fn) { effectQueue.push(fn); },
-  useMemo(fn) { return fn(); },
-};
-
-const storage = new Map();
-globalThis.localStorage = {
-  getItem(k) { return storage.has(k) ? storage.get(k) : null; },
-  setItem(k, v) { storage.set(k, String(v)); },
-  removeItem(k) { storage.delete(k); },
-};
-
-let registration = null;
-globalThis.window = { __ModuleLoader__: { load(def) { registration = def; } } };
-new Function('window', src)(globalThis.window);
-if (!registration) { console.log('FAIL  bundle 没有调用 window.__ModuleLoader__.load'); process.exit(1); }
+const { registration, React, effectQueue, hooks, storage } = loadClient({ timers: 'drop' });
 
 // 4 张卡：g1 两张、g2 一张、未分组一张
 const FAKE_LIB = [
@@ -200,7 +168,4 @@ check('⑩ 库里没有分组时不给「未分组」画标题（纯平铺）',
   tree = redraw();
 }
 
-const failed = results.filter((r) => !r.pass);
-for (const r of results) console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.name}  ${r.detail === undefined || r.detail === '' ? '' : '— ' + String(r.detail).slice(0, 160)}`);
-console.log(`\n${results.length - failed.length}/${results.length} passed`);
-process.exit(failed.length === 0 ? 0 : 1);
+finish();

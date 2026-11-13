@@ -29,8 +29,7 @@ process.env.HOME = sandboxHome; process.env.USERPROFILE = sandboxHome; process.e
 
 const host = await import('../lib/index.js');
 const clientSrc = (await import('node:fs')).readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
-const results = [];
-function check(name, pass, detail) { results.push({ name, pass: !!pass, detail }); }
+import { check, finish } from './harness.mjs';
 
 // —— 极简 PNG tEXt 扫描器（测试自己解，不用被测代码解，免得自证）——
 function pngTextChunks(bytes) {
@@ -527,7 +526,4 @@ const CARD = {
   await new Promise((r) => server2.close(r));
 }
 
-const failed = results.filter((r) => !r.pass);
-for (const r of results) console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.name}  ${r.detail === undefined || r.detail === '' ? '' : '— ' + String(r.detail).slice(0, 150)}`);
-console.log(`\n${results.length - failed.length}/${results.length} passed`);
-process.exit(failed.length === 0 ? 0 : 1);
+finish();

@@ -17,8 +17,7 @@ const AGENT = readFileSync(new URL('../lib/agent.js', import.meta.url), 'utf8');
 const LAYER = readFileSync(new URL('../lib/group-layer.js', import.meta.url), 'utf8');
 const CLIENT = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 
-const results = [];
-function check(name, pass, detail) { results.push({ name, pass: !!pass, detail }); }
+import { check, finish } from './harness.mjs';
 function countIn(src, needle) { return src.split(needle).length - 1; }
 /** 去掉整行注释后的代码（注释里可以提到 code —— 那是说明，不是实现）。 */
 function codeOnly(src) {
@@ -152,7 +151,4 @@ check('⑤b 客户端渲染体检清单只读 check / level / message 三个字�
     })(), '');
 }
 
-const failed = results.filter(r => !r.pass);
-for (const r of results) console.log((r.pass ? 'PASS' : 'FAIL') + '  ' + r.name + '  ' + (r.detail === undefined || r.detail === '' ? '' : '— ' + String(r.detail).slice(0, 180)));
-console.log('\n' + (results.length - failed.length) + '/' + results.length + ' passed');
-process.exit(failed.length === 0 ? 0 : 1);
+finish();

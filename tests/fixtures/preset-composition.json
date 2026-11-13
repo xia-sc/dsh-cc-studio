@@ -1,0 +1,152 @@
+{
+  "generatedAt": "2026-11-13",
+  "dshVersion": "0.2.2-rc.2",
+  "source": "dsh <profile> --dump-config（隔离 DSH_HOME，bundles = dsh-base + dsh-web-app + @xia-sc/dsh-cc-studio）",
+  "topRows": [
+    {
+      "id": "dsh-cc-studio",
+      "name": "@xia-sc/dsh-cc-studio"
+    },
+    {
+      "id": "preset-cc",
+      "name": "@deepseek-ai/dsh-agent-preset"
+    }
+  ],
+  "presetRows": [
+    {
+      "id": "persona",
+      "name": "@deepseek-ai/dsh-persona"
+    },
+    {
+      "id": "agent-instructions",
+      "name": "@deepseek-ai/dsh-agent-instructions"
+    },
+    {
+      "id": "time-context",
+      "name": "@deepseek-ai/dsh-time-context"
+    },
+    {
+      "id": "tool-bash",
+      "name": "@deepseek-ai/dsh-tool-bash"
+    },
+    {
+      "id": "tool-pwsh",
+      "name": "@deepseek-ai/dsh-tool-pwsh"
+    },
+    {
+      "id": "tool-fs",
+      "name": "@deepseek-ai/dsh-tool-fs"
+    },
+    {
+      "id": "tool-fs-search",
+      "name": "@deepseek-ai/dsh-tool-fs-search"
+    },
+    {
+      "id": "tool-jobs",
+      "name": "@deepseek-ai/dsh-tool-jobs"
+    },
+    {
+      "id": "skill-filesystem",
+      "name": "@deepseek-ai/dsh-skill-filesystem"
+    },
+    {
+      "id": "tool-skill",
+      "name": "@deepseek-ai/dsh-tool-skill"
+    },
+    {
+      "id": "command-goal",
+      "name": "@deepseek-ai/dsh-command-goal"
+    },
+    {
+      "id": "tool-goal",
+      "name": "@deepseek-ai/dsh-tool-goal"
+    },
+    {
+      "id": "planning",
+      "name": "cordis:group"
+    },
+    {
+      "id": "compaction",
+      "name": "cordis:group"
+    },
+    {
+      "id": "delegation",
+      "name": "cordis:group"
+    },
+    {
+      "id": "tool-ask-user",
+      "name": "@deepseek-ai/dsh-tool-ask-user"
+    },
+    {
+      "id": "tool-todo",
+      "name": "@deepseek-ai/dsh-tool-todo"
+    },
+    {
+      "id": "tool-web",
+      "name": "@deepseek-ai/dsh-tool-web"
+    },
+    {
+      "id": "present",
+      "name": "@deepseek-ai/dsh-tool-present"
+    },
+    {
+      "id": "tool-plugin-manager",
+      "name": "@deepseek-ai/dsh-plugin-manager/tools"
+    },
+    {
+      "id": "cc-agent",
+      "name": "@xia-sc/dsh-cc-studio/agent"
+    }
+  ],
+  "nestedRows": [
+    {
+      "id": "plan-mode",
+      "name": "@deepseek-ai/dsh-plan-mode",
+      "indent": 10
+    },
+    {
+      "id": "compaction-basic",
+      "name": "@deepseek-ai/dsh-compaction-basic",
+      "indent": 10
+    },
+    {
+      "id": "command-compact",
+      "name": "@deepseek-ai/dsh-command-compact",
+      "indent": 10
+    },
+    {
+      "id": "tool-result-pruner",
+      "name": "@deepseek-ai/dsh-compaction-tool-result-pruner",
+      "indent": 10
+    },
+    {
+      "id": "tool-subagent-control",
+      "name": "@deepseek-ai/dsh-tool-subagent-control",
+      "indent": 10
+    },
+    {
+      "id": "tool-subagent",
+      "name": "@deepseek-ai/dsh-tool-subagent",
+      "indent": 10
+    },
+    {
+      "id": "tool-subagent-fork",
+      "name": "@deepseek-ai/dsh-tool-subagent",
+      "indent": 10
+    },
+    {
+      "id": "workflow-ptc",
+      "name": "@deepseek-ai/dsh-workflow-ptc",
+      "indent": 10
+    },
+    {
+      "id": "tool-workflow",
+      "name": "@deepseek-ai/dsh-tool-workflow",
+      "indent": 10
+    }
+  ],
+  "presetConfig": {
+    "id": "cc",
+    "name": "CC 模式"
+  }
+}

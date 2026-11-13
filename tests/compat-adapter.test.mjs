@@ -22,8 +22,7 @@ process.env.HOME = sandboxHome; process.env.USERPROFILE = sandboxHome; process.e
 const host = await import('../lib/index.js');
 const compat = await import('../lib/compat/index.js');
 
-const results = [];
-function check(name, pass, detail) { results.push({ name, pass: !!pass, detail }); }
+import { check, finish } from './harness.mjs';
 
 // —— 样本：与 shared-book-st-export 同一本「锁天司·共享设定」 ——
 const BOOK_ENTRIES = [
@@ -335,7 +334,4 @@ await new Promise(r => server.close(r));
 rmSync(sandboxHome, { recursive: true, force: true });
 process.env.HOME = originalHome; process.env.USERPROFILE = originalUserProfile; process.env.DSH_HOME = originalDshHome;
 
-const failed = results.filter(r => !r.pass);
-for (const r of results) console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.name}  ${r.detail === undefined || r.detail === '' ? '' : '— ' + String(r.detail).slice(0, 180)}`);
-console.log(`\n${results.length - failed.length}/${results.length} passed`);
-process.exit(failed.length === 0 ? 0 : 1);
+finish();

@@ -9,7 +9,7 @@
 | --- | --- | --- | --- | --- | --- |
 | 1 | 运行期闭环：导入 ST 后回读核对 | 功能 | 高 | 中 | 待拍板 |
 | 2 | 更新已存在的卡（而不是每次新增一张） | 功能 | 中高 | 中 | 待拍板 |
-| 4 | 工程债：e2e / persona 膨胀 / 客户端体积 | 工程 | 中 | 高 | 持续 |
+| 4 | 工程债：测试护栏 / persona 预算 / 客户端体积（观察） | 工程 | 中 | 高 | 4.2 第一步已做，4.1 待做 |
 
 ---
 
@@ -85,22 +85,46 @@ adapter +10 行、宿主 +50 行、客户端 +40 行（二次确认）、测试 
 
 ## 4. 工程债
 
-### 4.1 没有端到端测试
+> 只做「能被测试钉住」或「有明确触发条件」的事。三件事分开排期：护栏（4.1）→ 预算（4.2）→ 观察（4.3）。
 
-`npm test` 全是纯函数与源码守卫；`COMPAT-AUDIT.md` 里的隔离实测是**手工步骤**。至少该脚本化一条：起 dsh → 走 RPC → 导出一张卡 → 校验字段。这是防「全绿但线上坏」的唯一办法。
+### 4.1 测试护栏：L1/L2 已进 `npm test`，L3 单独跑
 
-- 成本：高（要处理 dsh 启动、token 换 cookie、端口分配、清理）；可以只做一个 `scripts/e2e-smoke.mjs`，不进 `npm test`（避免拖慢）。
+现状（2026-11 实测）：
 
-### 4.2 persona 膨胀
+- **已有**：`rpc-channel.test.mjs` 用真实 `node:http` + 假 cordis ctx 锁住围栏 / 信封 / 48MB 上限；十几个客户端测试把 `lib/client.js` 整段当函数体执行，语法与 `__ModuleLoader__.load` 已被覆盖。所以「线协议」和「能不能加载」都不是缺口。
+- **L1（已进 `npm test`）**：`tests/harness.mjs` 提供 `check()` / `finish()` / `readRepo()` / `createFakeReact()` / `loadClient()`，37 个测试文件的汇总块与十几份假 React 收敛成一份（净 -425 行）。`release-notes.mjs` 抽出 `buildRelease()` 纯函数，测试改为 import、不再 `execFileSync`。新增 `tests/entry-guards.test.mjs`：三入口可加载、bundle id = 包名、`exports` 三入口、`dsh.bundle.patch` 两层文件存在（用 import / 装载代替 `node --check`，同样不依赖子进程）。验收达成：**受限沙箱里 `npm test` 全绿**。
+- **L2（已进 `npm test`）**：`scripts/dump-config.mjs`（`npm run fixture:dump`）在隔离 DSH_HOME 上真跑一次 `dsh --profile <p> --dump-config`，把 preset-cc 的行集 / 包名 / 版本落到 `tests/fixtures/preset-composition.json`；`tests/preset-composition.test.mjs` 离线比对（行集、包名逐字、版本在 `dshReleases` 里、preset id/显示名）。fixture 当前对应 dsh 0.2.2-rc.2（顶层 21 行 + 组内 9 行）。没装 dsh 时 `--if-installed` 跳过。
+- **L3（单独跑，不进 `npm test`）**：`scripts/e2e-smoke.mjs`（`npm run e2e`）起真实 `dsh web` → 日志里拿 token URL → 换会话 cookie → 首页 200 + `__DSH_BOOT__` 可解析 + boot 清单含本插件 → **客户端资源（boot 的 entry URL）200 / 是 `__ModuleLoader__` 外壳 / 批次 rev 改坏必须 404 / 主资源 200** → RPC `ping` / `cc_isCcMode` / `cc_listTargets` → `cc_setDraft` 写最小卡 → `cc_exportJson` 核对 spec / 名字 / 时间锚定。本机实测全过（断言数由脚本输出，别写死）；实例建在 `.compat-tmp/`，结束 kill + 清理。
+- **CI（2026-11）**：`.github/workflows/e2e.yml`（手动触发）在 ubuntu-latest 上用 `npm i -g @deepseek-ai/dsh` 装 CLI，再用 `DSH_EXE` / `DSH_BIN` 指给 L2 / L3 脚本；`publish.yml` 仍只跑 `npm test`（L1 + L2 的离线比对，不启服务）。本地用 npm CLI 0.2.2-rc.1 实测：L2 的行集 / 包名与仓库 fixture 逐字一致（只有 `dshVersion` 不同），L3 全部通过。
+- **DOM 验证（2026-11 实测，未脚本化）**：用 Playwright MCP（会话内工具，不是仓库依赖）打开实例 token URL → 选工作区 → 选「CC 模式」→ 胶囊 `🎭 角色卡工坊 · 0 lore · 草稿` 出现 → 点开工坊 overlay（7 个锚点 + 动作栏）→ 设置 → 「角色卡工坊」分区完整渲染。三个挂载点（`conversation.input.dock` / `shell.overlay` / `settings.section`）都在；预设菜单里「CC 模式」带正确描述（roster 没 broken）。
+- **待拍板：DOM 断言要不要进脚本**：`npm run e2e` 目前只到 boot 清单 + RPC。加 playwright 会成为仓库第一个开发依赖（CI 还要下浏览器），不加就保持「MCP / 人工验证 + 上面这条步骤记录」。倾向不加 —— 真要自动化就单独一个 workflow，别塞进 `npm test`。
 
-`presets/cc.patch.yml` 的 persona 段落已约 2.8k 字符（≈2k token/首轮）。每次加规则都在稀释旧规则，弱模型尤其明显。
+### 4.2 persona 预算（每轮成本，不是首轮）
 
-- 方向：把「流程步骤」继续往 `workflow.next` 与工具描述里搬；persona 只留「角色定位 + 不可违背的硬规则」。
-- 风险：persona 是模型最关注的文本，搬走要逐条验证「搬走后模型还照做」，不能一次全搬。
+`presets/cc.patch.yml` 的 `prefix`：改前 2634 字符（CJK 954 / ASCII 1476），**每轮**都在 system prompt 里。重复点：时间锚定语义 3 处、`cc_release_draft` 2 处、`cc_validate` 5 处、整段工具名清单。
 
-### 4.3 客户端体积
+- **第一步（已做，0.24.x，待发版并入 CHANGELOG）**：2634 → 2115 字符（-19.7%），时间锚定 1 处、`cc_validate` 3 处、删掉工具名清单；语义一条没删。`tests/persona-budget.test.mjs` 钉住：字符上限 2200、规则出现次数上限、必留锚点（JSON 卫生 / release 收口 / canon + canonDigest / 时间锚定三件套 / 六步顺序）。
+- **第二步（待做）**：把 6 步的细节继续往工具 description 搬，persona 只留顺序 + 门槛；每搬一条跑一次人工对照。
+- **行为验证**：不假装有自动评测。固定 3 场景人工看工具调用序列 —— 新卡（六步走全）、改卡（不重写整张）、交付（`cc_release_draft` 被调）。
+- 量级参考：工具 schema 侧约 11k 字符（≈ persona 5 倍），真要省 token 该在那边做；persona 优化的收益是**规则不被稀释**。
 
-`lib/client.js` 约 290KB 手写 bundle、无构建步骤。这是架构选择（见 AGENTS §2），**不建议改**。只在出现明显首屏卡顿时再评估。
+### 4.3 客户端体积（观察项，不是债）
+
+`lib/client.js` 实测 330KB / gzip 94KB（`lib/agent.js` 246KB / 78KB，2026-11 实测）。手写单文件是架构选择（AGENTS §2），**不改**。
+
+触发条件（满足其一才评估）：gzip 后 > 150KB；或生产实例「boot 完成 → 胶囊可见」> 300ms；或首次打开工坊 > 150ms。
+
+### 4.4 文档里的硬编码数字
+
+本节旧版写的「约 290KB」「约 2.8k 字符 ≈ 2k token/首轮」全部过期（实为 330KB / 2.6k 字符 / ≈1k token），与 AGENTS §5「不写会漂的精确计数」冲突。
+
+做法：数字只留量级，或由 `tests/persona-budget.test.mjs` 这类测试直接输出实测值；写死之前先跑一次。
+
+### 4.5 `npm test` 的组织方式
+
+仍是几十条 `&&` 串行（无 runner），但已经**零子进程依赖**，受限沙箱里能跑完；实测约 8s，所以**不急着迁 `node --test`**。等测试数继续涨或出现 flaky，再加 `tests/run.mjs`（并行 + 失败摘要）。
+
+观察：`rpc-channel.test.mjs` 的 `cc_listGroups` memberCount 断言在机器重负载下偶发失败过一次（单独跑 10/10、连续 `npm test` 5/5 均通过）；那是「写组后立刻读库」的时序敏感点，若再次出现先查读写快照是否同一份，别误判成重构回归。
 
 ---
 

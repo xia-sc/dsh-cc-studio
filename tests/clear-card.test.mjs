@@ -16,32 +16,10 @@ import { readFileSync } from 'node:fs';
 
 const src = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 
-const results = [];
-function check(name, pass, detail) {
-  results.push({ name, pass: !!pass, detail });
-}
+import { check, finish, createFakeReact } from './harness.mjs';
 
 // —— 假 React：hook 槽位按渲染顺序保留 ——
-const effectQueue = [];
-const hooks = { slots: [], idx: 0 };
-const React = {
-  createElement(type, props) {
-    return { type, props: props || {}, children: Array.prototype.slice.call(arguments, 2) };
-  },
-  useState(init) {
-    const i = hooks.idx++;
-    if (!(i in hooks.slots)) hooks.slots[i] = typeof init === 'function' ? init() : init;
-    return [hooks.slots[i], function (v) { hooks.slots[i] = typeof v === 'function' ? v(hooks.slots[i]) : v; }];
-  },
-  useRef(init) {
-    const i = hooks.idx++;
-    if (!(i in hooks.slots)) hooks.slots[i] = { current: init };
-    return hooks.slots[i];
-  },
-  useCallback(fn) { return fn; },
-  useEffect(fn) { effectQueue.push(fn); },
-  useMemo(fn) { return fn(); },
-};
+const { React, effectQueue, hooks } = createFakeReact();;
 
 // —— 定时器收集起来由测试手动触发（pushDraftToHost 是延迟调用）——
 const timers = [];
@@ -215,7 +193,4 @@ globalThis.clearTimeout = realClearTimeout;
 globalThis.clearInterval = realClearInterval;
 delete globalThis.window;
 
-const failed = results.filter((r) => !r.pass);
-for (const r of results) console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.name}  ${r.detail === undefined || r.detail === '' ? '' : '— ' + String(r.detail).slice(0, 160)}`);
-console.log(`\n${results.length - failed.length}/${results.length} passed`);
-process.exit(failed.length === 0 ? 0 : 1);
+finish();

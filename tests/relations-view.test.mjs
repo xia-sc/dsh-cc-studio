@@ -18,50 +18,10 @@ import { readFileSync } from 'node:fs';
 
 const src = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 
-const results = [];
-function check(name, pass, detail) {
-  results.push({ name, pass: !!pass, detail });
-}
+import { check, finish, loadClient } from './harness.mjs';
 
 // —— 假 React：hook 槽位按渲染顺序保留 ——
-const effectQueue = [];
-const hooks = { slots: [], idx: 0 };
-const React = {
-  createElement(type, props) {
-    return { type, props: props || {}, children: Array.prototype.slice.call(arguments, 2) };
-  },
-  useState(init) {
-    const i = hooks.idx++;
-    if (!(i in hooks.slots)) hooks.slots[i] = typeof init === 'function' ? init() : init;
-    return [hooks.slots[i], function (v) { hooks.slots[i] = typeof v === 'function' ? v(hooks.slots[i]) : v; }];
-  },
-  useRef(init) {
-    const i = hooks.idx++;
-    if (!(i in hooks.slots)) hooks.slots[i] = { current: init };
-    return hooks.slots[i];
-  },
-  useCallback(fn) { return fn; },
-  useEffect(fn) { effectQueue.push(fn); },
-  useMemo(fn) { return fn(); },
-};
-
-// —— 定时器全部收集起来不触发（否则 1s 的 DOM 轮询会掺进断言里）——
-globalThis.setTimeout = function () { return 1; };
-globalThis.clearTimeout = function () {};
-globalThis.setInterval = function () { return 1; };
-globalThis.clearInterval = function () {};
-const storage = new Map();
-globalThis.localStorage = {
-  getItem(k) { return storage.has(k) ? storage.get(k) : null; },
-  setItem(k, v) { storage.set(k, String(v)); },
-  removeItem(k) { storage.delete(k); },
-};
-
-// —— 装载 bundle（client.js 是 window.__ModuleLoader__ 外壳）——
-let registration = null;
-globalThis.window = { __ModuleLoader__: { load(def) { registration = def; } } };
-new Function('window', src)(globalThis.window);
-if (!registration) { console.log('FAIL  bundle 没有调用 window.__ModuleLoader__.load'); process.exit(1); }
+const { registration, React, effectQueue, hooks, storage } = loadClient({ timers: 'drop' });
 
 // —— 宿主半 cc_getGroup 的真实返回形状：节点与边在 group **里面** ——
 const GID = 'g-lock';
@@ -336,7 +296,4 @@ const BOOK_FIXTURE = {
     texts(redraw()).indexOf('workshop.rel.checkStats') < 0 && store.getSnapshot().relIssues === null, '');
 }
 
-const failed = results.filter((r) => !r.pass);
-for (const r of results) console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.name}  ${r.detail === undefined || r.detail === '' ? '' : '— ' + String(r.detail).slice(0, 160)}`);
-console.log(`\n${results.length - failed.length}/${results.length} passed`);
-process.exit(failed.length === 0 ? 0 : 1);
+finish();

@@ -15,24 +15,10 @@ import { readFileSync } from 'node:fs';
 
 const src = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 
-const results = [];
-function check(name, pass, detail) { results.push({ name, pass: !!pass, detail }); }
+import { check, finish, createFakeReact } from './harness.mjs';
 
 // —— 假 React / 定时器：与 tests/relations-view.test.mjs 同一套 harness ——
-const effectQueue = [];
-const hooks = { slots: [], idx: 0 };
-const React = {
-  createElement(type, props) { return { type, props: props || {}, children: Array.prototype.slice.call(arguments, 2) }; },
-  useState(init) {
-    const i = hooks.idx++;
-    if (!(i in hooks.slots)) hooks.slots[i] = typeof init === 'function' ? init() : init;
-    return [hooks.slots[i], function (v) { hooks.slots[i] = typeof v === 'function' ? v(hooks.slots[i]) : v; }];
-  },
-  useRef(init) { const i = hooks.idx++; if (!(i in hooks.slots)) hooks.slots[i] = { current: init }; return hooks.slots[i]; },
-  useCallback(fn) { return fn; },
-  useEffect(fn) { effectQueue.push(fn); },
-  useMemo(fn) { return fn(); },
-};
+const { React, effectQueue, hooks } = createFakeReact();;
 
 // setTimeout 收集起来（不自动触发）：既能拦住 1s 轮询，又能在需要时手动 flush 出
 // `updateDraft` 里那条 120ms 的落盘（cc_setDraft）—— 那正是「界面与磁盘同步」的证据。
@@ -143,7 +129,4 @@ check('⑥ 预览（dryRun）不写任何东西：草稿 2 条不变',
   entriesOf().length === 2,
   JSON.stringify(entriesOf()));
 
-const failed = results.filter(r => !r.pass);
-for (const r of results) console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.name}  ${r.detail === undefined || r.detail === '' ? '' : '— ' + String(r.detail).slice(0, 170)}`);
-console.log(`\n${results.length - failed.length}/${results.length} passed`);
-process.exit(failed.length === 0 ? 0 : 1);
+finish();

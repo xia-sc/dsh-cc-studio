@@ -102,6 +102,39 @@
 2. `dsh <profile> --dump-config` 确认组合（不 mount）。
 3. 对目标版本的 `@deepseek-ai/dsh-web-app/presets/standard.patch.yml` 与 `presets/cc.patch.yml` 逐行对。
 4. 核对契约面：`connection.requestRejection`、`webServer.register({kind:"prefix"})`、`agents.currentInitiator/get`、`agentPresets.composedPreset`、三个 Client slot、`locale.register/bind`、RPC 信封。
-5. 隔离实测：dump-config → 起 web（cmd 重定向日志）→ token 换 cookie → 三挂载点 + RPC + roster。
+5. 隔离实测：`npm run fixture:dump`（组合快照）→ `npm run e2e`（起 web、token 换 cookie、RPC / 写草稿 / 导出）→ DOM 三挂载点按 `AGENTS.md` §6 的 Playwright MCP 步骤看一遍。
 6. `npm test` 全绿。
 7. 更新 `package.json` 的 `dshReleases`、`README.md` / `README_EN.md` 矩阵、`AGENTS.md` §4、`CHANGELOG.md` 顶部小节。
+
+---
+
+## 2026-11：把「隔离实测」脚本化（L2 / L3）
+
+`scripts/dump-config.mjs`（组合快照）与 `scripts/e2e-smoke.mjs`（真机 smoke）落地时踩到的坑。
+结论文档在 `ROADMAP.md` §4.1，这里只记会重复踩的。
+
+#### 1. app 参数必须写 `--profile <name>`
+
+- **现象**：`dsh l2 web --no-open --port 6000` 直接报 `error: too many arguments. Expected 0 arguments but got 1: web.`
+- **根因**：第一个位置参数是 profile 名，profile 决定挂哪个 app；`web` 被当成 app 参数传给了一个不接参数的 app。
+- **做法**：统一 `dsh --profile <name> [app 参数]` —— `--profile l2 --dump-config`、`--profile e2e --no-open --port N`。
+
+#### 2. 桌面版的 CLI 入口在 asar 里，`existsSync` 看不到
+
+- **现象**：`Test-Path '...\resources\app.asar\dsh\lib\bin.js'` 为 false，探测脚本永远找不到 dsh。
+- **根因**：`app.asar` 是归档文件，只有 Electron 打过补丁的 fs 能穿透。
+- **做法**：探测只校验 `exe` + `resources/app.asar` 存在；`bin` 路径照写 —— `ELECTRON_RUN_AS_NODE=1 "<exe>" "<bin>" ...` 能正常跑。
+
+#### 3. 子进程输出必须接文件描述符
+
+- 与上文「cmd 负责重定向」同源：`stdout/stderr` 走管道（`stdio: 'pipe'`）在禁子进程沙箱里 EPERM。
+- **做法**：`spawnSync` / `spawn` 用 `stdio: ['ignore', fd, fd]`（`fs.openSync` 一个日志文件），再去读文件。
+
+#### 4. `process.exit` 会跳过 `finally`
+
+- **现象**：启动失败（没等到 token URL）时，临时实例与 web 进程都留在盘上 / 内存里。
+- **做法**：实例建起来之后的失败一律 `throw`，kill + 清理放 `finally`；Windows 上 `taskkill /PID <pid> /T /F` 之后等 1s 再删目录（句柄没松时 `rm` 会 EBUSY）。
+
+#### 5. 端口与实例目录每次重建
+
+- 用 `net.createServer().listen(0)` 拿空闲端口，别写固定端口；实例目录（`.compat-tmp/<name>-gen/`）每次 `rm -rf` 重建，避免上一次的 profile 状态污染下一次。

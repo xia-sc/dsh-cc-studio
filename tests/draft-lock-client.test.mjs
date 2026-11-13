@@ -17,25 +17,12 @@ import { readFileSync } from 'node:fs';
 
 const src = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 
-const results = [];
-function check(name, pass, detail) {
-  results.push({ name, pass: !!pass, detail });
-}
+import { check, finish, createFakeReact } from './harness.mjs';
 
 // —— 假 React：hook 顺序可预期，effect 收集起来由测试手动跑 ——
-const effectQueue = [];
+const { React, effectQueue, hooks } = createFakeReact();
 const intervals = [];
 const timeouts = [];
-const React = {
-  createElement(type, props) {
-    return { type, props: props || {}, children: Array.prototype.slice.call(arguments, 2) };
-  },
-  useState(init) { return [typeof init === 'function' ? init() : init, function () {}]; },
-  useCallback(fn) { return fn; },
-  useEffect(fn) { effectQueue.push(fn); },
-  useMemo(fn) { return fn(); },
-  useRef(init) { return { current: init }; },
-};
 
 // —— 全局替身：定时器全部收集起来由测试按需触发（1.2s/3s 的 CC 探测重试不能掺进断言）——
 const realSetTimeout = globalThis.setTimeout;
@@ -383,7 +370,4 @@ globalThis.clearTimeout = realClearTimeout;
 globalThis.clearInterval = realClearInterval;
 delete globalThis.window;
 
-const failed = results.filter((r) => !r.pass);
-for (const r of results) console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.name}  ${r.detail === undefined || r.detail === '' ? '' : '— ' + String(r.detail).slice(0, 160)}`);
-console.log(`\n${results.length - failed.length}/${results.length} passed`);
-process.exit(failed.length === 0 ? 0 : 1);
+finish();

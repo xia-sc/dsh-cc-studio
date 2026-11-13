@@ -23,8 +23,7 @@ process.env.USERPROFILE = tmpHome;
 const mod = await import('../lib/agent.js');
 const cons = await import('../lib/consistency.js');
 
-const results = [];
-function check(name, pass, detail){ results.push({ name, pass: !!pass, detail }); }
+import { check, finish } from './harness.mjs';
 
 const tools = new Map();
 mod.apply({ get(){ return null; }, tools: { register(def){ tools.set(def.name, def); } } });
@@ -425,9 +424,6 @@ const call = (n, a) => tools.get(n).execute(a || {}, exec);
 }
 
 // ── 汇总 ──────────────────────────────────────────────────────
-const failed = results.filter(r => !r.pass);
-for (const r of results) if (!r.pass) console.log('FAIL  ' + r.name + '  — ' + (r.detail || ''));
-console.log('\n' + results.length + '/' + results.length + ' passed' + (failed.length ? ' (' + failed.length + ' failed)' : ''));
-console.log(results.length + ' checks, ' + failed.length + ' failed');
 try{ rmSync(tmpHome, { recursive: true, force: true }); }catch{}
-process.exit(failed.length ? 1 : 0);
+
+finish();
