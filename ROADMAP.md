@@ -103,7 +103,7 @@ adapter +10 行、宿主 +50 行、客户端 +40 行（二次确认）、测试 
 
 `presets/cc.patch.yml` 的 `prefix`：改前 2634 字符（CJK 954 / ASCII 1476），**每轮**都在 system prompt 里。重复点：时间锚定语义 3 处、`cc_release_draft` 2 处、`cc_validate` 5 处、整段工具名清单。
 
-- **第一步（已做，0.24.x，待发版并入 CHANGELOG）**：2634 → 2115 字符（-19.7%），时间锚定 1 处、`cc_validate` 3 处、删掉工具名清单；语义一条没删。`tests/persona-budget.test.mjs` 钉住：字符上限 2200、规则出现次数上限、必留锚点（JSON 卫生 / release 收口 / canon + canonDigest / 时间锚定三件套 / 六步顺序）。
+- **第一步（已随 0.24.2 发版）**：2634 → 2115 字符（-19.7%），时间锚定 1 处、`cc_validate` 3 处、删掉工具名清单；语义一条没删。`tests/persona-budget.test.mjs` 钉住：字符上限 2200、规则出现次数上限、必留锚点（JSON 卫生 / release 收口 / canon + canonDigest / 时间锚定三件套 / 六步顺序）。
 - **第二步（待做）**：把 6 步的细节继续往工具 description 搬，persona 只留顺序 + 门槛；每搬一条跑一次人工对照。
 - **行为验证**：不假装有自动评测。固定 3 场景人工看工具调用序列 —— 新卡（六步走全）、改卡（不重写整张）、交付（`cc_release_draft` 被调）。
 - 量级参考：工具 schema 侧约 11k 字符（≈ persona 5 倍），真要省 token 该在那边做；persona 优化的收益是**规则不被稀释**。
