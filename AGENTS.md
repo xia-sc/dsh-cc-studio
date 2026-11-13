@@ -91,6 +91,7 @@ tests/fixtures/       L2 组合快照（由 npm run fixture:dump 生成）
 - CC 模式探测只有 `useCcPreset()` 一份；状态带会话归属（`ccSessionId` / `ccSource`），未知时绝不沿用上一个会话的结论；组件读 store 必须走 `useStoreSnapshot()`，且放在 `useCcPreset` 之前（effect 顺序会丢「切会话清状态」那次 emit）。
 - 状态在 `store`（`createStore` + `subscribe/getSnapshot`）；设置存 `localStorage:dsh-cc-studio-settings`。
 - 修改写入口先过 `isReadOnly()`（锁 active 或只读预览）；预览期间 `pullDraft` 只更新 `llm*`，不动显示中的草稿。
+- **手动刷新**（0.25.0）：动作栏「⟳ 刷新」→ `store.refreshDraft()` → apply 注入的 `setDraftPuller(pullDraft)`（**跳过 500ms 节流**，连点都要真拉一次）；预览态只更新快照、不替换预览卡；没有会话 id 时不发请求（只提示）。
 - i18n：`zh` / `en` 两张表键集必须一致，UI 层不许出现中文字面量；新增文案两边都加。
 - 导出是独立弹层（`exportOpen` / `openExport(target)` / `closeExport()`，不改 `cur`）；三个入口（左下角、总览页、已存卡卡片）都打开同一弹层；卡片导出走 `cardId`，不要求先载入。共享书作用域走 `exportScope()`（库卡按 `meta.groupId`，草稿按当前分组）。弹层底部是 ST 导入区块（见 §2 远程导入）。**导出别再变回中栏整页，也别再要求「先载入再导出」。**
 - 破坏性动作（清空卡）二次确认在按钮侧；拿不到确认框一律不动数据。
