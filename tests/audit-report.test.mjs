@@ -169,6 +169,23 @@ check('⑦ 没找到修法映射的条目（如结构类）不硬塞一句空话
     seen.join(',') === '1,1,2,2,6,2', seen.join(','));
 }
 
+// —— ⑪ 切卡 / 草稿被改之后，旧体检必须作废（用户截图：切角色后仍显示上一张卡的 3 个必须修）——
+{
+  await store.validate();
+  const rep1 = store.getSnapshot().validationReport;
+  check('⑪ 体检结果带「卡 + rev」key', !!rep1 && typeof rep1.key === 'string' && rep1.key.length > 0, rep1 && rep1.key);
+  // 换一张卡：status.cardId 变
+  store.setDraftFromHost(store.getSnapshot().draft, { cardId: 'lib-other', rev: 7, isNew: false });
+  const after = store.getSnapshot();
+  check('⑪b 切卡后旧体检立刻作废（不会拿上一张卡的结论显示）',
+    after.validationReport === null, String(after.validationReport));
+  check('⑪c 卡版本变了，reportKey 也跟着变（新 key 与旧 key 不同）',
+    store.reportKey() !== rep1.key, store.reportKey() + ' vs ' + rep1.key);
+  tree = redraw();
+  check('⑪d 作废后总览回到「立即体检」入口（不会停在旧分组上）',
+    textNodes(tree).indexOf('workshop.audit.notRun') >= 0, '');
+}
+
 // —— 导出弹层不再铺第二份清单 ——
 check('⑨ 导出弹层不再平铺 errors/warnings 字符串（同一份清单不做两份）',
   src.indexOf('v.errors.map') < 0 && src.indexOf('v.warnings.map') < 0, '');
