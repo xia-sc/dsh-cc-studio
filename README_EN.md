@@ -8,7 +8,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 
 | Item | Value |
 | --- | --- |
-| Package / version | `@xia-sc/dsh-cc-studio` `0.25.1` |
+| Package / version | `@xia-sc/dsh-cc-studio` `0.25.2` |
 | Compatibility | DSH `>=0.2.0-rc.2` (incl. Desktop), Node `>=22`, **zero runtime dependencies**; see [Compatibility & permissions](#compatibility--permissions) |
 | Storage | `<DSH_HOME>/cc-library/` (cards), `cc-drafts/` (session drafts + creation lock + backups), `cc-groups/` (relationship groups), `cc-books/` (group shared lorebook); `DSH_HOME` defaults to `~/.dsh` |
 | Docs | This file; read [AGENTS.md](./AGENTS.md) before changing code; history in [CHANGELOG.md](./CHANGELOG.md) |
@@ -163,6 +163,7 @@ npm test    # all test files, serial; must be green
 
 Full history: [CHANGELOG.md](./CHANGELOG.md) (0.12.0 onwards).
 
+- `0.25.2` **Empty state**: with no card at all, the overview no longer dumps a screen of audit errors — it offers "let the model start / import / browse the library" instead.
 - `0.25.1` **Delete fix**: deleting the currently loaded card now clears the draft too, so switching cards is never blocked by a bogus "unsaved" prompt and the last card can always be deleted.
 - `0.25.0` **Action-bar "⟳ Refresh"**: re-pull the draft for the current session in one click when the workshop still shows an old version (skips the 500ms throttle; preview cards are not replaced).
 - `0.24.3` **Auto-save on validate + switch guard**: a passing `cc_validate` now saves the card to the library automatically (`autoSave:false` opts out), and loading or importing over an unsaved draft asks first (save-then-switch is one click), so a forgotten save no longer loses the card.

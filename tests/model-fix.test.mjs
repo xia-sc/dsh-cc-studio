@@ -134,6 +134,15 @@ const textNodes = (tree) => flatten(tree).map((n) => (n.children && n.children[0
 const sentTexts = () => calls.filter((x) => x.endpoint === 'cc_promptSession').map((x) => String((x.payload && x.payload.args && x.payload.args.text) || ''));
 
 // —— 打开工坊 + 跑一次校验 ——
+// 0.25.2：空草稿会走「空状态」（不渲染体检条目），这里先放一张有内容的卡。
+store.setDraftFromHost({
+  spec: 'chara_card_v3', spec_version: '3.0', data: {
+    name: '让模型修测试卡', description: '设定', personality: '安静', first_mes: '[时间：2026-01-01 08:00]\n开场。',
+    system_prompt: '', post_history_instructions: '', tags: [], alternate_greetings: [], group_only_greetings: [],
+    extensions: {},
+    character_book: { name: '', description: '', scan_depth: 4, token_budget: 1200, recursive_scanning: false, extensions: {}, entries: [] },
+  },
+});
 store.setPanel(true);
 render().effects.forEach((fn) => { try { fn(); } catch (e) {} });
 await store.validate();

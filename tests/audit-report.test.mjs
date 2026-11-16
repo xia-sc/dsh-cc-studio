@@ -96,6 +96,16 @@ const groupHeads = (tree) => flatten(tree)
 const textNodes = (tree) => flatten(tree).map((n) => (n.children && n.children[0]) || '').filter((x) => typeof x === 'string');
 
 // —— 打开工坊 ——
+// 0.25.2：空草稿现在走「空状态」分支（不渲染体检），所以这里先放一张有内容的卡，
+// 保证本文件测的仍是总览里的体检报告本身。
+store.setDraftFromHost({
+  spec: 'chara_card_v3', spec_version: '3.0', data: {
+    name: '体检测试卡', description: '设定', personality: '安静', first_mes: '[时间：2026-01-01 08:00]\n开场。',
+    system_prompt: '', post_history_instructions: '', tags: [], alternate_greetings: [], group_only_greetings: [],
+    extensions: {},
+    character_book: { name: '', description: '', scan_depth: 4, token_budget: 1200, recursive_scanning: false, extensions: {}, entries: [] },
+  },
+});
 store.setPanel(true);
 render().effects.forEach((fn) => { try { fn(); } catch (e) {} });
 let tree = redraw();
