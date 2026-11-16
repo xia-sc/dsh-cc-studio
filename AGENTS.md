@@ -76,7 +76,7 @@ tests/fixtures/       L2 组合快照（由 npm run fixture:dump 生成）
 
 
 
-**预设只有一层声明。** 唯一载体是 `presets/cc.patch.yml`（`dsh.bundle.patch` 第 2 层），插件**不往用户目录写任何预设文件**；`apply()` 零写盘。`tests/preset-install.test.mjs` 钉住行集快照、与目标 dsh 内置 `standard` 的对齐（有意差异只允许 `tool-schedule` / `tool-plugin-market` 两行缺席，且要写进文件注释）、prompt 变量白名单（只有 `provider` / `model`）、写类工具的严格 JSON 规则；persona 的长度与必留锚点由 `tests/persona-budget.test.mjs` 钉住（上限 2200 字符 —— 它是**每轮**成本，别再抄一遍工具清单）。写错一个包名 = 整份预设 `broken`（roster 里看得到「CC 模式」但带诊断、组不出会话）。`0.1.x` 时代的目录安装已整体删除，不要带回来（有源码级守卫）。
+**预设只有一层声明。** 唯一载体是 `presets/cc.patch.yml`（`dsh.bundle.patch` 第 2 层），插件**不往用户目录写任何预设文件**；`apply()` 零写盘。`tests/preset-install.test.mjs` 钉住行集快照、与目标 dsh 内置 `standard` 的对齐（有意差异只剩 persona 文本 / `tool-plugin-manager` 固定 disabled / 末尾 `cc-agent` 三处，且要写进文件注释）、prompt 变量白名单（只有 `provider` / `model`）、写类工具的严格 JSON 规则；persona 的长度与必留锚点由 `tests/persona-budget.test.mjs` 钉住（上限 2200 字符 —— 它是**每轮**成本，别再抄一遍工具清单）。写错一个包名 = 整份预设 `broken`（roster 里看得到「CC 模式」但带诊断、组不出会话）。`0.1.x` 时代的目录安装已整体删除，不要带回来（有源码级守卫）。
 
 
 
@@ -203,15 +203,11 @@ tests/fixtures/       L2 组合快照（由 npm run fixture:dump 生成）
 
 | --- | --- | --- |
 
-| `0.2.0-rc.2` | 当前下限 | 声明行世代；依赖树里没有 `dsh-tool-schedule` / `dsh-plugin-market`（预设有意少这两行） |
-
-| `0.2.1-rc.2` | compatible | prompt 变量收窄到 `provider` / `model`（`{{cwd}}` 会让每轮失败） |
-
-| `0.2.1-rc.3` / `0.2.1-rc.5` | compatible | 契约包逐字节不变，实测全绿 |
-
-| `0.2.2-rc.1` | compatible | 必须适配：`tool-subagent-control` 删了 `./list-agents` 子入口（预设已删该行）；`modelSelectionSettings` 拆成 `modelSelection` + `modelDiscovery`（两代双写） |
+| `0.2.2-rc.1` | 当前下限 | 声明行世代；`tool-subagent` 只有 `modelSelection` + `modelDiscovery`（旧键 `modelSelectionSettings` 已删）；预设与 rc.1 的 `standard` 逐行对齐（补回 `tool-schedule` / `tool-plugin-market`） |
 
 | `0.2.2-rc.2` | compatible | 审计通过（隔离实测：宿主 active / RPC 线协议 / 三个挂载点 / 预设 roster 无 broken / `npm test` 全绿）。rc.2 的 `standard` 新增 `tool-office`、`tool-subagent-control` 显式 `interrupt:false`，属能力差异，不 broken；契约包与 rc.1 逐字节可用 |
+
+| `0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3` / `0.2.1-rc.5` | 已弃用 | 0.26.0 起不再声明，也不再为它们双写旧键或省行；README 的「未实测 / 已弃用」白名单保留这些 token，便于回溯 |
 
 
 

@@ -6,6 +6,50 @@
 
 ---
 
+## 0.2.2-rc.1 抬下限（2026-11-16，插件 0.26.0）
+
+### 结论
+
+dsh 兼容下限从 `0.2.0-rc.2` 抬到 `0.2.2-rc.1`。**运行时代码零改动**：为 0.2.0 / 0.2.1 写的分支在 0.12.0 抬到 0.2.0-rc.2 时已经清完，这次只清声明层 —— 删 `tool-subagent.modelSelectionSettings` 旧键、补回 `tool-schedule` / `tool-plugin-market` 两行、改矩阵与测试。
+
+对照依据：本机源码 checkout `E:\dsh\deepseek-harness\deepseek-harness` 的 HEAD 恰好是 `0.2.2-rc.1`（顶层 `package.json` 的 `version`），直接读 `packages/bundle/web-app/presets/standard.patch.yml` 与 `packages/subagent/tool-subagent/src/index.ts` 核对，不必猜包名。
+
+### 记录：为什么没有改用 `connection.fetch.register`
+
+`HostConnectionFetch` 自 `0.2.0-rc.1` 起就存在（`git log -S 'HostConnectionFetch'` 只命中 `e5e4b02742`，首个包含它的 tag 是 `dsh-v0.2.0-rc.1`），看起来能用官方 exact Fetch 路由替掉插件自建的 `/dsh-cc-studio-rpc` 前缀路由。核对后**不改**：
+
+- `get fetch()` 和 `get rpc()` 一样，owner 是 `HostConnectionService.this.ctx`（connection 插件自己的 Context），注册走 `owner.effect(...)`。插件卸载 / 重载不会清掉已注册路由；connection 插件重载后路由表重建，插件也不会自动重挂。
+- exact 路由按 pathname 精确匹配，插件的每个 endpoint 要单独注册，还拿不到「未知端点回 200 + 失败帧」这条刻意保持的线协议语义。
+
+结论写在这里，避免下次升级又把这个想法当成「顺手能清的技术债」重提一遍。
+
+### 用目标版本重建 L2 快照
+
+本机桌面版是 `0.2.2-rc.3`，**不能**用它生成 rc.1 的 fixture（`dshVersion` 会写错，行集也可能漂）。临时装一份 rc.1，并用脚本支持的 `DSH_EXE` / `DSH_BIN` 指过去：
+
+```powershell
+[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false)
+npm install --prefix .compat-tmp/dsh-rc1 --no-save --no-audit --no-fund `
+  @deepseek-ai/dsh@0.2.2-rc.1 --cache .compat-tmp/npm-cache
+$env:DSH_EXE = (Get-Command node).Source
+$env:DSH_BIN = (Resolve-Path '.compat-tmp/dsh-rc1/node_modules/@deepseek-ai/dsh/lib/bin.js').Path
+node scripts/dump-config.mjs
+```
+
+`.compat-tmp/` 已 gitignore；`--cache` 指到工作区内，避免 npm 去写系统 cache 被沙箱拒。
+
+配套的 L3 用同一组环境变量：`node scripts/e2e-smoke.mjs`。它验的是宿主 / RPC / 客户端资源，不依赖 fixture 版本，但**必须**也用 rc.1 跑一遍，否则「预设补回两行后没有 broken」这件事只有 dump 的间接证据。
+
+### 踩坑
+
+#### 1. fixture 的版本号是「生成时用的那个 dsh」，不是「声明的最低版本」
+
+`tests/preset-composition.test.mjs` 断言 fixture 的 `dshVersion` 在 `dshReleases` 里且 compatible。抬下限后如果把 fixture 留成旧版本，这条会红；如果拿本机 rc.3 生成，虽然也能过（rc.3 不在矩阵里就会红），但记录的就不是目标版本。**先定目标版本，再用同版本 dsh 生成 fixture**，顺序不能反。
+
+#### 2. README 的版本守卫会拦住「不再支持 0.2.0 / 0.2.1」这句话
+
+`tests/preset-install.test.mjs` 第 7 节把 README 里所有 `0.x.y` token 钉在 `dshReleases` / 范围 / 未实测白名单 / 插件版本并集内。删掉 `0.2.0-rc.2` 等条目后，README 里如实写「不再支持」的版本号就会变成 stray。做法：白名单数组改名成「未实测 / 已弃用」，把裸 `0.2.0` / `0.2.1` 与所有旧 rc 一起收进去（裸版本号也要收，因为守卫按三段 token 匹配）。
+
 ## 0.2.2-rc.2（2026-11-12）
 
 ### 结论

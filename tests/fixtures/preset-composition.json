@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-13",
-  "dshVersion": "0.2.2-rc.2",
+  "generatedAt": "2026-11-16",
+  "dshVersion": "0.2.2-rc.1",
   "source": "dsh <profile> --dump-config（隔离 DSH_HOME，bundles = dsh-base + dsh-web-app + @xia-sc/dsh-cc-studio）",
   "topRows": [
     {
@@ -44,6 +44,10 @@
     {
       "id": "tool-jobs",
       "name": "@deepseek-ai/dsh-tool-jobs"
+    },
+    {
+      "id": "tool-schedule",
+      "name": "@deepseek-ai/dsh-tool-schedule"
     },
     {
       "id": "skill-filesystem",
@@ -92,6 +96,10 @@
     {
       "id": "tool-plugin-manager",
       "name": "@deepseek-ai/dsh-plugin-manager/tools"
+    },
+    {
+      "id": "tool-plugin-market",
+      "name": "@deepseek-ai/dsh-plugin-market/tools"
     },
     {
       "id": "cc-agent",

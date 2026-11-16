@@ -2,7 +2,7 @@
  * CC 预设 + 上架契约测试（不随插件发布，files 未包含 tests）。
  *
  * 0.12.0 起只有**一种**预设投递形态：随包补丁层 `presets/cc.patch.yml` 的声明行
- * （dsh >= 0.2.0-rc.2 全部走它）。旧的「挂载时把 presets/cc 装进 <DSH_HOME>/.agent-presets/cc」
+ * （dsh >= 0.2.2-rc.1 全部走它）。旧的「挂载时把 presets/cc 装进 <DSH_HOME>/.agent-presets/cc」
  * 随 0.2.0 以下兼容一起删除，所以本文件只读静态文件：不启动宿主、不写任何用户目录。
  * 同时把「旧世界不许回流」钉成源码级守卫 —— 有人再把 installCcPreset / .agent-presets
  * 写回来会直接红（见第 8 节）。
@@ -76,12 +76,12 @@ const blockOf = (id) => {
 
   const spawn = blockOf('tool-subagent');
   // 0.2.2-rc.1 把 dsh-tool-subagent 的 `modelSelectionSettings` 拆成
-  // `modelSelection` + `modelDiscovery`（rc.5 及更早只有旧键）。预设必须两个世代**双写**：
-  // 只写旧键在新版上静默少能力，只写新键在老版上同样静默少能力，两种都既不报错也不 broken。
+  // `modelSelection` + `modelDiscovery`。0.26.0 把下限抬到 rc.1 后只写新键；旧键在 0.2.2+ 上
+  // 只是被 schemastery 忽略的未知键 —— 留着会让「这里还有兼容分支」的误读一直存在，所以钉死不许回流。
   check('tool-subagent（spawn）新键 modelSelection + modelDiscovery 都在',
     /modelSelection:\s*true/.test(spawn) && /modelDiscovery:\s*true/.test(spawn), (spawn.split('\n')[0] || 'missing').trim());
-  check('tool-subagent（spawn）同时保留旧键 modelSelectionSettings（兼容 0.2.0-rc.2 / 0.2.1.x）',
-    /modelSelectionSettings:\s*true/.test(spawn), (spawn.split('\n')[0] || 'missing').trim());
+  check('tool-subagent（spawn）不再写旧键 modelSelectionSettings（0.26.0 抬下限后禁止回流）',
+    !/modelSelectionSettings/.test(spawn), (spawn.split('\n')[0] || 'missing').trim());
   const fork = blockOf('tool-subagent-fork');
   check('tool-subagent-fork 不加任何 modelSelection 键（须与父代理同 provider/model）',
     fork !== '' && !/modelSelection|modelDiscovery/.test(fork), (fork.split('\n')[0] || 'missing').trim());
@@ -93,25 +93,25 @@ const blockOf = (id) => {
   const cg = blockOf('command-goal');
   check('command-goal 行存在且包名正确（0.3.7 修的自始漏抄）', /name:\s*'@deepseek-ai\/dsh-command-goal'/.test(cg), (cg.split('\n')[1] || 'missing').trim());
   const tc = blockOf('time-context');
-  check('time-context 行存在且无 config（0.2.1 起在预设层，0.2.0 的 host 组合没挂它）', /name:\s*'@deepseek-ai\/dsh-time-context'/.test(tc), (tc.split('\n')[1] || 'missing').trim());
+  check('time-context 行存在且无 config（0.2.1 起在预设层，本预设与 standard 逐行对齐）', /name:\s*'@deepseek-ai\/dsh-time-context'/.test(tc), (tc.split('\n')[1] || 'missing').trim());
 }
 
 // —— 3) 行集快照：漏一行 / 多一行都直接红 ——
 //
-// 行集对齐 dsh 0.2.1 的内置 standard，有意差异只有 tool-schedule / tool-plugin-market
-// 两行（下限 0.2.0-rc.2 的依赖里没有这两个包，理由写在预设文件末尾的注释块里）。
-// 快照是刻意的：它把 AGENTS.md §4 的「与目标版本内置 standard 逐行对一遍」变成机械可检的，
-// 而不是等用户发现少了功能。升级 dsh 后若 standard 增删了行，先确认它是不是 CC 模式该有的
-// 能力，再来改这份快照。
+// 行集对齐 dsh 0.2.2-rc.1 的内置 standard；0.26.0 抬下限后，原本为 0.2.0-rc.2 省掉的
+// tool-schedule / tool-plugin-market 两行已补回。快照是刻意的：它把 AGENTS.md §4 的
+// 「与目标版本内置 standard 逐行对一遍」变成机械可检的，而不是等用户发现少了功能。
+// 升级 dsh 后若 standard 增删了行，先确认它是不是 CC 模式该有的能力，再来改这份快照。
 {
   const EXPECTED_ROWS = [
     'persona', 'agent-instructions', 'time-context', 'tool-bash', 'tool-pwsh', 'tool-fs', 'tool-fs-search', 'tool-jobs',
+    'tool-schedule',
     'skill-filesystem', 'tool-skill', 'command-goal', 'tool-goal',
     'planning', 'plan-mode',
     'compaction', 'compaction-basic', 'command-compact', 'tool-result-pruner',
     'delegation', 'tool-subagent-control', 'tool-subagent', 'tool-subagent-fork',
     'workflow-ptc', 'tool-workflow',
-    'tool-ask-user', 'tool-todo', 'tool-web', 'present', 'tool-plugin-manager',
+    'tool-ask-user', 'tool-todo', 'tool-web', 'present', 'tool-plugin-manager', 'tool-plugin-market',
     'cc-agent',
   ];
   const missingRows = EXPECTED_ROWS.filter((id) => !rowIds.includes(id));
@@ -122,16 +122,21 @@ const blockOf = (id) => {
       ? `缺 [${missingRows.join(', ') || '-'}] 多 [${extraRows.join(', ') || '-'}]`
       : `${rowIds.length} 行`);
 
-  // 有意差异守卫：这两个包在 0.2.0-rc.2 的依赖里不存在，加回来会让整个预设 broken。
-  check('刻意不带 tool-schedule（@deepseek-ai/dsh-tool-schedule 0.2.1 才有）',
-    !rowIds.includes('tool-schedule'), rowIds.filter((r) => r.includes('schedule')).join(',') || 'ok');
-  check('刻意不带 tool-plugin-market（0.2.0-rc.2 没有 dsh-plugin-market 包）',
-    !rowIds.includes('tool-plugin-market'), rowIds.filter((r) => r.includes('market')).join(',') || 'ok');
-  check('差异原因写在预设文件注释里（含「抬到 0.2.1-rc.2」的提示，防止下次误加）',
-    patchText.includes('0.2.0-rc.2') && patchText.includes('dsh-tool-schedule'), '');
+  // 0.26.0 抬下限到 0.2.2-rc.1 后与 rc.1 的 standard 逐行对齐：两行都必须带。
+  // tool-schedule 是能力行（解析不到包会让整份预设 broken），tool-plugin-market 是 disabled 行。
+  check('已补回 tool-schedule（与 0.2.2-rc.1 的 standard 对齐）',
+    rowIds.includes('tool-schedule'), rowIds.filter((r) => r.includes('schedule')).join(',') || 'missing');
+  const market = blockOf('tool-plugin-market');
+  check('已补回 tool-plugin-market，指向 dsh-plugin-market/tools 且 disabled',
+    rowIds.includes('tool-plugin-market')
+      && /name:\s*'@deepseek-ai\/dsh-plugin-market\/tools'/.test(market)
+      && /disabled:\s*true/.test(market),
+    (market.split('\n')[1] || 'missing').trim());
+  check('差异原因写在预设文件注释里（行差只剩 persona / plugin-manager / cc-agent）',
+    patchText.includes('0.2.2-rc.1') && patchText.includes('tool-schedule') && patchText.includes('有意差异'), '');
 }
 
-// —— 4) prompt 变量白名单：dsh 0.2.1-rc.2 起只注册 provider / model ——
+// —— 4) prompt 变量白名单：dsh 0.2.2-rc.1 只注册 provider / model ——
 //
 // 0.10.1 用户实机报错：`unknown prompt variable "cwd" in section "deployment:persona-prefix";
 // registered variables: provider, model`。dsh-system-prompt 对段文本**严格插值**：未知引用会在
@@ -146,7 +151,7 @@ const blockOf = (id) => {
   const allVars = [...new Set(variablesIn(codeLines(patchText).join('\n')))];
 
   check('预设里不出现 cwd prompt 变量（0.10.1 线上每轮报错的直接原因）', !allVars.includes('cwd'), allVars.join(', ') || '(无变量)');
-  check('预设的 prompt 变量都在 dsh 0.2.1-rc.2 的注册表白名单内（provider / model）',
+  check('预设的 prompt 变量都在 dsh 0.2.2-rc.1 的注册表白名单内（provider / model）',
     allVars.every((v) => PROMPT_VARIABLES.includes(v)), allVars.join(', ') || '(无变量)');
   check('persona 仍介绍模型（{{model}} 不该被一并删掉）', allVars.includes('model'), allVars.join(', '));
 
@@ -218,8 +223,10 @@ const blockOf = (id) => {
   const declaredDsh = Object.keys(compat.dshReleases);
   const rangeDsh = String(compat.dsh).match(/\d+\.\d+\.\d+(?:-[A-Za-z]+\.\d+)?/g) || [];
   const majorPrefixes = [...declaredDsh, ...rangeDsh].map((v) => v.split('-')[0]);
-  // 「没实测过、但 README / 矩阵需要如实点名」的版本：只进白名单，不进 dshReleases。
-  const unverified = ['0.2.0-rc.1', '0.2.1-alpha.1', '0.2.1-rc.4'];
+  // 「没实测过 / 已弃用、但 README 需要如实点名」的版本：只进白名单，不进 dshReleases。
+  // 0.26.0 把下限抬到 0.2.2-rc.1 后，0.2.0 / 0.2.1 整条线从矩阵移除；README 仍要写明
+  // 「不再支持」，所以这些 token 必须留在白名单里，否则会被下面版本守卫判成写坏的 0.4.x 那类。
+  const unverified = ['0.2.0', '0.2.1', '0.2.0-rc.1', '0.2.0-rc.2', '0.2.1-alpha.1', '0.2.1-rc.2', '0.2.1-rc.3', '0.2.1-rc.4', '0.2.1-rc.5'];
   const allowedVersions = new Set([...declaredDsh, ...rangeDsh, ...majorPrefixes, ...unverified, ...pluginVersions]);
 
   const VERSION = /\b\d+\.\d+\.\d+(?:-[A-Za-z]+\.\d+)?\b/g;
@@ -269,8 +276,8 @@ const blockOf = (id) => {
     Object.values(releases).includes('compatible'), JSON.stringify(releases));
   check('声明 DSH 兼容范围（范围只显示「待验证」，不替代逐版本证据）',
     typeof compat.dsh === 'string' && compat.dsh.trim() !== '', String(compat.dsh));
-  check('兼容下限已是 0.2.0-rc.2（0.12.0 起不再兼容 0.2.0 以下的 dsh）',
-    String(compat.dsh) === '>=0.2.0-rc.2' && !releaseKeys.some((k) => /^0\.[01]\./.test(k)), String(compat.dsh));
+  check('兼容下限已是 0.2.2-rc.1（0.26.0 起不再支持 0.2.0 / 0.2.1 整条线）',
+    String(compat.dsh) === '>=0.2.2-rc.1' && !releaseKeys.some((k) => /^0\.2\.[01](?:-|\.|$)/.test(k)), String(compat.dsh));
   const runtimeDeps = Object.keys({ ...(pkg.dependencies || {}), ...(pkg.optionalDependencies || {}) });
   check('没有运行/可选依赖（STORE allowRuntimeDependencies=false）', runtimeDeps.length === 0, runtimeDeps.join(', '));
   check('没有 preinstall/install/postinstall/prepare 生命周期脚本（STORE allowLifecycleScripts=false）',

@@ -8,8 +8,8 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 
 | Item | Value |
 | --- | --- |
-| Package / version | `@xia-sc/dsh-cc-studio` `0.25.4` |
-| Compatibility | DSH `>=0.2.0-rc.2` (incl. Desktop), Node `>=22`, **zero runtime dependencies**; see [Compatibility & permissions](#compatibility--permissions) |
+| Package / version | `@xia-sc/dsh-cc-studio` `0.26.0` |
+| Compatibility | DSH `>=0.2.2-rc.1` (incl. Desktop), Node `>=22`, **zero runtime dependencies**; see [Compatibility & permissions](#compatibility--permissions) |
 | Storage | `<DSH_HOME>/cc-library/` (cards), `cc-drafts/` (session drafts + creation lock + backups), `cc-groups/` (relationship groups), `cc-books/` (group shared lorebook); `DSH_HOME` defaults to `~/.dsh` |
 | Docs | This file; read [AGENTS.md](./AGENTS.md) before changing code; history in [CHANGELOG.md](./CHANGELOG.md) |
 
@@ -144,8 +144,8 @@ Two ways to fix: close it in the opening ("the porridge has been poured out"), o
 
 ## Compatibility & permissions
 
-- **Supported**: dsh `>=0.2.0-rc.2` (the whole 0.1.x line is unsupported since 0.12.0), Node `>=22`, zero runtime dependencies, no install lifecycle scripts.
-- **Verified builds** (`dsh.compatibility.dshReleases`): `0.2.0-rc.2` (floor, declaration-row generation), `0.2.1-rc.2`, `0.2.1-rc.3`, `0.2.1-rc.5`, `0.2.2-rc.1`, `0.2.2-rc.2` — all compatible. **Unverified** (not in the matrix): `0.2.0-rc.1`, `0.2.1-alpha.1`, `0.2.1-rc.4`.
+- **Supported**: dsh `>=0.2.2-rc.1` (the 0.1.x line is unsupported since 0.12.0; the 0.2.0 / 0.2.1 lines since 0.26.0), Node `>=22`, zero runtime dependencies, no install lifecycle scripts.
+- **Verified builds** (`dsh.compatibility.dshReleases`): `0.2.2-rc.1` (floor) and `0.2.2-rc.2` — both compatible. **Unverified / dropped** (not in the matrix): `0.2.0-rc.1`, `0.2.0-rc.2`, `0.2.1-alpha.1`, `0.2.1-rc.2`, `0.2.1-rc.3`, `0.2.1-rc.4`, `0.2.1-rc.5`.
 - **Storage permission**: four directories under `<DSH_HOME>` (`cc-drafts/` / `cc-library/` / `cc-groups/` / `cc-books/`); only one environment variable (`DSH_HOME`).
 - **Network**: one outbound path only — the export dialog's import into the local ST address you enter (default `127.0.0.1:8000`). It runs in the host; the browser never connects directly. Update checks are delegated to dsh's built-in feature since 0.20.0.
 - **DSH STORE**: writing drafts/cards and reading `DSH_HOME` are core features and trip the file/credential signals, so the plugin is listed as `user-reviewed` (per-run confirmation). The runtime code is not changed to appease scanners.
@@ -163,6 +163,7 @@ npm test    # all test files, serial; must be green
 
 Full history: [CHANGELOG.md](./CHANGELOG.md) (0.12.0 onwards).
 
+- ⚠️ **Important update** `0.26.0` **compatibility floor raised to dsh `0.2.2-rc.1`** (breaking): the 0.2.0 / 0.2.1 lines are no longer supported, so upgrade dsh before updating this plugin; the legacy `modelSelectionSettings` double-write is gone, the CC preset regains `tool-schedule` and `tool-plugin-market` (the latter disabled) to match rc.1's built-in `standard`, and the composition snapshot is generated from rc.1.
 - `0.25.4` **Second false-positive fix**: the first card switch after creating a session or reloading no longer asks "not saved to the library yet" — the saved baseline now comes from the host (the library card's content fingerprint), and both halves use the same key-order-independent fingerprint.
 - `0.25.3` **False-positive fix**: switching between cards no longer asks "not saved to the library yet" when nothing actually changed — the draft fingerprint ignores the `modification_date` the host refreshes on every write, while real content edits (including model writes) still get caught.
 - `0.25.2` **Empty state**: with no card at all, the overview no longer dumps a screen of audit errors — it offers "let the model start / import / browse the library" instead.

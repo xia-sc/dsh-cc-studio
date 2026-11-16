@@ -85,9 +85,9 @@ check('dump 里有 preset-cc 行，name 指向 dsh-agent-preset',
 check('cc-agent 行指向本插件的 /agent 入口',
   merged.some((r) => r.id === 'cc-agent' && r.name === '@xia-sc/dsh-cc-studio/agent'),
   merged.filter((r) => r.id === 'cc-agent').map((r) => r.name).join(',') || 'missing');
-check('有意的两行差异不在组合结果里（tool-schedule / tool-plugin-market）',
-  !merged.some((r) => r.id === 'tool-schedule' || r.id === 'tool-plugin-market'),
-  merged.filter((r) => r.id === 'tool-schedule' || r.id === 'tool-plugin-market').map((r) => r.id).join(','));
+check('0.26.0 补回的两行都在组合结果里（tool-schedule / tool-plugin-market）',
+  merged.some((r) => r.id === 'tool-schedule') && merged.some((r) => r.id === 'tool-plugin-market'),
+  merged.filter((r) => r.id === 'tool-schedule' || r.id === 'tool-plugin-market').map((r) => r.id).join(',') || 'missing');
 
 // —— ④ 预设声明字段（dump 里解析出的 config 摘要）——
 check('fixture 记录了预设显示名与 id（id 是宿主/前端精确比较的硬契约）',
