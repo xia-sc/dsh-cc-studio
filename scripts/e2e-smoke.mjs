@@ -210,6 +210,37 @@ try {
     && /\[时间：\d{4}-\d{2}-\d{2} \d{2}:\d{2}\]/.test(exportedCard.data.first_mes || '')
     && String(exportedCard.data.system_prompt || '').includes('时间线规则'),
     JSON.stringify(exportedCard && { name: exportedCard.data.name, first: String(exportedCard.data.first_mes).slice(0, 30) }));
+
+  // —— 0.25.4：cc_getDraft 必须回传「库卡内容指纹」（originFingerprint）——
+  // 它是客户端「未保存」判定的权威基线：刷新页面 / 新开会话后前端内存基线为空，只能靠宿主这份。
+  const saved = await rpc('cc_saveToLibrary', { sessionId: 'e2e', draft: card });
+  const savedId = saved.json && saved.json.result && saved.json.result.ok ? saved.json.result.value.id : null;
+  check('cc_saveToLibrary → 落库成功（拿到 id）', !!savedId, JSON.stringify(saved.json && saved.json.result).slice(0, 200));
+
+  const got1 = await rpc('cc_getDraft', { sessionId: 'e2e' });
+  const v1 = got1.json && got1.json.result && got1.json.result.ok ? got1.json.result.value : null;
+  check('cc_getDraft → 回传 originId 与 originFingerprint（库卡内容指纹）',
+    !!v1 && v1.originId === savedId && typeof v1.originFingerprint === 'string' && v1.originFingerprint.length > 20,
+    JSON.stringify(v1 && { originId: v1.originId, fp: String(v1.originFingerprint).slice(0, 24) }));
+
+  // 只改草稿、不落库：指纹必须**不变**（它是「库里那张卡」的指纹，不是草稿的）——
+  // 客户端正是靠「草稿指纹 ≠ originFingerprint」判出「有未保存的改动」。
+  const edited = JSON.parse(JSON.stringify(card));
+  edited.data.description = 'e2e 改过但还没落库';
+  await rpc('cc_setDraft', { sessionId: 'e2e', draft: edited });
+  const got2 = await rpc('cc_getDraft', { sessionId: 'e2e' });
+  const v2 = got2.json && got2.json.result && got2.json.result.ok ? got2.json.result.value : null;
+  check('草稿改了但没落库 → originFingerprint 不变',
+    !!v2 && v2.originFingerprint === (v1 && v1.originFingerprint),
+    JSON.stringify({ before: String(v1 && v1.originFingerprint).slice(0, 16), after: String(v2 && v2.originFingerprint).slice(0, 16) }));
+
+  // 再保存一次 → 指纹跟着库卡内容更新（缓存必须失效，不能一直回旧值）。
+  await rpc('cc_saveToLibrary', { sessionId: 'e2e', draft: edited, id: savedId });
+  const got3 = await rpc('cc_getDraft', { sessionId: 'e2e' });
+  const v3 = got3.json && got3.json.result && got3.json.result.ok ? got3.json.result.value : null;
+  check('再保存后 originFingerprint 跟着更新（指纹缓存失效生效）',
+    !!v3 && !!v3.originFingerprint && v3.originFingerprint !== (v1 && v1.originFingerprint),
+    JSON.stringify({ after: String(v3 && v3.originFingerprint).slice(0, 16) }));
 } catch (e) {
   failures += 1;
   console.error(`FAIL  ${e && e.message ? e.message : e}`);

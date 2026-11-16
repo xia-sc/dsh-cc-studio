@@ -8,7 +8,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 
 | Item | Value |
 | --- | --- |
-| Package / version | `@xia-sc/dsh-cc-studio` `0.25.3` |
+| Package / version | `@xia-sc/dsh-cc-studio` `0.25.4` |
 | Compatibility | DSH `>=0.2.0-rc.2` (incl. Desktop), Node `>=22`, **zero runtime dependencies**; see [Compatibility & permissions](#compatibility--permissions) |
 | Storage | `<DSH_HOME>/cc-library/` (cards), `cc-drafts/` (session drafts + creation lock + backups), `cc-groups/` (relationship groups), `cc-books/` (group shared lorebook); `DSH_HOME` defaults to `~/.dsh` |
 | Docs | This file; read [AGENTS.md](./AGENTS.md) before changing code; history in [CHANGELOG.md](./CHANGELOG.md) |
@@ -163,6 +163,7 @@ npm test    # all test files, serial; must be green
 
 Full history: [CHANGELOG.md](./CHANGELOG.md) (0.12.0 onwards).
 
+- `0.25.4` **Second false-positive fix**: the first card switch after creating a session or reloading no longer asks "not saved to the library yet" — the saved baseline now comes from the host (the library card's content fingerprint), and both halves use the same key-order-independent fingerprint.
 - `0.25.3` **False-positive fix**: switching between cards no longer asks "not saved to the library yet" when nothing actually changed — the draft fingerprint ignores the `modification_date` the host refreshes on every write, while real content edits (including model writes) still get caught.
 - `0.25.2` **Empty state**: with no card at all, the overview no longer dumps a screen of audit errors — it offers "let the model start / import / browse the library" instead.
 - `0.25.1` **Delete fix**: deleting the currently loaded card now clears the draft too, so switching cards is never blocked by a bogus "unsaved" prompt and the last card can always be deleted.

@@ -20,23 +20,30 @@ import { readRepo } from './harness.mjs';
 
 const src = readRepo('lib/client.js');
 
-function grabFunction(name) {
-  const start = src.indexOf(`function ${name}(`);
+function grabFunction(name, text = src) {
+  const start = text.indexOf(`function ${name}(`);
   if (start < 0) throw new Error(`源码中找不到 function ${name}(`);
   let depth = 0;
-  const open = src.indexOf('{', start);
-  for (let i = open; i < src.length; i++) {
-    if (src[i] === '{') depth++;
-    else if (src[i] === '}') { depth--; if (depth === 0) return src.slice(start, i + 1); }
+  const open = text.indexOf('{', start);
+  for (let i = open; i < text.length; i++) {
+    if (text[i] === '{') depth++;
+    else if (text[i] === '}') { depth--; if (depth === 0) return text.slice(start, i + 1); }
   }
   throw new Error(`function ${name} 括号不闭合`);
 }
 
-const draftFingerprint = new Function(`${grabFunction('draftFingerprint')}; return draftFingerprint;`)();
+// 宿主侧的「库卡内容指纹」（lib/index.js 的 stableJson + draftContentFingerprint）——
+// ⑦ 用它模拟宿主回传的 originFingerprint，等于把「两半指纹必须一致」也串进真实链路里。
+const hostSrc = readRepo('lib/index.js');
+const hostFingerprint = new Function(
+  `${grabFunction('stableJson', hostSrc)}; ${grabFunction('draftContentFingerprint', hostSrc)}; return draftContentFingerprint;`,
+)();
+
+const draftFingerprint = new Function(`${grabFunction('stableJson')}; ${grabFunction('draftFingerprint')}; return draftFingerprint;`)();
 const draftHasContent = new Function(`${grabFunction('draftHasContent')}; return draftHasContent;`)();
 // draftIsUnsaved 内部会调用上面两个 —— 提取时要把它们放在同一个作用域里。
 const draftIsUnsaved = new Function(
-  `${grabFunction('draftFingerprint')}; ${grabFunction('draftHasContent')}; ${grabFunction('draftIsUnsaved')}; return draftIsUnsaved;`,
+  `${grabFunction('stableJson')}; ${grabFunction('draftFingerprint')}; ${grabFunction('draftHasContent')}; ${grabFunction('draftIsUnsaved')}; return draftIsUnsaved;`,
 )();
 
 const card = (name) => ({ spec: 'chara_card_v3', spec_version: '3.0', data: {
@@ -84,6 +91,12 @@ check('②h 忽略的是时间戳那一个字段，别的字段变了照样算�
   draftIsUnsaved(withModDate(card('乙'), 222), 'lib-1', draftFingerprint(withModDate(card('甲'), 111))) === true
   && draftFingerprint(withModDate({ data: { name: '甲', description: '设定' } }, 1))
      !== draftFingerprint(withModDate({ data: { name: '甲', description: '设定改' } }, 1)), '');
+check('②i 两个基线都拿不到（旧宿主没回 originFingerprint）→ 放行，不拿空基线打扰',
+  draftIsUnsaved(card('甲'), 'lib-1', null, null) === false
+  && draftIsUnsaved(card('甲'), 'lib-1', '', '') === false, '');
+check('②j 有宿主基线（originFingerprint）且内容一致 → 已保存；内容不同 → 未保存',
+  draftIsUnsaved(card('甲'), 'lib-1', null, draftFingerprint(card('甲'))) === false
+  && draftIsUnsaved(card('乙'), 'lib-1', null, draftFingerprint(card('甲'))) === true, '');
 
 // —— ③ 源码守卫（接线不许被顺手拆掉）——
 check('③ loadFromLibrary 在发 RPC 之前先过 confirmBeforeDiscardDraft',
@@ -220,6 +233,97 @@ check('④ 四段确认文案中英各一份', missing.length === 0, missing.joi
   await store.loadFromLibrary('lib-a');
   check('⑥e 内容真的变了（模型写入）→ 仍然先弹确认（拦截没有被削弱）',
     confirmCount === 1, 'confirm=' + confirmCount);
+
+  delete globalThis.window;
+}
+
+// —— ⑦ 0.25.4 真实链路：刷新页面 / 新开会话（store 全新、内存基线为空）→ 打开工坊拉回
+//      「带来源 id 的草稿」→ 切另一张卡。什么都没改时不许弹（用户反馈：新建会话 → 切 CC 模式
+//      → 角色卡工坊 → 切换角色，100% 弹）。模型真改过内容时必须照弹。——
+{
+  let confirmCount = 0;
+  const hostCopy = (d, ts) => {
+    const c = JSON.parse(JSON.stringify(d));
+    c.data.modification_date = ts;
+    return c;
+  };
+  const cardA = hostCopy(card('A 卡'), 1000);
+  const cardB = hostCopy(card('B 卡'), 2000);
+  const libById = { 'lib-a': cardA, 'lib-b': cardB };
+  const registered = {};
+  const { registration, React } = loadClient({
+    windowExtra: { confirm() { confirmCount += 1; return true; } },
+  });
+  // 宿主草稿（模型可能改过）：⑦ 里默认与库卡同内容，只差宿主刷新的时间戳。
+  let hostDraft = hostCopy(cardA, 9999);
+  const fakeCtx = {
+    effect(fn) { try { fn(); } catch (e) {} return () => {}; },
+    locale: { register() { return () => {}; }, bind() { return (k) => k; } },
+    slots: {
+      inject(name, cb) { cb(); return () => {}; },
+      register(opts, comp) { registered[opts.name] = { opts, comp }; return () => {}; },
+    },
+    connection: { rpc: { call(channel, endpoint, payload) {
+      if (endpoint === 'cc_getDraft') {
+        return Promise.resolve({ ok: true, value: {
+          key: payload.args.sessionId,
+          draft: JSON.parse(JSON.stringify(hostDraft)),
+          draftStatus: {},
+          originId: 'lib-a',
+          // 宿主按「库里那张卡」算出来的指纹（与客户端算法同构，见文件头）
+          originFingerprint: hostFingerprint(cardA),
+        } });
+      }
+      if (endpoint === 'cc_loadFromLibrary') {
+        const id = payload && payload.args ? payload.args.id : null;
+        const d = libById[id] || cardA;
+        return Promise.resolve({ ok: true, value: { draft: JSON.parse(JSON.stringify(d)), meta: { name: d.data.name }, draftStatus: {} } });
+      }
+      return Promise.resolve({ ok: false, error: { code: 'internal', message: 'no handler' } });
+    } } },
+  };
+  const mod = registration.factory((id) => {
+    if (id === 'react') return React;
+    throw new Error('unexpected require: ' + id);
+  });
+  await mod.apply(fakeCtx);
+  const store = registered['conversation.input.dock'].opts.inject('sess-new').store;
+
+  // 新会话：先切会话（触发一次「换会话」清理），再像打开工坊那样拉一次草稿。
+  store.setSessionId('sess-old');
+  store.setSessionId('sess-new');
+  await store._pullDraft('sess-new');
+
+  const s1 = store.getSnapshot();
+  check('⑦ 拉回带来源 id 的草稿后：来源卡与宿主基线都建立起来了',
+    s1.currentLibraryId === 'lib-a' && !!s1.originFingerprint && s1.savedFingerprint === null,
+    `id=${s1.currentLibraryId} originFp=${s1.originFingerprint ? 'yes' : 'no'} savedFp=${s1.savedFingerprint ? 'yes' : 'no'}`);
+
+  confirmCount = 0;
+  await store.loadFromLibrary('lib-b');
+  check('⑦b 什么都没改就切卡 → 不弹「未保存」确认框（0.25.4 的回归点）',
+    confirmCount === 0, 'confirm=' + confirmCount);
+  check('⑦c 而且真的切到了 B 卡',
+    String(store.getSnapshot().draft.data.name) === 'B 卡',
+    String(store.getSnapshot().draft.data.name));
+
+  // 对照组：宿主草稿被模型改过（内容 ≠ 库卡）→ 切卡必须照弹。
+  const written = hostCopy(cardA, 5000);
+  written.data.description = '模型刚重写过的设定';
+  hostDraft = written;
+  store.setSessionId('sess-new2');            // 换会话，回到「刚打开工坊」的状态
+  await store._pullDraft('sess-new2');
+  confirmCount = 0;
+  await store.loadFromLibrary('lib-b');
+  check('⑦d 模型真改过内容（草稿 ≠ 库卡）→ 仍然先弹确认（拦截没被削弱）',
+    confirmCount === 1, 'confirm=' + confirmCount);
+
+  // 换会话清理：两边都有 id 且不同 → 旧会话的来源 id 与两个基线一起清掉（草稿视图由 pull 覆盖）。
+  store.setSessionId('sess-third');
+  const s3 = store.getSnapshot();
+  check('⑦e 换会话：旧会话的来源 id 与两个基线都清掉（新会话重新建立基线）',
+    s3.currentLibraryId === null && s3.savedFingerprint === null && s3.originFingerprint === null,
+    `id=${s3.currentLibraryId} savedFp=${s3.savedFingerprint ? 'yes' : 'no'} originFp=${s3.originFingerprint ? 'yes' : 'no'}`);
 
   delete globalThis.window;
 }
