@@ -4,6 +4,21 @@
 
 格式：最新版本按「新增 / 修复」写；更早的小节按现象 → 根因 → 修法 → 生效方式。
 
+## 0.26.1
+
+**兼容矩阵补 dsh `0.2.2-rc.3`（桌面版当前版本）：实测通过，无需改运行时代码。**
+
+### 说明
+
+- 用本机 Desktop `0.2.2-rc.3` 做隔离实测：L2 `--dump-config` 组合成功（顶层 23 行 + 组内 9 行，与 rc.1 快照逐行一致）；L3 全链路通过（启动 / token 换 cookie / boot 清单 / 客户端资源与 rev 契约 / RPC / 草稿写入 / 导出 / 落库 / `originFingerprint`）。
+- 另在 rc.3 的安装树里逐个解析 CC 预设用到的包名（28 个，含 `@deepseek-ai/dsh-plugin-manager/tools` / `dsh-plugin-market/tools` 子入口）—— 全部可解析，即 `mountPreset → auditRows` 不会把「CC 模式」判成 broken。
+- rc.3 的 `standard` 相对 rc.1 多出 `tool-office`、`tool-subagent-control.interrupt:false` 与 `skill-filesystem.customSkillDirs`。三个都**不加**：`customSkillDirs` 依赖 rc.3 才注入的 `baseUrl`，加上会让下限 rc.1 的组合失败；它们属能力差异，不是漏抄。
+- 组合快照仍由 rc.1 生成（锚定下限），rc.3 只作为实测版本进 `dshReleases`。
+
+### 生效方式
+
+- 只改声明与文档，重启 dsh 即可（运行时代码零改动）。
+
 ## 0.26.0
 
 **兼容下限抬到 dsh `0.2.2-rc.1`（重要更新，破坏性）：清掉为兼容 0.2.0 / 0.2.1 留的声明层技术债。**

@@ -6,7 +6,39 @@
 
 ---
 
-## 0.2.2-rc.1 抬下限（2026-11-16，插件 0.26.0）
+## 0.2.2-rc.3（2026-11-16，插件 0.26.1）
+
+### 结论
+
+桌面版当前版本 `0.2.2-rc.3` 与插件兼容，**运行时代码零改动**，只补 `dshReleases` 与文档。L2 组合快照仍由 rc.1 生成（锚定下限），rc.3 只作为实测版本。
+
+实测三层：
+
+1. **L2 组合**：本机 Desktop 的 `DeepSeek Harness.exe` 直接跑 `node scripts/dump-config.mjs --out .compat-tmp/rc3-composition.json`（`findDsh()` 自动探测，`prepareInstance` 注入 `ELECTRON_RUN_AS_NODE=1`）。dump 成功，preset-cc 顶层 23 行 + 组内 9 行，与 rc.1 快照逐行一致。
+2. **L3 全链路**：同一 exe 跑 `node scripts/e2e-smoke.mjs`，0 失败（启动 / token 换 cookie / boot 清单 / 客户端资源与 rev 契约 / RPC / 草稿 / 导出 / 落库 / `originFingerprint`）。
+3. **broken 判定**：`mountPreset → auditRows` 的失败判据是包 / 子入口解析不到。桌面版的 `node_modules` 在 `app.asar` 里，普通 node 的 fs 看不透，所以用 `ELECTRON_RUN_AS_NODE=1 "<exe>" check-resolve.mjs <web-app/package.json> <presets/cc.patch.yml>` 在 asar 里逐个 `createRequire().resolve()`：CC 预设用到的 28 个包名（含 `@deepseek-ai/dsh-plugin-manager/tools` / `dsh-plugin-market/tools` 子入口）全部可解析。
+
+### rc.3 的 standard 与 rc.1 的差异（都不补）
+
+| 差异 | 为什么不补 |
+|---|---|
+| `tool-office` 行 | rc.1 没有这个包；加上会让下限版本整份预设 broken。能力差异（CC 模式不需要 Office 工具）。 |
+| `tool-subagent-control.interrupt: false` | rc.2 起才有的配置；rc.1 上不认。 |
+| `skill-filesystem.customSkillDirs` | 表达式依赖 loader 注入的 `baseUrl`（rc.3 才提供）；rc.1 上求值失败，整份预设 broken。 |
+
+结论写进 `AGENTS.md` §4 与 CHANGELOG，避免下次升级把它们当成「漏抄」补上。
+
+### 踩坑
+
+#### 1. 桌面版 exe 可以直接喂给现有脚本，不需要另写启动器
+
+`findDsh()` 已经会扫 `%LOCALAPPDATA%\Programs\DeepSeek Harness`；`prepareInstance()` 的 env 带 `ELECTRON_RUN_AS_NODE=1`，`spawnSync(exe, [bin, ...args])` 在 GUI 子系统 exe 上也能同步拿到输出。之前 COMPAT-AUDIT 记的「GUI exe 的 `&` 不等待」只影响 PowerShell 直接调用，不影响这两条路径。
+
+#### 2. 解析检查要跑在 Electron 的 fs 上
+
+普通 node 里 `existsSync('...app.asar\\...')` 恒为 false（`findDsh` 的兜底判据也因此只看 `resources/app.asar`）。验证包可解析必须在 `ELECTRON_RUN_AS_NODE=1` 下跑脚本，否则会把「asar 不可见」误判成「包不存在」。
+
+
 
 ### 结论
 

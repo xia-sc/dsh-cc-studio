@@ -207,6 +207,8 @@ tests/fixtures/       L2 组合快照（由 npm run fixture:dump 生成）
 
 | `0.2.2-rc.2` | compatible | 审计通过（隔离实测：宿主 active / RPC 线协议 / 三个挂载点 / 预设 roster 无 broken / `npm test` 全绿）。rc.2 的 `standard` 新增 `tool-office`、`tool-subagent-control` 显式 `interrupt:false`，属能力差异，不 broken；契约包与 rc.1 逐字节可用 |
 
+| `0.2.2-rc.3` | compatible | 桌面版当前版本，隔离实测通过（L2 dump 顶层 23 行 + 组内 9 行、L3 全链路、预设用到的 28 个包名含 `/tools` 子入口在 asar 里全部可解析）。rc.3 的 `standard` 另有 `skill-filesystem.customSkillDirs`（依赖 rc.3 才有的 `baseUrl`），与 `tool-office` / `interrupt:false` 一样属能力差异，**不补**（加了会让下限 rc.1 整份预设 broken） |
+
 | `0.2.0-rc.2` / `0.2.1-rc.2` / `0.2.1-rc.3` / `0.2.1-rc.5` | 已弃用 | 0.26.0 起不再声明，也不再为它们双写旧键或省行；README 的「未实测 / 已弃用」白名单保留这些 token，便于回溯 |
 
 
