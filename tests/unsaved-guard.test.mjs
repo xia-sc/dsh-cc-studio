@@ -9,6 +9,10 @@
  *   ② 载入 / 导入前先确认（可「先保存再切换」）；拿不到确认框就中止；
  *   ③ 锁 active 时载入只进只读预览、不写草稿 —— 不打扰。
  *
+ * 0.25.3 追加（用户反馈「来回切卡什么都没改也弹确认框」）：`draftFingerprint()` 必须**忽略**
+ * `data.modification_date` —— 宿主每次 setDraftFor 都会刷新它，载入后 4 秒轮询把带新时间戳的
+ * 宿主草稿拉回来，内容只差一个时间戳也会被判成「未保存」。⑥ 就是这条真实链路的回归。
+ *
  * 运行：node tests/unsaved-guard.test.mjs   （全绿退出码 0）
  */
 import { check, finish, loadClient } from './harness.mjs';
@@ -65,6 +69,21 @@ check('②d 空草稿即使没有来源 id 也不算未保存（新会话直接�
 check('②e 指纹函数对同一份草稿稳定、对不同草稿不同',
   draftFingerprint(card('甲')) === draftFingerprint(card('甲'))
   && draftFingerprint(card('甲')) !== draftFingerprint(card('乙')), '');
+
+// —— ②f/②g：0.25.3「只有时间戳变了不算未保存」——
+const withModDate = (d, ts) => {
+  const c = JSON.parse(JSON.stringify(d));
+  c.data.modification_date = ts;
+  return c;
+};
+check('②f 只有 data.modification_date 不同 → 指纹相同（宿主每次写草稿都会刷这个字段）',
+  draftFingerprint(withModDate(card('甲'), 111)) === draftFingerprint(withModDate(card('甲'), 222)), '');
+check('②g 载入的库卡（旧时间戳）与宿主草稿（新时间戳）→ 不算未保存',
+  draftIsUnsaved(withModDate(card('甲'), 222), 'lib-1', draftFingerprint(withModDate(card('甲'), 111))) === false, '');
+check('②h 忽略的是时间戳那一个字段，别的字段变了照样算未保存',
+  draftIsUnsaved(withModDate(card('乙'), 222), 'lib-1', draftFingerprint(withModDate(card('甲'), 111))) === true
+  && draftFingerprint(withModDate({ data: { name: '甲', description: '设定' } }, 1))
+     !== draftFingerprint(withModDate({ data: { name: '甲', description: '设定改' } }, 1)), '');
 
 // —— ③ 源码守卫（接线不许被顺手拆掉）——
 check('③ loadFromLibrary 在发 RPC 之前先过 confirmBeforeDiscardDraft',
@@ -127,6 +146,80 @@ check('④ 四段确认文案中英各一份', missing.length === 0, missing.joi
   check('⑤c 第二次确认「直接覆盖」后才发 cc_loadFromLibrary',
     calls.filter((c) => c.endpoint === 'cc_loadFromLibrary').length === 1,
     calls.map((c) => c.endpoint).join(','));
+
+  delete globalThis.window;
+}
+
+// —— ⑥ 真实链路（0.25.3）：载入一张卡 → 轮询把宿主草稿（只刷新过时间戳）拉回来 →
+//      再切另一张卡时**不该**弹「当前角色卡还没保存到角色库」。模型真写了内容时必须照弹。——
+{
+  let confirmCount = 0;
+  const hostCopy = (d, ts) => {
+    const c = JSON.parse(JSON.stringify(d));
+    c.data.modification_date = ts;
+    return c;
+  };
+  const cardA = hostCopy(card('A 卡'), 1000);
+  const cardB = hostCopy(card('B 卡'), 2000);
+  const libById = { 'lib-a': cardA, 'lib-b': cardB };
+  const registered = {};
+  const { registration, React } = loadClient({
+    windowExtra: { confirm() { confirmCount += 1; return true; } },
+  });
+  const fakeCtx = {
+    effect(fn) { try { fn(); } catch (e) {} return () => {}; },
+    locale: { register() { return () => {}; }, bind() { return (k) => k; } },
+    slots: {
+      inject(name, cb) { cb(); return () => {}; },
+      register(opts, comp) { registered[opts.name] = { opts, comp }; return () => {}; },
+    },
+    connection: { rpc: { call(channel, endpoint, payload) {
+      if (endpoint === 'cc_getDraft') {
+        // 宿主内存里的草稿：与库里那张卡**同内容**，只是 setDraftFor 把 modification_date 刷成了 nowSec()
+        return Promise.resolve({ ok: true, value: { key: 'sess-1', draft: hostCopy(cardA, 9999), draftStatus: {}, originId: 'lib-a' } });
+      }
+      if (endpoint === 'cc_loadFromLibrary') {
+        const id = payload && payload.args ? payload.args.id : null;
+        const d = libById[id] || cardA;
+        return Promise.resolve({ ok: true, value: { draft: JSON.parse(JSON.stringify(d)), meta: { name: d.data.name }, draftStatus: {} } });
+      }
+      return Promise.resolve({ ok: false, error: { code: 'internal', message: 'no handler' } });
+    } } },
+  };
+  const mod = registration.factory((id) => {
+    if (id === 'react') return React;
+    throw new Error('unexpected require: ' + id);
+  });
+  await mod.apply(fakeCtx);
+  const store = registered['conversation.input.dock'].opts.inject('sess-1').store;
+  store.setSessionId('sess-1');
+
+  await store.loadFromLibrary('lib-a');
+  check('⑥ 空草稿载入 A 卡不弹确认，且真的载入了',
+    confirmCount === 0 && String(store.getSnapshot().draft.data.name) === 'A 卡',
+    'confirm=' + confirmCount + ' name=' + String(store.getSnapshot().draft.data.name));
+
+  await store._pullDraft('sess-1');
+  check('⑥b 轮询拉回宿主草稿（内容相同、时间戳不同）',
+    Number(store.getSnapshot().draft.data.modification_date) === 9999,
+    String(store.getSnapshot().draft.data.modification_date));
+
+  confirmCount = 0;
+  await store.loadFromLibrary('lib-b');
+  check('⑥c 只差 modification_date 时切卡不弹「未保存」确认框（0.25.3 的回归点）',
+    confirmCount === 0, 'confirm=' + confirmCount);
+  check('⑥d 而且真的切到了 B 卡',
+    String(store.getSnapshot().draft.data.name) === 'B 卡',
+    String(store.getSnapshot().draft.data.name));
+
+  // 对照组：模型真的改了内容（描述被重写）→ 切卡前必须照弹。
+  const written = hostCopy(cardB, 3000);
+  written.data.description = '模型刚重写过的设定';
+  store.setDraftFromHost(written);
+  confirmCount = 0;
+  await store.loadFromLibrary('lib-a');
+  check('⑥e 内容真的变了（模型写入）→ 仍然先弹确认（拦截没有被削弱）',
+    confirmCount === 1, 'confirm=' + confirmCount);
 
   delete globalThis.window;
 }
