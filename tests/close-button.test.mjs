@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs';
 
 const src = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 
-import { check, finish, createFakeReact } from './harness.mjs';
+import { check, finish, createFakeReact, installClientRpc } from './harness.mjs';
 
 // —— 假 React：hook 槽位按渲染顺序保留（否则 setHoverKey 之后重渲染看不到新值）——
 const { React, effectQueue, hooks } = createFakeReact();;
@@ -49,8 +49,11 @@ const fakeCtx = {
     inject(name, cb) { cb(); return () => {}; },
     register(opts, comp) { registered[opts.name] = { opts, comp }; return () => {}; },
   },
-  connection: { rpc: { call() { return Promise.resolve({ ok: false, error: { code: 'internal', message: 'no handler' } }); } } },
 };
+
+const calls = installClientRpc((endpoint, payload) => {
+ return Promise.resolve({ ok: false, error: { code: 'internal', message: 'no handler' } });
+});
 
 const mod = registration.factory((id) => {
   if (id === 'react') return React;

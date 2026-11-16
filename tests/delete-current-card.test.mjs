@@ -11,7 +11,7 @@
  *
  * 运行：node tests/delete-current-card.test.mjs   （全绿退出码 0）
  */
-import { check, finish, loadClient, readRepo } from './harness.mjs';
+import { check, finish, loadClient, readRepo, installClientRpc } from './harness.mjs';
 
 const src = readRepo('lib/client.js');
 
@@ -27,7 +27,6 @@ check('①d 提示文案中英各一份',
 
 // —— ② 行为：删除当前卡 → 草稿空、来源清、再切卡不弹确认 ——
 const { registration, React } = loadClient();
-const calls = [];
 let confirmCalls = 0;
 globalThis.window.confirm = function () { confirmCalls += 1; return true; };
 
@@ -43,8 +42,8 @@ const fakeCtx = {
     inject(name, cb) { cb(); return () => {}; },
     register(opts, comp) { registered[opts.name] = { opts, comp }; return () => {}; },
   },
-  connection: { rpc: { call(channel, endpoint, payload) {
-    calls.push({ endpoint, payload });
+};
+const calls = installClientRpc((endpoint, payload) => {
     if (endpoint === 'cc_loadFromLibrary') {
       const id = payload && payload.args && payload.args.id;
       return Promise.resolve({ ok: true, value: { draft: card(id === 'lib-2' ? '乙卡' : '甲卡'), meta: { name: id }, draftStatus: {} } });
@@ -53,8 +52,8 @@ const fakeCtx = {
     if (endpoint === 'cc_listLibrary') return Promise.resolve({ ok: true, value: { entries: [] } });
     if (endpoint === 'cc_setDraft' || endpoint === 'cc_setOrigin') return Promise.resolve({ ok: true, value: {} });
     return Promise.resolve({ ok: false, error: { code: 'internal', message: 'no handler' } });
-  } } },
-};
+});
+
 const mod = registration.factory((id) => {
   if (id === 'react') return React;
   throw new Error('unexpected require: ' + id);

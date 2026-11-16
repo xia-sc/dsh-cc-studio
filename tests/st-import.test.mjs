@@ -223,34 +223,24 @@ const stServer = createServer(async function(req, res){
 });
 
 // ============================================================
-// 宿主 RPC 通道（与 rpc-channel.test.mjs 同一套假 ctx）
+// 宿主 RPC 通道（0.27.0：官方 /api 上的 exact Fetch route；直接调 route.fetch，不起 HTTP 服务）
 // ============================================================
 let route = null;
 const fakeCtx = {
   effect(fn){ fn(); return function(){}; },
   get(){ return undefined; },
-  webServer: { register(r){ route = r; return function(){ route = null; }; } },
+  connection: { fetch: { register(r){ route = r; return function(){ route = null; }; } } },
 };
 await host.apply(fakeCtx);
-const rpcServer = createServer(function(req, res){
-  if(route && (req.url === route.path || req.url.startsWith(route.path + '/'))){
-    route.handler(req, res);
-    return;
-  }
-  res.statusCode = 404;
-  res.end('no route');
-});
-await new Promise(function(resolve){ rpcServer.listen(0, '127.0.0.1', resolve); });
 await new Promise(function(resolve){ stServer.listen(0, '127.0.0.1', resolve); });
-const rpcBase = 'http://127.0.0.1:' + rpcServer.address().port;
 const stBase = 'http://127.0.0.1:' + stServer.address().port;
 
 async function rpc(endpoint, args){
-  const res = await fetch(rpcBase + '/dsh-cc-studio-rpc/' + endpoint, {
+  const res = await route.fetch(new Request('http://local/api/cc-studio', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ type: 'client-request', rpcId: 'rid-' + endpoint, method: endpoint, payload: { args: args || {} } }),
-  });
+  }));
   const text = await res.text();
   let json = null;
   try{ json = JSON.parse(text); }catch{}
@@ -258,7 +248,7 @@ async function rpc(endpoint, args){
 }
 function failCode(json){ return json && json.result && !json.result.ok ? json.result.error.details.code : null; }
 
-check('② 宿主注册了 RPC 前缀路由', !!route && route.kind === 'prefix', route ? route.kind : 'null');
+check('② 宿主注册了 /api 上的 exact Fetch route', !!route && route.path === '/api/cc-studio' && Array.isArray(route.methods), route ? route.path : 'null');
 
 // —— 草稿与共享书 ——
 const CARD = {
@@ -518,7 +508,7 @@ function resetStState(){
 // ============================================================
 // 清理
 // ============================================================
-await new Promise(function(resolve){ rpcServer.close(resolve); });
+await new Promise(function(resolve){ stServer.close(resolve); });
 await new Promise(function(resolve){ stServer.close(resolve); });
 rmSync(sandboxHome, { recursive: true, force: true });
 process.env.HOME = originalHome;

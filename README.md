@@ -8,7 +8,7 @@ DSH（DeepSeek Harness）插件：输入框上方的胶囊 → 全屏融合工�
 
 | 项目 | 值 |
 | --- | --- |
-| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.26.1` |
+| 包名 / 版本 | `@xia-sc/dsh-cc-studio` `0.27.0` |
 | 兼容 | DSH `>=0.2.2-rc.1`（含桌面版）、Node `>=22`、**零运行依赖**；逐版本实测见 [兼容与权限](#兼容与权限) |
 | 落盘 | `<DSH_HOME>/cc-library/`（角色卡）、`cc-drafts/`（会话草稿 + 创作锁 + 备份）、`cc-groups/`（关系分组）、`cc-books/`（组共享世界书）；`DSH_HOME` 默认 `~/.dsh` |
 | 文档 | 用户文档＝本文件；改代码前读 [AGENTS.md](./AGENTS.md)；历史 [CHANGELOG.md](./CHANGELOG.md) |
@@ -163,6 +163,7 @@ npm test    # 全部测试文件串行；全绿才算过
 
 完整见 [CHANGELOG.md](./CHANGELOG.md)（保留 0.12.0 起）。
 
+- `0.27.0` **RPC 传输迁到官方 `/api` 共享通道**（架构变更，对外行为不变）：宿主端点改由 `connection.fetch.register` 注册 `/api/cc-studio`，认证与请求体上限交给 dsh；删掉自维护的 200 行线协议，客户端 `rpc()` 换成同源 fetch。升级后需**重启 dsh + 刷新页面**（旧客户端与新宿主在这个版本上不互通）。
 - `0.26.1` **兼容矩阵补 `0.2.2-rc.3`**（桌面版当前版本）：隔离实测通过（L2 组合、L3 全链路、预设用到的包在 rc.3 安装树里全部可解析）；运行时代码零改动，rc.3 的 `standard` 多出的 `tool-office` / `interrupt:false` / `customSkillDirs` 属能力差异，不补。
 - ⚠️ **重要更新** `0.26.0` **兼容下限抬到 dsh `0.2.2-rc.1`**（破坏性）：0.2.0 / 0.2.1 整条线不再支持，升级插件前先把 dsh 升上去；删掉为旧版保留的 `modelSelectionSettings` 旧键双写，CC 预设补回 `tool-schedule` 与 `tool-plugin-market`（后者 disabled），与 rc.1 内置 `standard` 逐行对齐；组合快照改由 rc.1 生成。
 - `0.25.4` **再修误报**：新建会话 / 刷新页面后第一次切角色必弹「还没保存到角色库」—— 「已保存」基线改由宿主回传（库卡内容指纹），两半指纹改成键序无关的稳定 JSON。

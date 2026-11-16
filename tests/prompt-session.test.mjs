@@ -10,7 +10,6 @@
  *
  * 运行：node tests/prompt-session.test.mjs   （全绿退出码 0）
  */
-import { createServer } from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -34,7 +33,6 @@ let scMode = 'ok';
 const fakeCtx = {
   effect(fn) { fn(); return () => {}; },
   get(name) {
-    if (name === 'connection') return { requestRejection: () => undefined };
     if (name === 'sessionController') {
       if (scMode === 'missing') return undefined;
       return {
@@ -51,34 +49,19 @@ const fakeCtx = {
     }
     return undefined;
   },
-  webServer: {
-    register(r) {
-      route = r;
-      return () => { route = null; };
-    },
-  },
+  // 0.27.0：宿主端点走官方 /api 上的 exact Fetch route —— 直接调 route.fetch
+  connection: { fetch: { register(r) { route = r; return () => { route = null; }; } } },
 };
-
-const server = createServer((req, res) => {
-  if (route && (req.url === route.path || req.url.startsWith(route.path + '/'))) {
-    route.handler(req, res);
-    return;
-  }
-  res.statusCode = 404;
-  res.end('no route');
-});
-await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-const base = `http://127.0.0.1:${server.address().port}`;
 
 await host.apply(fakeCtx);
 await new Promise((r) => setTimeout(r, 50));
 
 async function call(endpoint, args) {
-  const res = await fetch(base + '/dsh-cc-studio-rpc/' + endpoint, {
+  const res = await route.fetch(new Request('http://local/api/cc-studio', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ type: 'client-request', rpcId: 'rid-' + endpoint, method: endpoint, payload: { args } }),
-  });
+  }));
   const text = await res.text();
   let json = null;
   try { json = JSON.parse(text); } catch {}
@@ -152,7 +135,6 @@ async function call(endpoint, args) {
     JSON.stringify(r.json && r.json.result.error));
 }
 
-await new Promise((resolve) => server.close(resolve));
 rmSync(sandboxHome, { recursive: true, force: true });
 process.env.HOME = originalHome;
 process.env.USERPROFILE = originalUserProfile;

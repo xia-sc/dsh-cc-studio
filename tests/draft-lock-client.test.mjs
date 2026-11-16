@@ -17,7 +17,7 @@ import { readFileSync } from 'node:fs';
 
 const src = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 
-import { check, finish, createFakeReact } from './harness.mjs';
+import { check, finish, createFakeReact, installClientRpc } from './harness.mjs';
 
 // —— 假 React：hook 顺序可预期，effect 收集起来由测试手动跑 ——
 const { React, effectQueue, hooks } = createFakeReact();
@@ -46,14 +46,10 @@ globalThis.window = { __ModuleLoader__: { load(def) { registration = def; } }, c
 new Function('window', src)(globalThis.window);
 if (!registration) { console.log('FAIL  bundle 没有调用 window.__ModuleLoader__.load'); process.exit(1); }
 
-// —— 假 RPC：记录每一次调用，并按 endpoint 返回可编程的信封 ——
-const calls = [];
+// —— 假 RPC：0.27.0 起客户端 rpc() 走同源 fetch('/api/cc-studio') —— 在全局 fetch 上打桩 ——
 const callsOf = (endpoint) => calls.filter((c) => c.endpoint === endpoint);
 let handler = function () { return { ok: false, error: { code: 'internal', message: 'no handler' } }; };
-const rpcCall = function (channel, endpoint, payload) {
-  calls.push({ channel, endpoint, payload });
-  return Promise.resolve(handler(endpoint, payload));
-};
+const calls = installClientRpc((endpoint, payload) => handler(endpoint, payload));
 
 // —— 假 slot：把注册的三个组件与它们的 inject（拿到 store）都接住 ——
 const registered = {};
@@ -64,7 +60,6 @@ const fakeCtx = {
     inject(name, cb) { cb(); return () => {}; },
     register(opts, comp) { registered[opts.name] = { opts, comp }; return () => {}; },
   },
-  connection: { rpc: { call: rpcCall } },
 };
 
 const mod = registration.factory((id) => {

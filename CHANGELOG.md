@@ -4,6 +4,27 @@
 
 格式：最新版本按「新增 / 修复」写；更早的小节按现象 → 根因 → 修法 → 生效方式。
 
+## 0.27.0
+
+**RPC 传输迁到官方 `/api` 共享通道的 exact Fetch route（架构变更，对外行为不变）。**
+
+### 变更
+
+- 宿主不再用 `ctx.webServer.register({kind:"prefix"})` 自建 `/dsh-cc-studio-rpc`：改为 `ctx.connection.fetch.register({ path:"/api/cc-studio", methods:["POST"], requestBody:"buffered", fetch })`。Host/Origin 围栏、会话 cookie 认证、请求体读取与 `maxRequestBodyBytes` 上限由 Connection 托管；删掉自维护的 `readBoundedBody` / `sendEnvelope` / `requestRejection` / 48MB 上限（约 150 行）。
+- 客户端 `rpc()` 从 `ctx.connection.rpc.call(...)` 换成同源 `fetch("/api/cc-studio")`；返回值仍是 result 对象，40+ 调用点零改动。客户端不再依赖 `connection` 服务（`inject` 只剩 `slots` / `locale`）。
+- 线协议保持 client-connection 的信封（`client-request` / `server-response` + `rpcId`）；URL 不再编码 endpoint（它进信封）。官方语义带来的三处差异：非 POST 由 Connection 回 404（原 405）、超限回 413（原插件自管 48MB 上限）、401/403 由 Connection 统一回（原 `requestRejection`）。
+- 测试：`rpc-channel` 改为直接调用 `route.fetch`（围栏 / 405 / 413 / 路径穿越交给官方契约，不再由插件测试）；其余 17 个客户端/宿主测试改用 `tests/harness.mjs` 新增的 `installClientRpc()`（全局 fetch 打桩）；L3 e2e 的 RPC URL 同步。
+
+### 为什么现在做
+
+- 调查结论：官方源码里 `connection.rpc.handle()` **零消费方**（`packages/` 与 `apps/` 中 13 处实际使用全是 `fetch.register`），`/api` 的 interceptor 又被 `typertGateway` 独占 —— 等它修等于等一条没人走的通道。
+- 官方架构笔记明确把「各 owner 在 `/api` 上注册 exact Fetch route」当作插件端点的正规入口；`plugin-manager` / `plugin-market` / `file-upload` / `session-log-export` / `deliverables` / `liveshare` 等都在用。
+- 迁移面固定（宿主 1 处注册 + 客户端 1 个函数 + 测试），端点越多自维护协议的税越重，所以趁现在改。若将来 `rpc.handle` 真修好，只需换注册调用与 channel 名 —— 信封与客户端零改动。
+
+### 生效方式
+
+- 重启 dsh + 刷新页面（宿主与客户端同时换）。旧版客户端 + 新版宿主（或反过来）在这个版本上不互通：URL 变了。
+
 ## 0.26.1
 
 **兼容矩阵补 dsh `0.2.2-rc.3`（桌面版当前版本）：实测通过，无需改运行时代码。**

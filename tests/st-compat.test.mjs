@@ -16,7 +16,6 @@
  *
  * 运行：node tests/st-compat.test.mjs   （全绿退出码 0）
  */
-import { createServer } from 'node:http';
 import { mkdtempSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -245,21 +244,16 @@ const CARD = {
   let route = null;
   const fakeCtx = {
     effect(fn) { fn(); return () => {}; },
-    get(name) { if (name === 'connection') return { requestRejection: () => undefined }; return undefined; },
-    webServer: { register(r) { route = r; return () => {}; } },
+    get() { return undefined; },
+    // 0.27.0：官方 /api 上的 exact Fetch route —— 直接调 route.fetch
+    connection: { fetch: { register(r) { route = r; return () => { route = null; }; } } },
   };
   await host.apply(fakeCtx);
-  const server = createServer((req, res) => {
-    if (route && (req.url === route.path || req.url.startsWith(route.path + '/'))) { route.handler(req, res); return; }
-    res.statusCode = 404; res.end('no route');
-  });
-  await new Promise((r) => server.listen(0, '127.0.0.1', r));
-  const base = 'http://127.0.0.1:' + server.address().port;
   const rpc = async (method, args) => {
-    const res = await fetch(base + '/dsh-cc-studio-rpc/' + method, {
+    const res = await route.fetch(new Request('http://local/api/cc-studio', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ type: 'client-request', rpcId: 'r-' + method, method, payload: { args } }),
-    });
+    }));
     const j = JSON.parse(await res.text());
     return (j && j.result) || {};
   };
@@ -328,8 +322,6 @@ const CARD = {
   const impV3 = await rpc('cc_importFromPng', { sessionId: 'st-4', b64: png.toString('base64') });
   check('⑦l 双块 PNG 仍然优先 ccv3（upgradedFrom=null，装饰器原样）',
     impV3.ok === true && impV3.value.upgradedFrom === null && impV3.value.draft.data.character_book.entries[0].content.startsWith('@@position'), String(impV3.value && impV3.value.upgradedFrom));
-
-  await new Promise((r) => server.close(r));
 }
 
 // ⑨ B2：V2 / V1 卡升级（PNG / CHARX / JSON 三条导入路径共用同一份 upgradeCardToV3）
@@ -396,21 +388,15 @@ const CARD = {
   let route2 = null;
   const fakeCtx2 = {
     effect(fn) { fn(); return () => {}; },
-    get(name) { if (name === 'connection') return { requestRejection: () => undefined }; return undefined; },
-    webServer: { register(r) { route2 = r; return () => {}; } },
+    get() { return undefined; },
+    connection: { fetch: { register(r) { route2 = r; return () => { route2 = null; }; } } },
   };
   await host.apply(fakeCtx2);
-  const server2 = createServer((req, res) => {
-    if (route2 && (req.url === route2.path || req.url.startsWith(route2.path + '/'))) { route2.handler(req, res); return; }
-    res.statusCode = 404; res.end('no route');
-  });
-  await new Promise((r) => server2.listen(0, '127.0.0.1', r));
-  const base2 = 'http://127.0.0.1:' + server2.address().port;
   const rpc2 = async (method, args) => {
-    const res = await fetch(base2 + '/dsh-cc-studio-rpc/' + method, {
+    const res = await route2.fetch(new Request('http://local/api/cc-studio', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ type: 'client-request', rpcId: 'i-' + method, method, payload: { args } }),
-    });
+    }));
     const j = JSON.parse(await res.text());
     return (j && j.result) || {};
   };
@@ -522,8 +508,6 @@ const CARD = {
   const imHuge = await rpc2('cc_importFromCharx', { sessionId: 'chx-no', b64: huge });
   check('⑩p 超过 30MB 的 base64 → too-large（解码前拦下）',
     imHuge.ok === false && imHuge.error.details.code === 'too-large', JSON.stringify(imHuge.error || {}));
-
-  await new Promise((r) => server2.close(r));
 }
 
 finish();

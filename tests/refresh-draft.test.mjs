@@ -12,7 +12,7 @@
  *
  * 运行：node tests/refresh-draft.test.mjs   （全绿退出码 0）
  */
-import { check, finish, loadClient, readRepo } from './harness.mjs';
+import { check, finish, loadClient, readRepo, installClientRpc } from './harness.mjs';
 
 const src = readRepo('lib/client.js');
 
@@ -34,7 +34,6 @@ check('①f 节流函数把 Promise 交出去（按钮据此给回执）',
 
 // —— ② 行为：刷新真的按当前会话拉一次 ——
 const { registration, React } = loadClient();
-const calls = [];
 const registered = {};
 const draftOf = (name) => ({ spec: 'chara_card_v3', spec_version: '3.0', data: { name, description: 'x', character_book: { entries: [] } } });
 const fakeCtx = {
@@ -44,14 +43,14 @@ const fakeCtx = {
     inject(name, cb) { cb(); return () => {}; },
     register(opts, comp) { registered[opts.name] = { opts, comp }; return () => {}; },
   },
-  connection: { rpc: { call(channel, endpoint, payload) {
-    calls.push({ endpoint, payload });
+};
+const calls = installClientRpc((endpoint, payload) => {
     if (endpoint === 'cc_getDraft') {
       return Promise.resolve({ ok: true, value: { draft: draftOf('宿主最新版'), key: payload && payload.args && payload.args.sessionId, keySource: 'arg', draftStatus: { key: payload.args.sessionId, lock: null } } });
     }
     return Promise.resolve({ ok: false, error: { code: 'internal', message: 'no handler' } });
-  } } },
-};
+});
+
 const mod = registration.factory((id) => {
   if (id === 'react') return React;
   throw new Error('unexpected require: ' + id);

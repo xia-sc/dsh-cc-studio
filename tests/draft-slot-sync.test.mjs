@@ -51,12 +51,14 @@ globalThis.window = { __ModuleLoader__: { load(def) { registration = def; } } };
 new Function('window', src)(globalThis.window);
 if (!registration) { console.log('FAIL  bundle 没有调用 window.__ModuleLoader__.load'); process.exit(1); }
 
-// —— 假 RPC：记录每一次调用，并按 endpoint 返回可编程的信封 ——
+// —— 假 RPC：0.27.0 起客户端 rpc() 走同源 fetch('/api/cc-studio') —— 在全局 fetch 上打桩 ——
 const calls = [];
 let handler = function () { return { ok: false, error: { code: 'internal', message: 'no handler' } }; };
-const rpcCall = function (channel, endpoint, payload) {
-  calls.push({ channel, endpoint, payload });
-  return Promise.resolve(handler(endpoint, payload));
+globalThis.fetch = async (_url, init) => {
+  const req = JSON.parse(init.body);
+  calls.push({ endpoint: req.method, payload: req.payload });
+  const result = await handler(req.method, req.payload);
+  return { status: 200, text: async () => JSON.stringify({ type: 'server-response', rpcId: req.rpcId, result }) };
 };
 const callsOf = (endpoint) => calls.filter((c) => c.endpoint === endpoint);
 
@@ -69,7 +71,6 @@ const fakeCtx = {
     inject(name, cb) { cb(); return () => {}; },
     register(opts, comp) { registered[opts.name] = { opts, comp }; return () => {}; },
   },
-  connection: { rpc: { call: rpcCall } },
 };
 
 const mod = registration.factory((id) => {

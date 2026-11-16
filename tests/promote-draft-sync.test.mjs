@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs';
 
 const src = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 
-import { check, finish, createFakeReact } from './harness.mjs';
+import { check, finish, createFakeReact, installClientRpc } from './harness.mjs';
 
 // —— 假 React / 定时器：与 tests/relations-view.test.mjs 同一套 harness ——
 const { React, effectQueue, hooks } = createFakeReact();;
@@ -50,7 +50,6 @@ const draftFixture = () => ({
   data: { name: '甲角色', description: '', character_book: { name: '甲的书', entries: [sharedEntry(), privateEntry()] } },
 });
 
-const calls = [];
 let promoted = { dryRun: false, promoted: 1, removedTotal: 2, perCard: [{ id: 'c1', removed: 1, left: 1 }, { id: 'c2', removed: 1, left: 1 }] };
 let bookOk = true;
 const fakeCtx = {
@@ -60,23 +59,19 @@ const fakeCtx = {
     inject(name, cb) { cb(); return () => {}; },
     register(opts, comp) { registered[opts.name] = { opts, comp }; return () => {}; },
   },
-  connection: {
-    rpc: {
-      call(channel, endpoint, payload) {
-        calls.push({ endpoint, payload });
-        if (endpoint === 'cc_loadFromLibrary') return Promise.resolve({ ok: true, value: { draft: draftFixture(), meta: { groupId: GID, name: '甲角色' } } });
-        if (endpoint === 'cc_promoteBook') return Promise.resolve({ ok: true, value: JSON.parse(JSON.stringify(promoted)) });
-        if (endpoint === 'cc_getBook') {
-          return bookOk
-            ? Promise.resolve({ ok: true, value: { book: { spec: 'lorebook_v3', data: { name: '草稿同步测试组·共享设定', description: '', scan_depth: 4, token_budget: 2000, recursive_scanning: false, entries: [sharedEntry()] } }, rev: 3 } })
-            : Promise.resolve({ ok: false, error: { code: 'internal', message: '读共享书失败' } });
-        }
-        return Promise.resolve({ ok: false, error: { code: 'internal', message: 'no handler' } });
-      },
-    },
-  },
 };
 const registered = {};
+// 0.27.0：客户端 rpc 走全局 fetch —— 在 apply 前安装桩
+const calls = installClientRpc((endpoint) => {
+  if (endpoint === 'cc_loadFromLibrary') return { ok: true, value: { draft: draftFixture(), meta: { groupId: GID, name: '甲角色' } } };
+  if (endpoint === 'cc_promoteBook') return { ok: true, value: JSON.parse(JSON.stringify(promoted)) };
+  if (endpoint === 'cc_getBook') {
+    return bookOk
+      ? { ok: true, value: { book: { spec: 'lorebook_v3', data: { name: '草稿同步测试组·共享设定', description: '', scan_depth: 4, token_budget: 2000, recursive_scanning: false, entries: [sharedEntry()] } }, rev: 3 } }
+      : { ok: false, error: { code: 'internal', message: '读共享书失败' } };
+  }
+  return { ok: false, error: { code: 'internal', message: 'no handler' } };
+});
 const mod = registration.factory((id) => {
   if (id === 'react') return React;
   throw new Error('unexpected require: ' + id);

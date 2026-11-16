@@ -9,7 +9,7 @@
  *
  * 运行：node tests/empty-state.test.mjs   （全绿退出码 0）
  */
-import { check, finish, loadClient, readRepo } from './harness.mjs';
+import { check, finish, loadClient, readRepo, installClientRpc } from './harness.mjs';
 
 const src = readRepo('lib/client.js');
 
@@ -40,8 +40,11 @@ const fakeCtx = {
     inject(name, cb) { cb(); return () => {}; },
     register(opts, comp) { registered[opts.name] = { opts, comp }; return () => {}; },
   },
-  connection: { rpc: { call() { return Promise.resolve({ ok: false, error: { code: 'internal', message: 'no handler' } }); } } },
 };
+const calls = installClientRpc((endpoint, payload) => {
+ return Promise.resolve({ ok: false, error: { code: 'internal', message: 'no handler' } });
+});
+
 const mod = registration.factory((id) => {
   if (id === 'react') return React;
   throw new Error('unexpected require: ' + id);

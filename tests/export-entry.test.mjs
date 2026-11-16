@@ -20,7 +20,7 @@ import { readFileSync } from 'node:fs';
 
 const src = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 
-import { check, finish, createFakeReact } from './harness.mjs';
+import { check, finish, createFakeReact, installClientRpc } from './harness.mjs';
 
 // —— 源码级：旧入口的残留物必须一起消失，否则「归一」会在下一次改动里悄悄长回来 ——
 const zhSrc = src.slice(src.indexOf('var zh='), src.indexOf('var en='));
@@ -70,7 +70,6 @@ new Function('window', src)(globalThis.window);
 if (!registration) { console.log('FAIL  bundle 没有调用 window.__ModuleLoader__.load'); process.exit(1); }
 
 // —— 假 RPC：角色库返回一条卡片；JSON 导出（0.13.0 起由宿主导出）返回一个固定文本 ——
-const calls = [];
 const LIB_ENTRY = { id: 'abcdef1234', name: '测试卡', loreCount: 1, tags: ['测试'], updatedAt: 1791960000, descriptionSnippet: '' };
 const registered = {};
 const fakeCtx = {
@@ -80,8 +79,9 @@ const fakeCtx = {
     inject(name, cb) { cb(); return () => {}; },
     register(opts, comp) { registered[opts.name] = { opts, comp }; return () => {}; },
   },
-  connection: { rpc: { call(channel, endpoint, payload) {
-    calls.push({ endpoint, payload });
+};
+
+const calls = installClientRpc((endpoint, payload) => {
     if (endpoint === 'cc_listLibrary') return Promise.resolve({ ok: true, value: { entries: [LIB_ENTRY] } });
     if (endpoint === 'cc_getLibraryEntry') return Promise.resolve({ ok: true, value: { id: 'abcdef1234', meta: { name: '测试卡', groupId: 'g-lib' }, draft: { spec: 'chara_card_v3', spec_version: '3.0', data: { name: '测试卡', group_only_greetings: [], assets: [], tags: [], creation_date: 1791960000, modification_date: 1791960000 } } } });
     if (endpoint === 'cc_getBook') return Promise.resolve({ ok: true, value: { exists: true, groupId: 'g-lib', book: { spec: 'lorebook_v3', data: { name: '库组书', entries: [{ keys: ['x'], content: 'c' }] } }, rev: 1, tokens: 12, scan: null } });
@@ -94,8 +94,7 @@ const fakeCtx = {
     if (endpoint === 'cc_stProbe') return Promise.resolve({ ok: true, value: { online: true, baseUrl: 'http://127.0.0.1:8000', version: '1.19.0', worlds: 3, auth: 'none', error: null } });
     if (endpoint === 'cc_stImport') return Promise.resolve({ ok: true, value: { card: { fileName: '工坊卡.png', name: '工坊卡' }, world: { action: 'imported', name: '锁天司·共享设定', existed: false }, warnings: [] } });
     return Promise.resolve({ ok: false, error: { code: 'internal', message: 'no handler' } });
-  } } },
-};
+});
 
 const mod = registration.factory((id) => {
   if (id === 'react') return React;

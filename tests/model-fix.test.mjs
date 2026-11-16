@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs';
 
 const src = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 
-import { check, finish, createFakeReact } from './harness.mjs';
+import { check, finish, createFakeReact, installClientRpc } from './harness.mjs';
 
 // —— 假 React ——
 const { React, effectQueue, hooks } = createFakeReact();;
@@ -79,7 +79,6 @@ const REPORT = {
   canon: { count: 0, source: 'none' },
 };
 
-const calls = [];
 const fakeCtx = {
   effect(fn) { try { fn(); } catch (e) { console.log('FAIL  effect 抛错: ' + e.message); } return () => {}; },
   locale: { register() { return () => {}; }, bind() { return (k) => k; } },
@@ -87,16 +86,16 @@ const fakeCtx = {
     inject(name, cb) { cb(); return () => {}; },
     register(opts, comp) { registered[opts.name] = { opts, comp }; return () => {}; },
   },
-  connection: { rpc: { call(channel, endpoint, payload) {
-    calls.push({ endpoint, payload });
+};
+const registered = {};
+
+const calls = installClientRpc((endpoint, payload) => {
     if (endpoint === 'cc_listLibrary') return Promise.resolve({ ok: true, value: { entries: [] } });
     if (endpoint === 'cc_listGroups') return Promise.resolve({ ok: true, value: { groups: [] } });
     if (endpoint === 'validate') return Promise.resolve({ ok: true, value: REPORT });
     if (endpoint === 'cc_promptSession') return Promise.resolve({ ok: true, value: { accepted: true } });
     return Promise.resolve({ ok: false, error: { code: 'internal', message: 'no handler' } });
-  } } },
-};
-const registered = {};
+});
 
 const mod = registration.factory((id) => {
   if (id === 'react') return React;

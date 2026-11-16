@@ -15,7 +15,7 @@
  *
  * 运行：node tests/unsaved-guard.test.mjs   （全绿退出码 0）
  */
-import { check, finish, loadClient } from './harness.mjs';
+import { check, finish, loadClient, installClientRpc } from './harness.mjs';
 import { readRepo } from './harness.mjs';
 
 const src = readRepo('lib/client.js');
@@ -121,7 +121,6 @@ check('④ 四段确认文案中英各一份', missing.length === 0, missing.joi
 // —— ⑤ 行为：未保存 + 用户在第一个确认点取消 → 不发载入 RPC ——
 {
   const { registration, React } = loadClient();
-  const calls = [];
   const registered = {};
   globalThis.window.confirm = function () { return false; };   // 用户全部选「取消/不覆盖」
   const fakeCtx = {
@@ -131,12 +130,12 @@ check('④ 四段确认文案中英各一份', missing.length === 0, missing.joi
       inject(name, cb) { cb(); return () => {}; },
       register(opts, comp) { registered[opts.name] = { opts, comp }; return () => {}; },
     },
-    connection: { rpc: { call(channel, endpoint, payload) {
-      calls.push({ endpoint, payload });
-      if (endpoint === 'cc_loadFromLibrary') return Promise.resolve({ ok: true, value: { draft: card('别人的卡'), meta: { name: '别人的卡' }, draftStatus: {} } });
-      return Promise.resolve({ ok: false, error: { code: 'internal', message: 'no handler' } });
-    } } },
   };
+  // 0.27.0：客户端 rpc 走全局 fetch —— 在 apply 前安装桩
+  const calls = installClientRpc((endpoint, payload) => {
+    if (endpoint === 'cc_loadFromLibrary') return { ok: true, value: { draft: card('别人的卡'), meta: { name: '别人的卡' }, draftStatus: {} } };
+    return { ok: false, error: { code: 'internal', message: 'no handler' } };
+  });
   const mod = registration.factory((id) => {
     if (id === 'react') return React;
     throw new Error('unexpected require: ' + id);
@@ -186,19 +185,19 @@ check('④ 四段确认文案中英各一份', missing.length === 0, missing.joi
       inject(name, cb) { cb(); return () => {}; },
       register(opts, comp) { registered[opts.name] = { opts, comp }; return () => {}; },
     },
-    connection: { rpc: { call(channel, endpoint, payload) {
-      if (endpoint === 'cc_getDraft') {
-        // 宿主内存里的草稿：与库里那张卡**同内容**，只是 setDraftFor 把 modification_date 刷成了 nowSec()
-        return Promise.resolve({ ok: true, value: { key: 'sess-1', draft: hostCopy(cardA, 9999), draftStatus: {}, originId: 'lib-a' } });
-      }
-      if (endpoint === 'cc_loadFromLibrary') {
-        const id = payload && payload.args ? payload.args.id : null;
-        const d = libById[id] || cardA;
-        return Promise.resolve({ ok: true, value: { draft: JSON.parse(JSON.stringify(d)), meta: { name: d.data.name }, draftStatus: {} } });
-      }
-      return Promise.resolve({ ok: false, error: { code: 'internal', message: 'no handler' } });
-    } } },
   };
+  installClientRpc((endpoint, payload) => {
+    if (endpoint === 'cc_getDraft') {
+      // 宿主内存里的草稿：与库里那张卡**同内容**，只是 setDraftFor 把 modification_date 刷成了 nowSec()
+      return { ok: true, value: { key: 'sess-1', draft: hostCopy(cardA, 9999), draftStatus: {}, originId: 'lib-a' } };
+    }
+    if (endpoint === 'cc_loadFromLibrary') {
+      const id = payload && payload.args ? payload.args.id : null;
+      const d = libById[id] || cardA;
+      return { ok: true, value: { draft: JSON.parse(JSON.stringify(d)), meta: { name: d.data.name }, draftStatus: {} } };
+    }
+    return { ok: false, error: { code: 'internal', message: 'no handler' } };
+  });
   const mod = registration.factory((id) => {
     if (id === 'react') return React;
     throw new Error('unexpected require: ' + id);
@@ -263,25 +262,25 @@ check('④ 四段确认文案中英各一份', missing.length === 0, missing.joi
       inject(name, cb) { cb(); return () => {}; },
       register(opts, comp) { registered[opts.name] = { opts, comp }; return () => {}; },
     },
-    connection: { rpc: { call(channel, endpoint, payload) {
-      if (endpoint === 'cc_getDraft') {
-        return Promise.resolve({ ok: true, value: {
-          key: payload.args.sessionId,
-          draft: JSON.parse(JSON.stringify(hostDraft)),
-          draftStatus: {},
-          originId: 'lib-a',
-          // 宿主按「库里那张卡」算出来的指纹（与客户端算法同构，见文件头）
-          originFingerprint: hostFingerprint(cardA),
-        } });
-      }
-      if (endpoint === 'cc_loadFromLibrary') {
-        const id = payload && payload.args ? payload.args.id : null;
-        const d = libById[id] || cardA;
-        return Promise.resolve({ ok: true, value: { draft: JSON.parse(JSON.stringify(d)), meta: { name: d.data.name }, draftStatus: {} } });
-      }
-      return Promise.resolve({ ok: false, error: { code: 'internal', message: 'no handler' } });
-    } } },
   };
+  installClientRpc((endpoint, payload) => {
+    if (endpoint === 'cc_getDraft') {
+      return { ok: true, value: {
+        key: payload.args.sessionId,
+        draft: JSON.parse(JSON.stringify(hostDraft)),
+        draftStatus: {},
+        originId: 'lib-a',
+        // 宿主按「库里那张卡」算出来的指纹（与客户端算法同构，见文件头）
+        originFingerprint: hostFingerprint(cardA),
+      } };
+    }
+    if (endpoint === 'cc_loadFromLibrary') {
+      const id = payload && payload.args ? payload.args.id : null;
+      const d = libById[id] || cardA;
+      return { ok: true, value: { draft: JSON.parse(JSON.stringify(d)), meta: { name: d.data.name }, draftStatus: {} } };
+    }
+    return { ok: false, error: { code: 'internal', message: 'no handler' } };
+  });
   const mod = registration.factory((id) => {
     if (id === 'react') return React;
     throw new Error('unexpected require: ' + id);

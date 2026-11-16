@@ -31,7 +31,7 @@ const src = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 // 工具半也要看：共享书相关提示里必须点名「SillyTavern 要用哪一份」（下面是 URL 被替换前先读好）
 const agentSrc = readFileSync(new URL('../lib/agent.js', import.meta.url), 'utf8');
 
-import { check, finish, createFakeReact } from './harness.mjs';
+import { check, finish, createFakeReact, installClientRpc } from './harness.mjs';
 
 const zhSrc = src.slice(src.indexOf('var zh='), src.indexOf('var en='));
 const enSrc = src.slice(src.indexOf('var en='), src.indexOf('function h(type,props)'));
@@ -143,7 +143,6 @@ const BOOK = {
   },
 };
 
-const calls = [];
 const fakeCtx = {
   effect(fn) { try { fn(); } catch (e) { console.log('FAIL  effect 抛错: ' + e.message); } return () => {}; },
   locale: { register() { return () => {}; }, bind() { return (k) => k; } },
@@ -151,8 +150,10 @@ const fakeCtx = {
     inject(name, cb) { cb(); return () => {}; },
     register(opts, comp) { registered[opts.name] = { opts, comp }; return () => {}; },
   },
-  connection: { rpc: { call(channel, endpoint, payload) {
-    calls.push({ endpoint, payload });
+};
+const registered = {};
+
+const calls = installClientRpc((endpoint, payload) => {
     if (endpoint === 'cc_getBook') return Promise.resolve({ ok: true, value: { exists: true, groupId: 'g1', book: BOOK, rev: 13, tokens: 1234, cards: [], scan: { candidates: [], bookDupes: [] } } });
     if (endpoint === 'cc_getGroup') return Promise.resolve({ ok: true, value: { group: { id: 'g1', name: '锁天司', nodes: [], edges: [] }, members: [], rev: 1 } });
     if (endpoint === 'cc_listGroups') return Promise.resolve({ ok: true, value: { groups: [{ id: 'g1', name: '锁天司', members: 4 }] } });
@@ -176,9 +177,7 @@ const fakeCtx = {
       return Promise.resolve({ ok: true, value: { filename: '锁天司·共享设定.json', mime: 'application/json', content: JSON.stringify(bookToStWorldInfo(BOOK.data), null, 2) } });
     }
     return Promise.resolve({ ok: false, error: { code: 'internal', message: 'no handler' } });
-  } } },
-};
-const registered = {};
+});
 
 const mod = registration.factory((id) => {
   if (id === 'react') return React;

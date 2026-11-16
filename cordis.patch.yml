@@ -1,6 +1,6 @@
 # @xia-sc/dsh-cc-studio — CCv3 角色卡工坊
 # 融合形态：conversation.input.dock 胶囊常驻 + shell.overlay 全屏/侧边抽屉工坊
-# Host 挂 /dsh-cc-studio-rpc，Client 挂 dock + overlay + settings.section
+# Host 端点挂官方 /api 共享通道的 exact Fetch route（/api/cc-studio），Client 挂 dock + overlay + settings.section
 - insert:
     - id: dsh-cc-studio
       name: '@xia-sc/dsh-cc-studio'

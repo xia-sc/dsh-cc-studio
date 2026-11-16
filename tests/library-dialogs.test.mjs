@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 
 const src = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 
-import { check, finish, createFakeReact } from './harness.mjs';
+import { check, finish, createFakeReact, installClientRpc } from './harness.mjs';
 
 // —— 假 React + 真实定时器 ——
 // 本文件用 `await tick()`（真实 setTimeout 0）等 refreshLibrary 落地，所以不能走 loadClient 的
@@ -32,7 +32,6 @@ globalThis.window = { __ModuleLoader__: { load(def) { registration = def; } } };
 new Function('window', src)(globalThis.window);
 if (!registration) { console.log('FAIL  bundle 没有调用 window.__ModuleLoader__.load'); process.exit(1); }
 
-const calls = [];
 const FAKE_LIB = [
   { id: 'lib-a', name: '陆昭', loreCount: 5, groupId: 'g1', tags: [] },
   { id: 'lib-b', name: '白十三', loreCount: 3, groupId: 'g1', tags: [] },
@@ -44,16 +43,16 @@ const fakeCtx = {
     inject(name, cb) { cb(); return () => {}; },
     register(opts, comp) { registered[opts.name] = { opts, comp }; return () => {}; },
   },
-  connection: { rpc: { call(channel, endpoint, payload) {
-    calls.push({ endpoint, payload });
+};
+const registered = {};
+
+const calls = installClientRpc((endpoint, payload) => {
     if (endpoint === 'cc_listLibrary') return Promise.resolve({ ok: true, value: { entries: FAKE_LIB } });
     if (endpoint === 'cc_listGroups') return Promise.resolve({ ok: true, value: { groups: [] } });
     if (endpoint === 'cc_renameInLibrary') return Promise.resolve({ ok: true, value: { id: payload.args.id, name: payload.args.name } });
     if (endpoint === 'cc_createGroup') return Promise.resolve({ ok: true, value: { group: { id: 'g-new', name: payload.args.name } } });
     return Promise.resolve({ ok: false, error: { code: 'internal', message: 'no handler' } });
-  } } },
-};
-const registered = {};
+});
 
 const mod = registration.factory((id) => {
   if (id === 'react') return React;

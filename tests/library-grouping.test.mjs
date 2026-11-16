@@ -16,7 +16,7 @@ import { readFileSync } from 'node:fs';
 
 const src = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 
-import { check, finish, loadClient } from './harness.mjs';
+import { check, finish, loadClient, installClientRpc } from './harness.mjs';
 
 // —— 假 React ——
 const { registration, React, effectQueue, hooks, storage } = loadClient({ timers: 'drop' });
@@ -34,7 +34,6 @@ const FAKE_GROUPS = [
 ];
 
 let groupsResponse = FAKE_GROUPS;
-const calls = [];
 const fakeCtx = {
   effect(fn) { try { fn(); } catch (e) { console.log('FAIL  effect 抛错: ' + e.message); } return () => {}; },
   locale: { register() { return () => {}; }, bind() { return (k) => k; } },
@@ -42,14 +41,14 @@ const fakeCtx = {
     inject(name, cb) { cb(); return () => {}; },
     register(opts, comp) { registered[opts.name] = { opts, comp }; return () => {}; },
   },
-  connection: { rpc: { call(channel, endpoint, payload) {
-    calls.push({ endpoint, payload });
+};
+const registered = {};
+
+const calls = installClientRpc((endpoint, payload) => {
     if (endpoint === 'cc_listLibrary') return Promise.resolve({ ok: true, value: { entries: FAKE_LIB } });
     if (endpoint === 'cc_listGroups') return Promise.resolve({ ok: true, value: { groups: groupsResponse } });
     return Promise.resolve({ ok: false, error: { code: 'internal', message: 'no handler' } });
-  } } },
-};
-const registered = {};
+});
 
 const mod = registration.factory((id) => {
   if (id === 'react') return React;

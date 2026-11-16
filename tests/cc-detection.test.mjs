@@ -189,9 +189,13 @@ if (!registration) { console.log('FAIL  bundle 没有调用 window.__ModuleLoade
 
 const calls = [];
 let handler = function () { return { ok: false, error: { code: 'internal', message: 'no handler' } }; };
-const rpcCall = function (channel, endpoint, payload) {
-  calls.push({ channel, endpoint, payload });
-  return Promise.resolve(handler(endpoint, payload));
+// 0.27.0：客户端 rpc() 改为同源 fetch('/api/cc-studio') —— 在全局 fetch 上打桩。
+// handler(endpoint, payload) 的契约不变（可返回 Promise），返回 result 对象。
+globalThis.fetch = async (_url, init) => {
+  const req = JSON.parse(init.body);
+  calls.push({ endpoint: req.method, payload: req.payload });
+  const result = await handler(req.method, req.payload);
+  return { status: 200, text: async () => JSON.stringify({ type: 'server-response', rpcId: req.rpcId, result }) };
 };
 const callsOf = (endpoint) => calls.filter((c) => c.endpoint === endpoint);
 
@@ -203,7 +207,6 @@ const fakeCtx = {
     inject(name, cb) { cb(); return () => {}; },
     register(opts, comp) { registered[opts.name] = { opts, comp }; return () => {}; },
   },
-  connection: { rpc: { call: rpcCall } },
 };
 const mod = registration.factory((id) => {
   if (id === 'react') return React;

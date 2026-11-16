@@ -16,7 +16,7 @@ import { readFileSync } from 'node:fs';
 
 const src = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 
-import { check, finish, createFakeReact } from './harness.mjs';
+import { check, finish, createFakeReact, installClientRpc } from './harness.mjs';
 
 // —— 假 React：hook 槽位按渲染顺序保留 ——
 const { React, effectQueue, hooks } = createFakeReact();;
@@ -54,7 +54,6 @@ globalThis.window = {
 new Function('window', src)(globalThis.window);
 if (!registration) { console.log('FAIL  bundle 没有调用 window.__ModuleLoader__.load'); process.exit(1); }
 
-const calls = [];
 const registered = {};
 const fakeCtx = {
   effect(fn) { try { fn(); } catch (e) { console.log('FAIL  effect 抛错: ' + e.message); } return () => {}; },
@@ -63,8 +62,11 @@ const fakeCtx = {
     inject(name, cb) { cb(); return () => {}; },
     register(opts, comp) { registered[opts.name] = { opts, comp }; return () => {}; },
   },
-  connection: { rpc: { call(channel, endpoint, payload) { calls.push({ endpoint, payload }); return Promise.resolve({ ok: false, error: { code: 'internal', message: 'no handler' } }); } } },
 };
+
+const calls = installClientRpc((endpoint, payload) => {
+
+});
 
 const mod = registration.factory((id) => {
   if (id === 'react') return React;

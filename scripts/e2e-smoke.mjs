@@ -154,10 +154,10 @@ try {
     }
   }
 
-  // —— RPC：信封 + 三个只读端点 ——
+  // —— RPC：官方 /api 共享通道上的 exact Fetch route（0.27.0）——
   let seq = 0;
   async function rpc(method, payloadArgs) {
-    const res = await fetch(`${base}/dsh-cc-studio-rpc/${method}`, {
+    const res = await fetch(`${base}/api/cc-studio`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie },
       body: JSON.stringify({ type: 'client-request', rpcId: `e2e-${++seq}`, method, payload: { args: payloadArgs || {} } }),

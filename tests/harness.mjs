@@ -41,6 +41,28 @@ export function readRepo(rel) {
 }
 
 /**
+ * 客户端 RPC 桩（0.27.0 起客户端 `rpc()` 走同源 `fetch("/api/cc-studio")`）。
+ *
+ * 用法：在 `loadClient()` / 自己装载 bundle 之后、`mod.apply(fakeCtx)` 之前调用。
+ * `handler(endpoint, payload)` 返回 result 对象（`{ok:true,value}` / `{ok:false,error}`），
+ * 可以是 async 或返回 Promise —— 与旧 `ctx.connection.rpc.call` 的桩同形。
+ * 返回 `calls` 数组（`{ endpoint, payload }`），记录每一次调用。
+ *
+ * 为什么不再用 fakeCtx.connection.rpc.call：0.27.0 把传输层换成官方 `/api` 上的
+ * exact Fetch route，客户端不再依赖 connection 服务；测试必须打在 fetch 上。
+ */
+export function installClientRpc(handler) {
+  const calls = [];
+  globalThis.fetch = async (_url, init) => {
+    const req = JSON.parse(init.body);
+    calls.push({ endpoint: req.method, payload: req.payload });
+    const result = await handler(req.method, req.payload);
+    return { status: 200, text: async () => JSON.stringify({ type: 'server-response', rpcId: req.rpcId, result }) };
+  };
+  return calls;
+}
+
+/**
  * 假 React（hook 槽位按渲染顺序保留）：只读源码的测试也能用，不必自己抄一份。
  * 返回的 `effectQueue` / `hooks` 供测试手动跑 effect、重置槽位。
  */

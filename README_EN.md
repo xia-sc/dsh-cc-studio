@@ -8,7 +8,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 
 | Item | Value |
 | --- | --- |
-| Package / version | `@xia-sc/dsh-cc-studio` `0.26.1` |
+| Package / version | `@xia-sc/dsh-cc-studio` `0.27.0` |
 | Compatibility | DSH `>=0.2.2-rc.1` (incl. Desktop), Node `>=22`, **zero runtime dependencies**; see [Compatibility & permissions](#compatibility--permissions) |
 | Storage | `<DSH_HOME>/cc-library/` (cards), `cc-drafts/` (session drafts + creation lock + backups), `cc-groups/` (relationship groups), `cc-books/` (group shared lorebook); `DSH_HOME` defaults to `~/.dsh` |
 | Docs | This file; read [AGENTS.md](./AGENTS.md) before changing code; history in [CHANGELOG.md](./CHANGELOG.md) |
@@ -163,6 +163,7 @@ npm test    # all test files, serial; must be green
 
 Full history: [CHANGELOG.md](./CHANGELOG.md) (0.12.0 onwards).
 
+- `0.27.0` **RPC transport moved onto the official `/api` shared channel** (architecture change, same external behaviour): host endpoints now register `/api/cc-studio` through `connection.fetch.register`, so dsh owns authentication and body limits; the ~200-line hand-rolled wire layer is gone and the client `rpc()` uses same-origin fetch. **Restart dsh and reload the page** — old client and new host do not interoperate in this version.
 - `0.26.1` **Matrix gains `0.2.2-rc.3`** (the current desktop build): isolated verification passed (L2 composition, full L3 smoke, and every package the preset names resolving inside the rc.3 install tree). Runtime code unchanged; the extra `tool-office` / `interrupt:false` / `customSkillDirs` rows in rc.3's `standard` are capability differences and stay out.
 - ⚠️ **Important update** `0.26.0` **compatibility floor raised to dsh `0.2.2-rc.1`** (breaking): the 0.2.0 / 0.2.1 lines are no longer supported, so upgrade dsh before updating this plugin; the legacy `modelSelectionSettings` double-write is gone, the CC preset regains `tool-schedule` and `tool-plugin-market` (the latter disabled) to match rc.1's built-in `standard`, and the composition snapshot is generated from rc.1.
 - `0.25.4` **Second false-positive fix**: the first card switch after creating a session or reloading no longer asks "not saved to the library yet" — the saved baseline now comes from the host (the library card's content fingerprint), and both halves use the same key-order-independent fingerprint.

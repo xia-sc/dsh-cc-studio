@@ -53,21 +53,25 @@ const FIXTURE = {
 
 const calls = [];
 const registered = {};
+// 0.27.0：客户端 rpc() 改为同源 fetch('/api/cc-studio') —— 在全局 fetch 上打桩，
+// 按信封里的 method 分派；返回值形状与旧 ctx.connection.rpc.call 一致（result 对象）。
+const defaultRpc = async (method) => {
+  if (method === 'cc_getGroup') return { ok: true, value: FIXTURE };
+  return { ok: false, error: { code: 'internal', message: 'no handler' } };
+};
+let rpcHandler = defaultRpc;
+globalThis.fetch = async (url, init) => {
+  const req = JSON.parse(init.body);
+  calls.push({ endpoint: req.method, payload: req.payload });
+  const result = await rpcHandler(req.method, (req.payload && req.payload.args) || {});
+  return { status: 200, text: async () => JSON.stringify({ type: 'server-response', rpcId: req.rpcId, result }) };
+};
 const fakeCtx = {
   effect(fn) { try { fn(); } catch (e) { console.log('FAIL  effect 抛错: ' + e.message); } return () => {}; },
   locale: { register() { return () => {}; }, bind() { return (k) => k; } },
   slots: {
     inject(name, cb) { cb(); return () => {}; },
     register(opts, comp) { registered[opts.name] = { opts, comp }; return () => {}; },
-  },
-  connection: {
-    rpc: {
-      call(channel, endpoint, payload) {
-        calls.push({ endpoint, payload });
-        if (endpoint === 'cc_getGroup') return Promise.resolve({ ok: true, value: FIXTURE });
-        return Promise.resolve({ ok: false, error: { code: 'internal', message: 'no handler' } });
-      },
-    },
   },
 };
 const mod = registration.factory((id) => {
@@ -151,13 +155,13 @@ check('⑦ 数据层与渲染同源：store 里就是宿主那一份（group.nod
 // —— 反向钉子：顶层放 nodes/edges 而 group 里没有时，界面必须**不**认（说明它读的是唯一真源）——
 {
   const bad = { group: { id: 'g2', name: '空组', rev: 1, nodes: [], edges: [] }, nodes: GROUP.nodes, edges: GROUP.edges, members: [], rev: 1 };
-  const orig = fakeCtx.connection.rpc.call;
-  fakeCtx.connection.rpc.call = (ch, ep, pl) => (ep === 'cc_getGroup' ? Promise.resolve({ ok: true, value: bad }) : orig(ch, ep, pl));
+  const orig = rpcHandler;
+  rpcHandler = (ep, args) => (ep === 'cc_getGroup' ? Promise.resolve({ ok: true, value: bad }) : orig(ep, args));
   store.setCurrentGroupId('g2');
   await store.loadGroup('g2');
   const tree2 = redraw();
   const all2 = texts(tree2);
-  fakeCtx.connection.rpc.call = orig;
+  rpcHandler = orig;
   check('⑧ 反向钉子：只有顶层有 nodes/edges（group 里是空）时界面显示 0 —— 渲染只认 group 这一个真源',
     all2.indexOf('workshop.rel.edges · 0') >= 0 && all2.indexOf('workshop.rel.noEdge') >= 0,
     all2.filter((x) => String(x).indexOf('workshop.rel.edges') === 0).join(' / '));
@@ -181,11 +185,11 @@ const BOOK_FIXTURE = {
   },
 };
 {
-  const orig = fakeCtx.connection.rpc.call;
-  fakeCtx.connection.rpc.call = (ch, ep, pl) => {
+  const orig = rpcHandler;
+  rpcHandler = (ep, args) => {
     if (ep === 'cc_getBook') return Promise.resolve({ ok: true, value: BOOK_FIXTURE });
     if (ep === 'cc_listGroups') return Promise.resolve({ ok: true, value: { groups: [{ id: GID, name: '锁天司', memberCount: 4, hasBook: true, bookEntries: 2 }] } });
-    return orig(ch, ep, pl);
+    return orig(ep, args);
   };
   store.setCur(7);
   await store.loadBook(GID);
@@ -225,14 +229,14 @@ const BOOK_FIXTURE = {
   check('⑬ 8 个视图在「已载入卡 + 有共享书」时都能渲染（渲染期抛错会让整个工坊闪退甚至卡死 dsh）',
     viewRuns.every((v) => v.ok),
     viewRuns.filter((v) => !v.ok).map((v) => 'cur=' + v.cur + ': ' + v.err).join(' | '));
-  fakeCtx.connection.rpc.call = orig;
+  rpcHandler = orig;
 }
 // 实机反馈：右侧载入另一张卡之后，「人物关系」还停在上张卡的组里 —— 必须再点一次那个组的
 // 「关系」按钮才会切过去，非常费解。关系视图与共享世界书都是**按组**看的，所以「换卡」必须带着组换。
 {
   const called = [];
-  const orig = fakeCtx.connection.rpc.call;
-  fakeCtx.connection.rpc.call = (ch, ep, pl) => {
+  const orig = rpcHandler;
+  rpcHandler = (ep, args) => {
     called.push(ep);
     if (ep === 'cc_loadFromLibrary') {
       return Promise.resolve({ ok: true, value: {
@@ -240,7 +244,7 @@ const BOOK_FIXTURE = {
         meta: { name: '陆昭', groupId: GID, loreCount: 8 },
       } });
     }
-    return orig(ch, ep, pl);
+    return orig(ep, args);
   };
   store.setCurrentGroupId('');
   await store.loadFromLibrary('c4');
@@ -248,14 +252,14 @@ const BOOK_FIXTURE = {
   check('⑫ 载入一张卡会**跟着切到它所属的分组**（关系视图/共享书都按组看，不许停留在上张卡的组）',
     snap.currentGroupId === GID && called.indexOf('cc_getGroup') >= 0,
     JSON.stringify({ gid: snap.currentGroupId, called: called.filter((x, i) => called.indexOf(x) === i) }));
-  fakeCtx.connection.rpc.call = orig;
+  rpcHandler = orig;
 }
 
 // —— 0.10.0 体检清单：按 error / warn 分组渲染，每条挂一个「检查类别」——
 // 旧行为是把 issues 拼成一行 lastMsg；加上跨卡一致性检查后一次可能十来条，一行糊成一片。
 // 这里同样只喂**宿主真实会返回的形状**（跟拍宿主 cc_groupCheck 的返回）。
 {
-  const orig = fakeCtx.connection.rpc.call;
+  const orig = rpcHandler;
   const CHECK_FIXTURE = {
     groupId: GID, rev: 7, name: '锁天司',
     issues: [
@@ -268,10 +272,10 @@ const BOOK_FIXTURE = {
     byCheck: { structure: 1, relations: 0, budget: 0, 'lore-quality': 1, 'cross-card': 1 },
     errorCount: 1, warningCount: 2,
   };
-  fakeCtx.connection.rpc.call = (ch, ep, pl) => {
+  rpcHandler = (ep, args) => {
     if (ep === 'cc_groupCheck') return Promise.resolve({ ok: true, value: CHECK_FIXTURE });
     if (ep === 'cc_getGroup') return Promise.resolve({ ok: true, value: FIXTURE });
-    return orig(ch, ep, pl);
+    return orig(ep, args);
   };
   store.setCurrentGroupId(GID);
   store.setCur(4);
@@ -290,7 +294,7 @@ const BOOK_FIXTURE = {
   check('⑭c issues / byCheck 存进 store —— 界面只显示宿主返回的清单，客户端不自己统计',
     (() => { const s = store.getSnapshot(); return Array.isArray(s.relIssues) && s.relIssues.length === 3 && s.relByCheck['cross-card'] === 1; })(),
     JSON.stringify(store.getSnapshot().relByCheck));
-  fakeCtx.connection.rpc.call = orig;
+  rpcHandler = orig;
   await store.loadGroup(GID);
   check('⑭d 重新载入分组后清单清空（上一次的体检结果不许跟着新组显示）',
     texts(redraw()).indexOf('workshop.rel.checkStats') < 0 && store.getSnapshot().relIssues === null, '');

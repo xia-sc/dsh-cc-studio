@@ -46,14 +46,22 @@ dsh 兼容下限从 `0.2.0-rc.2` 抬到 `0.2.2-rc.1`。**运行时代码零改�
 
 对照依据：本机源码 checkout `E:\dsh\deepseek-harness\deepseek-harness` 的 HEAD 恰好是 `0.2.2-rc.1`（顶层 `package.json` 的 `version`），直接读 `packages/bundle/web-app/presets/standard.patch.yml` 与 `packages/subagent/tool-subagent/src/index.ts` 核对，不必猜包名。
 
-### 记录：为什么没有改用 `connection.fetch.register`
+### 记录：`connection.fetch.register` 的两次判断（0.26.x 不改 → 0.27.0 已迁）
 
-`HostConnectionFetch` 自 `0.2.0-rc.1` 起就存在（`git log -S 'HostConnectionFetch'` 只命中 `e5e4b02742`，首个包含它的 tag 是 `dsh-v0.2.0-rc.1`），看起来能用官方 exact Fetch 路由替掉插件自建的 `/dsh-cc-studio-rpc` 前缀路由。核对后**不改**：
+`HostConnectionFetch` 自 `0.2.0-rc.1` 起就存在（`git log -S 'HostConnectionFetch'` 只命中 `e5e4b02742`，首个包含它的 tag 是 `dsh-v0.2.0-rc.1`）。0.26.x 第一次评估的结论是「不改」，保留在这里作对照：
 
-- `get fetch()` 和 `get rpc()` 一样，owner 是 `HostConnectionService.this.ctx`（connection 插件自己的 Context），注册走 `owner.effect(...)`。插件卸载 / 重载不会清掉已注册路由；connection 插件重载后路由表重建，插件也不会自动重挂。
-- exact 路由按 pathname 精确匹配，插件的每个 endpoint 要单独注册，还拿不到「未知端点回 200 + 失败帧」这条刻意保持的线协议语义。
+- `get fetch()` 的 owner 是 `HostConnectionService.this.ctx`，但注册只写 `this.fetchRoutes`、不碰 `webServer` —— 外部插件**能**注册；只是 disposer 挂在 connection 的 fiber 上，插件必须自己用 `ctx.effect` 包一层。
+- exact 路由按 pathname 精确匹配；「未知端点回 200 + 失败帧」仍能在 body 内保留（URL 不再编码 endpoint）。
 
-结论写在这里，避免下次升级又把这个想法当成「顺手能清的技术债」重提一遍。
+0.27.0 推翻「不改」并完成迁移。决定性证据是官方源码：`connection.rpc.handle()` 在 `packages/` 与 `apps/` 里**零消费方**（13 处真实使用全是 `fetch.register`），`/api` 的 interceptor 被 `typertGateway` 独占；官方架构笔记还把「各 owner 在 `/api` 上注册 exact Fetch route」写成插件端点的正规入口。迁移后删掉约 150 行自维护协议（围栏 / body 读取 / 48MB 上限 / 信封发送），交接给 Connection 的 trust、认证、body 与上限。
+
+迁移时踩到的坑：
+
+1. **客户端测试的桩点必须换**：旧测试 mock `ctx.connection.rpc.call`，迁移后客户端走全局 `fetch`，桩会静默不生效（表现为「请求没发出」）。统一用 `tests/harness.mjs` 新增的 `installClientRpc()`。
+2. **客户端 `rpc()` 必须定义在 factory 级**：`createStore`（写/读草稿）与 `apply`（轮询）不在同一闭包；定义在 createStore 里会让 apply 侧报 `rpc is not defined`。
+3. **批量改测试要先归一化 CRLF**：`^const calls = \[\];\n` 在 CRLF 文件里匹配不到，会留下重复声明。
+4. **UI 层不许出现中文字面量**：传输错误的 message 写成英文诊断串（`RPC failed (HTTP 413)`），否则 i18n 源码守卫会红。
+5. **非 POST 回 404、超限回 413**：这是 Connection 的语义；前缀路由时代的 405 / 自管 48MB 断言必须删掉，否则测试在测官方契约而不是插件。
 
 ### 用目标版本重建 L2 快照
 

@@ -1,21 +1,14 @@
 /**
- * host 半 /dsh-cc-studio-rpc 通道回归测试（不随插件发布，files 未包含 tests）。
+ * host 半 `/api/cc-studio` 端点回归测试（不随插件发布，files 未包含 tests）。
  *
- * 背景：dsh 0.1.5-rc.1 里 `connection.rpc.handle()` 对外部插件不可用 ——
- * HostConnectionService.rpc 用的是 connection 插件自己的 ctx（inject 仅
- * ["credentials"]），它通过内层 ctx.inject(["webServer"]) 作用域拿到 webServer，
- * 所以那个 owner fiber 永远解析不到，调用必抛
- * "cannot get property \"webServer\" without inject"。插件改为自己在
- * `webServer` 上注册路由并实现同一套 connection RPC 线上协议，
- * 本测试用假 cordis ctx + 真实 node:http 服务锁住这套协议。
- *
- * 覆盖：路由注册、connection host/origin 围栏、server-response envelope 与
- * client-connection 客户端解析器的兼容性、fail() 帧字段类型、路径/信封校验、
- * 请求体读取（事件式，含中文与 48MiB 上限）。
+ * 0.27.0：端点从「自建 /dsh-cc-studio-rpc 前缀路由」迁到官方 `/api` 共享通道上的 exact Fetch
+ * route（`connection.fetch.register`）。认证（Host/Origin + 会话 cookie）、请求体读取、
+ * maxRequestBodyBytes 上限由 Connection 负责，所以本文件不再覆盖围栏 / 405 / 413 / 路径穿越
+ * —— 那些是官方契约（见 dsh-client-connection 的 createSharedFetchHandler）。这里只钉插件
+ * 自己的责任：路由声明、信封校验、content-type、dispatch 结果与 rpcId 回显。
  *
  * 运行：node tests/rpc-channel.test.mjs   （全绿退出码 0）
  */
-import { createServer } from 'node:http';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -36,55 +29,49 @@ const host = await import('../lib/index.js');
 import { check, finish } from './harness.mjs';
 
 let route = null;
-let rejection = undefined; // undefined = 放行
 const fakeCtx = {
   effect(fn) {
     fn();
     return () => {};
   },
-  get(name) {
-    if (name === 'connection') return { requestRejection: () => rejection };
+  get() {
     return undefined;
   },
-  webServer: {
-    register(r) {
-      route = r;
-      return () => {
-        route = null;
-      };
+  // 0.27.0：宿主只向 Connection 注册 exact Fetch route；认证/body 由官方负责。
+  connection: {
+    fetch: {
+      register(r) {
+        route = r;
+        return () => {
+          route = null;
+        };
+      },
     },
   },
 };
 
-check('inject 声明含 webServer', host.inject.includes('webServer'), host.inject.join(','));
+check('inject 声明含 connection、不再依赖 webServer',
+  host.inject.includes('connection') && !host.inject.includes('webServer'), host.inject.join(','));
 check('apply 是函数', typeof host.apply === 'function');
 
-const server = createServer((req, res) => {
-  if (route && (req.url === route.path || req.url.startsWith(route.path + '/'))) {
-    route.handler(req, res);
-    return;
-  }
-  res.statusCode = 404;
-  res.end('no route');
-});
-
-await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-const port = server.address().port;
-const base = `http://127.0.0.1:${port}`;
-
-// connection 服务在真实环境里随宿主一起挂载；这里等 apply() 注册完路由
 await host.apply(fakeCtx);
-await new Promise((r) => setTimeout(r, 50));
 
-check('注册了 /dsh-cc-studio-rpc 前缀路由', route && route.kind === 'prefix' && route.path === '/dsh-cc-studio-rpc',
-  route ? `${route.kind} ${route.path}` : 'route is null');
+check('注册了 /api 上的 exact Fetch route（path/methods/requestBody）',
+  !!route && route.path === '/api/cc-studio' && Array.isArray(route.methods)
+    && route.methods.length === 1 && route.methods[0] === 'POST' && route.requestBody === 'buffered',
+  route ? `${route.path} ${JSON.stringify(route.methods)} ${route.requestBody}` : 'route is null');
 
-async function post(path, body, { contentType = 'application/json', method = 'POST' } = {}) {
-  const res = await fetch(base + path, {
+/**
+ * 直接调用 Connection 会分派给本插件的 Fetch handler。
+ * 第一个参数保留「历史端点名」只为让调用点可读 —— URL 不再编码 endpoint（它现在在信封里）。
+ * 认证、405/404、413 与路径归一化都是 Connection 的职责，不在这里模拟。
+ */
+async function post(_endpointPath, body, { contentType = 'application/json', method = 'POST' } = {}) {
+  const res = await route.fetch(new Request('http://local/api/cc-studio', {
     method,
     headers: contentType === null ? {} : { 'content-type': contentType },
     body: method === 'POST' ? body : undefined,
-  });
+  }));
   const text = await res.text();
   let json = null;
   try {
@@ -95,7 +82,7 @@ async function post(path, body, { contentType = 'application/json', method = 'PO
 
 // 1) 正常帧：ping
 {
-  const r = await post('/dsh-cc-studio-rpc/ping', JSON.stringify({ type: 'client-request', rpcId: 'rid-1', method: 'ping', payload: { args: {} } }));
+  const r = await post('/api/cc-studio', JSON.stringify({ type: 'client-request', rpcId: 'rid-1', method: 'ping', payload: { args: {} } }));
   check('POST ping → 200', r.status === 200, `status=${r.status} body=${r.text.slice(0, 120)}`);
   check('envelope type=server-response', r.json && r.json.type === 'server-response', JSON.stringify(r.json));
   check('rpcId 原样回显', r.json && r.json.rpcId === 'rid-1', r.json && r.json.rpcId);
@@ -111,7 +98,7 @@ async function post(path, body, { contentType = 'application/json', method = 'PO
     post_history_instructions: '生成前自检：先确认上一段时间。',
     first_mes: '[时间：2026-01-01 08:00]\n开场。',
   } };
-  const r = await post('/dsh-cc-studio-rpc/validate', JSON.stringify({ type: 'client-request', rpcId: 'rid-2', method: 'validate', payload: { args: { card } } }));
+  const r = await post('/api/cc-studio', JSON.stringify({ type: 'client-request', rpcId: 'rid-2', method: 'validate', payload: { args: { card } } }));
   check('POST validate → 200', r.status === 200, `status=${r.status}`);
   check('validate 返回 valid=true', r.json && r.json.result && r.json.result.ok === true && r.json.result.value.valid === true,
     JSON.stringify(r.json && r.json.result));
@@ -125,7 +112,7 @@ async function post(path, body, { contentType = 'application/json', method = 'PO
   // 0.22.0 契约：结构合法但缺时间锚定 → valid=false（导出判定的口径），
   // 而 structural.valid=true —— cc_setDraft 的写盘门禁只看结构，否则创作中的草稿会被整条拒掉。
   const bare = { spec: 'chara_card_v3', spec_version: '3.0', data: { name: 'Bare', group_only_greetings: [] } };
-  const rb = await post('/dsh-cc-studio-rpc/validate', JSON.stringify({ type: 'client-request', rpcId: 'rid-2b', method: 'validate', payload: { args: { card: bare } } }));
+  const rb = await post('/api/cc-studio', JSON.stringify({ type: 'client-request', rpcId: 'rid-2b', method: 'validate', payload: { args: { card: bare } } }));
   const vb = rb.json && rb.json.result && rb.json.result.value;
   check('缺时间锚定 → valid=false 且 structural.valid=true（写盘门禁与内容体检分离）',
     !!vb && vb.valid === false && vb.structural && vb.structural.valid === true
@@ -136,7 +123,7 @@ async function post(path, body, { contentType = 'application/json', method = 'PO
 // 3) 非法卡：validate 端点把校验结果当成功值返回（不是 fail 帧）
 {
   const card = { spec: 'nope', data: {} };
-  const r = await post('/dsh-cc-studio-rpc/validate', JSON.stringify({ type: 'client-request', rpcId: 'rid-3', method: 'validate', payload: { args: { card } } }));
+  const r = await post('/api/cc-studio', JSON.stringify({ type: 'client-request', rpcId: 'rid-3', method: 'validate', payload: { args: { card } } }));
   check('validate 对非法卡仍返回 ok 帧 + valid=false',
     r.json && r.json.result.ok === true && r.json.result.value.valid === false,
     JSON.stringify(r.json && r.json.result));
@@ -145,7 +132,7 @@ async function post(path, body, { contentType = 'application/json', method = 'PO
 // 3b) 真正走 fail() 的端点（cc_setDraft 给非法 draft）：客户端解析器要求
 //     error.code / error.message 是 string、error.details 是 object
 {
-  const r = await post('/dsh-cc-studio-rpc/cc_setDraft', JSON.stringify({ type: 'client-request', rpcId: 'rid-3b', method: 'cc_setDraft', payload: { args: { draft: { spec: 'nope' } } } }));
+  const r = await post('/api/cc-studio', JSON.stringify({ type: 'client-request', rpcId: 'rid-3b', method: 'cc_setDraft', payload: { args: { draft: { spec: 'nope' } } } }));
   const err = r.json && r.json.result && r.json.result.error;
   check('fail() 带 code/message/details 三字段且类型合规',
     !!err && typeof err.code === 'string' && typeof err.message === 'string' && typeof err.details === 'object' && err.details !== null,
@@ -157,17 +144,21 @@ async function post(path, body, { contentType = 'application/json', method = 'PO
 
 // 4) 未知端点
 {
-  const r = await post('/dsh-cc-studio-rpc/cc_nope', JSON.stringify({ type: 'client-request', rpcId: 'rid-4', method: 'cc_nope', payload: {} }));
+  const r = await post('/api/cc-studio', JSON.stringify({ type: 'client-request', rpcId: 'rid-4', method: 'cc_nope', payload: {} }));
   check('未知端点 → 200 + 失败帧，details.code=unknown-endpoint',
     r.status === 200 && r.json.result.ok === false && r.json.result.error.code === 'internal' && r.json.result.error.details.code === 'unknown-endpoint',
     JSON.stringify(r.json && r.json.result));
 }
 
-// 5) method 与路径不一致
+// 5) 信封里的 method 是唯一分派依据（URL 不再编码 endpoint；method 错就调到错端点）
 {
-  const r = await post('/dsh-cc-studio-rpc/ping', JSON.stringify({ type: 'client-request', rpcId: 'rid-5', method: 'validate', payload: {} }));
-  check('method 与端点不一致 → 200 + gateway/bad-request', r.status === 200 && r.json.result.ok === false && r.json.result.error.code === 'gateway/bad-request',
-    JSON.stringify(r.json && r.json.result));
+  const card = { spec: 'chara_card_v3', spec_version: '3.0', data: { name: 'R', group_only_greetings: [] } };
+  const r = await post('/api/cc-studio', JSON.stringify({ type: 'client-request', rpcId: 'rid-5', method: 'validate', payload: { args: { card } } }));
+  check('信封 method=validate → 实际执行 validate（返回 valid 字段，而不是 ping/pong）',
+    r.status === 200 && r.json.result.ok === true && typeof r.json.result.value.valid === 'boolean',
+    JSON.stringify(r.json && r.json.result).slice(0, 160));
+  const bad = await post('/api/cc-studio', JSON.stringify({ type: 'client-request', rpcId: 'rid-5b', payload: {} }));
+  check('信封缺 method → 400（外层 schema 校验）', bad.status === 400, `status=${bad.status}`);
 }
 
 // 5b) 0.8.0 分组端点：工坊侧（建组下拉 / 归组下拉 / 关系视图）走的就是这几条。
@@ -175,7 +166,7 @@ async function post(path, body, { contentType = 'application/json', method = 'PO
 //     所以要在**真实 RPC 线**上钉一遍接线，而不只是调导出的纯函数。
 {
   const rpc = async (method, args) => {
-    const r = await post('/dsh-cc-studio-rpc/' + method,
+    const r = await post('/api/cc-studio',
       JSON.stringify({ type: 'client-request', rpcId: 'rid-' + method, method, payload: { args } }));
     return (r.json && r.json.result) || {};
   };
@@ -256,55 +247,29 @@ async function post(path, body, { contentType = 'application/json', method = 'PO
 
 // 6) 外层信封非法
 {
-  const r = await post('/dsh-cc-studio-rpc/ping', JSON.stringify({ rpcId: 'rid-6' }));
+  const r = await post('/api/cc-studio', JSON.stringify({ rpcId: 'rid-6' }));
   check('非法信封 → 400', r.status === 400 && r.json.result.ok === false, `status=${r.status}`);
 }
 
 // 7) body 不是 JSON
 {
-  const r = await post('/dsh-cc-studio-rpc/ping', 'not-json');
+  const r = await post('/api/cc-studio', 'not-json');
   check('非 JSON body → 400', r.status === 400, `status=${r.status} body=${r.text.slice(0, 80)}`);
 }
 
 // 8) content-type 不对
 {
-  const r = await post('/dsh-cc-studio-rpc/ping', '{}', { contentType: 'text/plain' });
+  const r = await post('/api/cc-studio', '{}', { contentType: 'text/plain' });
   check('content-type 非 application/json → 415', r.status === 415, `status=${r.status}`);
 }
 
-// 9) 路径穿越/非法段
-{
-  const r = await post('/dsh-cc-studio-rpc/../ping', JSON.stringify({ type: 'client-request', rpcId: 'r', method: 'ping', payload: {} }));
-  check('非法路径段 → 404（不会被 server 归一化后误命中）', r.status === 404 || r.status === 400, `status=${r.status}`);
-}
-
-// 10) 非 POST
-{
-  const r = await post('/dsh-cc-studio-rpc/ping', null, { method: 'GET', contentType: null });
-  check('GET → 405 + allow:POST', r.status === 405, `status=${r.status}`);
-}
-
-// 11) connection 围栏生效（模拟未认证浏览器）
-{
-  rejection = 401;
-  const r = await post('/dsh-cc-studio-rpc/ping', JSON.stringify({ type: 'client-request', rpcId: 'r', method: 'ping', payload: {} }));
-  check('围栏 401 时返回 unauthorized', r.status === 401 && r.text === 'unauthorized', `status=${r.status} body=${r.text}`);
-  rejection = 403;
-  const r2 = await post('/dsh-cc-studio-rpc/ping', JSON.stringify({ type: 'client-request', rpcId: 'r', method: 'ping', payload: {} }));
-  check('围栏 403 时返回 forbidden', r2.status === 403 && r2.text === 'forbidden', `status=${r2.status} body=${r2.text}`);
-  rejection = undefined;
-}
-
-// 12) 大请求体（超过 48MiB 上限应 413）
-{
-  const big = 'x'.repeat(49 * 1024 * 1024);
-  const r = await post('/dsh-cc-studio-rpc/ping', JSON.stringify({ type: 'client-request', rpcId: 'r', method: 'ping', payload: { args: { big } } }));
-  check('超过 48MiB → 413', r.status === 413, `status=${r.status}`);
-}
+// 9) Connection 的职责（401/403 围栏、405、413、路径归一化）不在这里测：
+//    它们由 dsh-client-connection 的 createSharedFetchHandler 统一实现，插件只声明
+//    path/methods/requestBody。本测试只钉插件自己的信封与 dispatch 契约。
 
 // 13) UTF-8 中文请求体往返
 {
-  const r = await post('/dsh-cc-studio-rpc/validate', JSON.stringify({
+  const r = await post('/api/cc-studio', JSON.stringify({
     type: 'client-request', rpcId: 'rid-utf8', method: 'validate',
     payload: { args: { card: { spec: 'chara_card_v3', data: { name: '中文名字', group_only_greetings: ['你好'] } } } },
   }));
@@ -342,15 +307,15 @@ async function post(path, body, { contentType = 'application/json', method = 'PO
   const card = (name) => ({ spec: 'chara_card_v3', spec_version: '3.0',
     data: { name, group_only_greetings: [], character_book: { entries: [] }, assets: [{ type: 'icon', uri: 'ccdefault:', name: 'main', ext: 'png' }] } });
   const sid = 'session-e2e-issue5';
-  const w = await post('/dsh-cc-studio-rpc/cc_setDraft', JSON.stringify({ type: 'client-request', rpcId: 'r14e-w', method: 'cc_setDraft', payload: { args: { sessionId: sid, draft: card('E2E 满草稿') } } }));
+  const w = await post('/api/cc-studio', JSON.stringify({ type: 'client-request', rpcId: 'r14e-w', method: 'cc_setDraft', payload: { args: { sessionId: sid, draft: card('E2E 满草稿') } } }));
   check('显式 sessionId 写入 session-<id> 槽', result(w) && result(w).key === sid, JSON.stringify(w.json && w.json.result));
 
-  const g1 = await post('/dsh-cc-studio-rpc/cc_getDraft', JSON.stringify({ type: 'client-request', rpcId: 'r14e-g1', method: 'cc_getDraft', payload: { args: { sessionId: sid } } }));
+  const g1 = await post('/api/cc-studio', JSON.stringify({ type: 'client-request', rpcId: 'r14e-g1', method: 'cc_getDraft', payload: { args: { sessionId: sid } } }));
   check('同一 sessionId 读回内容（写入没丢）',
     result(g1) && result(g1).key === sid && result(g1).draft.data.name === 'E2E 满草稿' && result(g1).keySource === 'arg',
     JSON.stringify(result(g1) && { key: result(g1).key, name: result(g1).draft.data.name, keySource: result(g1).keySource }));
 
-  const g2 = await post('/dsh-cc-studio-rpc/cc_getDraft', JSON.stringify({ type: 'client-request', rpcId: 'r14e-g2', method: 'cc_getDraft', payload: { args: {} } }));
+  const g2 = await post('/api/cc-studio', JSON.stringify({ type: 'client-request', rpcId: 'r14e-g2', method: 'cc_getDraft', payload: { args: {} } }));
   check('不带 sessionId 时是另一把槽（default），不会把会话槽的内容当成 default —— 这正是 issue #5 的两槽并存',
     result(g2) && result(g2).key === 'default' && result(g2).draft.data.name !== 'E2E 满草稿',
     JSON.stringify(result(g2) && { key: result(g2).key, name: result(g2).draft.data.name }));
@@ -358,11 +323,11 @@ async function post(path, body, { contentType = 'application/json', method = 'PO
   // 14f) 救回入口：模拟「旧版前端读写 default、模型写会话槽」留下的错位。
   //      先把 default 槽写成有内容的（旧版前端在拿不到会话 id 时就是这么写的）
   const legacy = '旧版遗留草稿';
-  const wd = await post('/dsh-cc-studio-rpc/cc_setDraft', JSON.stringify({ type: 'client-request', rpcId: 'r14f-wd', method: 'cc_setDraft', payload: { args: { draft: card(legacy) } } }));
+  const wd = await post('/api/cc-studio', JSON.stringify({ type: 'client-request', rpcId: 'r14f-wd', method: 'cc_setDraft', payload: { args: { draft: card(legacy) } } }));
   check('不带 sessionId 写入落在 default 槽', result(wd) && result(wd).key === 'default', JSON.stringify(result(wd) && { key: result(wd).key }));
 
   const fresh = 'session-fresh-issue5';
-  const g3 = await post('/dsh-cc-studio-rpc/cc_getDraft', JSON.stringify({ type: 'client-request', rpcId: 'r14e-g3', method: 'cc_getDraft', payload: { args: { sessionId: fresh } } }));
+  const g3 = await post('/api/cc-studio', JSON.stringify({ type: 'client-request', rpcId: 'r14e-g3', method: 'cc_getDraft', payload: { args: { sessionId: fresh } } }));
   const alts = (result(g3) && result(g3).alternateSlots) || [];
   check('新会话槽是空壳时，只把「旧版 default 槽」列为可迁入候选（不噪音式列其它会话）',
     result(g3) && result(g3).draftStatus.isNew === true &&
@@ -370,27 +335,27 @@ async function post(path, body, { contentType = 'application/json', method = 'PO
     JSON.stringify(alts));
 
   const sid2 = 'session-unrelated-issue5';
-  const g4 = await post('/dsh-cc-studio-rpc/cc_getDraft', JSON.stringify({ type: 'client-request', rpcId: 'r14e-g4', method: 'cc_getDraft', payload: { args: { sessionId: sid2 } } }));
+  const g4 = await post('/api/cc-studio', JSON.stringify({ type: 'client-request', rpcId: 'r14e-g4', method: 'cc_getDraft', payload: { args: { sessionId: sid2 } } }));
   const alts2 = (result(g4) && result(g4).alternateSlots) || [];
   check('别的会话的槽（session-e2e-issue5）不会被当成候选端出来',
     result(g4) && alts2.every((a) => a.key !== sid), JSON.stringify(alts2));
 
-  const m1 = await post('/dsh-cc-studio-rpc/cc_migrateDraft', JSON.stringify({ type: 'client-request', rpcId: 'r14e-m1', method: 'cc_migrateDraft', payload: { args: { from: 'default', to: fresh } } }));
+  const m1 = await post('/api/cc-studio', JSON.stringify({ type: 'client-request', rpcId: 'r14e-m1', method: 'cc_migrateDraft', payload: { args: { from: 'default', to: fresh } } }));
   check('cc_migrateDraft 把 default 槽内容搬进本会话槽',
     result(m1) && result(m1).key === fresh && result(m1).draft.data.name === legacy && result(m1).from === 'default',
     JSON.stringify(result(m1) && { key: result(m1).key, from: result(m1).from }));
 
-  const m2 = await post('/dsh-cc-studio-rpc/cc_migrateDraft', JSON.stringify({ type: 'client-request', rpcId: 'r14e-m2', method: 'cc_migrateDraft', payload: { args: { from: 'default', to: fresh } } }));
+  const m2 = await post('/api/cc-studio', JSON.stringify({ type: 'client-request', rpcId: 'r14e-m2', method: 'cc_migrateDraft', payload: { args: { from: 'default', to: fresh } } }));
   check('目标槽已有内容 → 拒绝静默覆盖（target-not-empty）',
     m2.json && m2.json.result.ok === false && m2.json.result.error.details.code === 'target-not-empty',
     JSON.stringify(m2.json && m2.json.result));
 
-  const m3 = await post('/dsh-cc-studio-rpc/cc_migrateDraft', JSON.stringify({ type: 'client-request', rpcId: 'r14e-m3', method: 'cc_migrateDraft', payload: { args: { from: 'session-nobody-here', to: fresh } } }));
+  const m3 = await post('/api/cc-studio', JSON.stringify({ type: 'client-request', rpcId: 'r14e-m3', method: 'cc_migrateDraft', payload: { args: { from: 'session-nobody-here', to: fresh } } }));
   check('源槽没有草稿 → empty-source',
     m3.json && m3.json.result.ok === false && m3.json.result.error.details.code === 'empty-source',
     JSON.stringify(m3.json && m3.json.result));
 
-  const m4 = await post('/dsh-cc-studio-rpc/cc_migrateDraft', JSON.stringify({ type: 'client-request', rpcId: 'r14e-m4', method: 'cc_migrateDraft', payload: { args: { from: fresh, to: fresh } } }));
+  const m4 = await post('/api/cc-studio', JSON.stringify({ type: 'client-request', rpcId: 'r14e-m4', method: 'cc_migrateDraft', payload: { args: { from: fresh, to: fresh } } }));
   check('源槽与目标槽相同 → same-slot',
     m4.json && m4.json.result.ok === false && m4.json.result.error.details.code === 'same-slot',
     JSON.stringify(m4.json && m4.json.result));
@@ -425,7 +390,7 @@ async function post(path, body, { contentType = 'application/json', method = 'PO
 //     所以这一段不依赖工具半的落地进度，锁契约本身由宿主半的端点接线钉死。
 {
   const rpc = async (method, args) => {
-    const r = await post('/dsh-cc-studio-rpc/' + method,
+    const r = await post('/api/cc-studio',
       JSON.stringify({ type: 'client-request', rpcId: 'rid-lock-' + method, method, payload: { args } }));
     return (r.json && r.json.result) || {};
   };
@@ -550,8 +515,6 @@ async function post(path, body, { contentType = 'application/json', method = 'PO
     JSON.stringify({ ok: saveLocked.ok, id: saveLocked.value && saveLocked.value.id }),
   );
 }
-
-await new Promise((resolve) => server.close(resolve));
 
 // 还原 homedir/DSH_HOME 并清掉沙箱目录（host 半在测试期间只会写 cc-drafts 与沙箱内的预设目录）
 if (originalHome === undefined) delete process.env.HOME; else process.env.HOME = originalHome;

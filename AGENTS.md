@@ -56,23 +56,27 @@ tests/fixtures/       L2 组合快照（由 npm run fixture:dump 生成）
 
 
 
-**宿主 inject 是硬依赖。** `const inject = ["webServer", "connection", "agents", "agentPresets"]`；解析不到会一直等待而不报错。可选服务用 `ctx.get("x")` 并自己判空。
+**宿主 inject 是硬依赖。** `const inject = ["connection", "agents", "agentPresets"]`；解析不到会一直等待而不报错。可选服务用 `ctx.get("x")` 并自己判空。
 
 
 
-**RPC 通道由插件自己注册。** `connection.rpc.handle()` 对外部插件不可用（它用 connection 自身的 ctx，解析不到 `webServer`），所以插件在 `ctx.webServer` 上注册 `kind:"prefix"` 的 `POST /dsh-cc-studio-rpc/<endpoint>`，自己实现同一套线协议：
+**RPC 端点挂在官方 `/api` 共享通道上（0.27.0）。** 插件不自己注册 HTTP 路由：`ctx.connection.fetch.register({ path:"/api/cc-studio", methods:["POST"], requestBody:"buffered", fetch })`。Host/Origin 围栏、会话 cookie 认证、请求体读取与 `maxRequestBodyBytes` 上限全由 Connection 托管（只有 owner Peer 可达）。线协议保持 client-connection 的信封：
 
 
 
-- 请求体 `{type:"client-request", rpcId, method, payload}`，`method` 必须等于 URL 里的 endpoint；响应体 `{type:"server-response", rpcId, result:{ok,value}|{ok:false,error:{code,message,details}}}`。
+- 请求体 `{type:"client-request", rpcId, method, payload}`，`method` 是 dispatch 的端点名（URL 不再编码 endpoint）；响应体 `{type:"server-response", rpcId, result:{ok,value}|{ok:false,error:{code,message,details}}}`。
 
-- 先过 `connection.requestRejection(req)` 围栏（host/origin + 会话 cookie），**不能绕过**。
+- 未知端点回 200 + 失败帧（`details.code="unknown-endpoint"`），不是 404；非 JSON content-type 回 415、body 不是 JSON 或信封非法回 400 —— 这三条是插件自己的责任（Connection 只管认证与 body 读取）。
 
-- 体积上限 `RPC_MAX_BODY_BYTES = 48MB`（PNG ≤20MB、CHARX ≤30MB 的 base64 都走这里）；请求体读取用事件式 `readBoundedBody`。
+- 非 POST 由 exact-route 分派回落成 404、超限回 413：这是官方语义，**别在插件里重新实现围栏 / readBoundedBody / 48MB 上限**。
 
-- 命名约束来自 `dsh-client-connection`：channel `/^\/[A-Za-z0-9._~-]+$/`、endpoint 每段 `/^[A-Za-z0-9_$.-]+$/`。未知端点回 200 + 失败帧（`details.code="unknown-endpoint"`），不是 404。
+- 为什么不用 `connection.rpc.handle()`：它对外部插件不可用（owner 是 connection 自己的 ctx，`owner.webServer` 解析不到）；而且官方源码里 `rpc.handle` 零消费方、`/api` 的 interceptor 被 `typertGateway` 独占 —— 别等它修（见 COMPAT-AUDIT）。
 
-- 改协议前先对 `@deepseek-ai/dsh-client-connection` 的 `parseConnectionResponse` / `assertTarget`。
+- 为什么不用自建 `ctx.webServer.register({kind:"prefix"})`：能跑，但认证/body/上限全要自己写；0.26.x 及以前就是那样，0.27.0 已迁走。
+
+- 客户端 `lib/client.js` 的 `rpc()` 是唯一传输层（factory 级函数）：同源 `fetch("/api/cc-studio")`，返回值仍是 result 对象；测试用 `tests/harness.mjs` 的 `installClientRpc()` 在全局 fetch 上打桩。
+
+- 改协议前先对 `@deepseek-ai/dsh-client-connection` 的 `createSharedFetchHandler` 与 `HostConnectionFetch` 类型。
 
 
 
@@ -275,7 +279,7 @@ npm test    # 全部测试文件串行；全绿才算过
 
 - **验证预设没 broken**：`dsh --profile <名字> --dump-config` 确认 `preset-cc` 被组合进来，再看 GUI「Agent 预设」或 `POST /api/pluginInventory/list`（带 `broken`）。
 
-- **验证 RPC**：`/` 与 RPC 都受会话 cookie 保护；用 `dsh web` 打印的 token 访问 `/?token=…` 换 cookie，再带信封 POST。
+- **验证 RPC**：`/` 与 `/api/cc-studio` 都受会话 cookie 保护；用 `dsh web` 打印的 token 访问 `/?token=…` 换 cookie，再带信封 POST 到 `/api/cc-studio`（`method` 在信封里）。
 
 - **整套隔离实测**：三个环境变量指向临时目录，建 `profiles/<名字>/package.json` 声明 `dsh.profile.bundles`，把本仓库 symlink 进 `node_modules/@xia-sc/dsh-cc-studio`，用目标 dsh 版本启动 `web --no-open --port <空闲端口>`，再用 playwright/curl 验三个挂载点与关键流程。沙箱/asar 环境下的具体做法（复制代替 symlink、cmd 重定向日志、token 换 cookie、预置 workspace.json 等）见 [COMPAT-AUDIT.md](./COMPAT-AUDIT.md)。
 

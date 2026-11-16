@@ -21,7 +21,7 @@ import { readFileSync } from 'node:fs';
 
 const src = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 
-import { check, finish, createFakeReact } from './harness.mjs';
+import { check, finish, createFakeReact, installClientRpc } from './harness.mjs';
 
 // —— 假 React：hook 槽位按渲染顺序保留（这样 setHover/setFocus 之后重渲染能看到新值）——
 const { React, effectQueue, hooks } = createFakeReact();;
@@ -48,7 +48,6 @@ globalThis.window = { __ModuleLoader__: { load(def) { registration = def; } } };
 new Function('window', src)(globalThis.window);
 if (!registration) { console.log('FAIL  bundle 没有调用 window.__ModuleLoader__.load'); process.exit(1); }
 
-const calls = [];
 // 假角色库：折叠态的头像条要靠真实条目数来断言，空库时「渲染了 0 个头像」与「根本没写头像条」分不清。
 const FAKE_LIB = [
   { id: 'lib-a', name: '陆昭', loreCount: 5, groupId: 'g1', tags: [] },
@@ -62,14 +61,14 @@ const fakeCtx = {
     inject(name, cb) { cb(); return () => {}; },
     register(opts, comp) { registered[opts.name] = { opts, comp }; return () => {}; },
   },
-  connection: { rpc: { call(channel, endpoint, payload) {
-    calls.push({ endpoint, payload });
+};
+const registered = {};
+
+const calls = installClientRpc((endpoint, payload) => {
     if (endpoint === 'cc_listLibrary') return Promise.resolve({ ok: true, value: { entries: FAKE_LIB } });
     if (endpoint === 'cc_listGroups') return Promise.resolve({ ok: true, value: { groups: [] } });
     return Promise.resolve({ ok: false, error: { code: 'internal', message: 'no handler' } });
-  } } },
-};
-const registered = {};
+});
 
 const mod = registration.factory((id) => {
   if (id === 'react') return React;

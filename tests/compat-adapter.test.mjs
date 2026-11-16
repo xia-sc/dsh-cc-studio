@@ -12,7 +12,6 @@
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createServer } from 'node:http';
 
 // 隔离副作用：宿主 apply / writeBook 都会解析 DSH_HOME —— 三个变量一起改（同 st-compat 家规）
 const originalHome = process.env.HOME, originalUserProfile = process.env.USERPROFILE, originalDshHome = process.env.DSH_HOME;
@@ -178,21 +177,17 @@ const CARD = {
 let route = null;
 const fakeCtx = {
   effect(fn) { fn(); return () => {}; },
-  get(name) { if (name === 'connection') return { requestRejection: () => undefined }; return undefined; },
-  webServer: { register(r) { route = r; return () => {}; } },
+  get() { return undefined; },
+  // 0.27.0：宿主端点挂在官方 /api 共享通道的 exact Fetch route 上 —— 直接调用 route.fetch，
+  // 不再起 node:http 服务（认证与请求体由 Connection 负责，不在插件测试范围内）。
+  connection: { fetch: { register(r) { route = r; return () => { route = null; }; } } },
 };
 await host.apply(fakeCtx);
-const server = createServer((req, res) => {
-  if (route && (req.url === route.path || req.url.startsWith(route.path + '/'))) { route.handler(req, res); return; }
-  res.statusCode = 404; res.end('no route');
-});
-await new Promise(r => server.listen(0, '127.0.0.1', r));
-const base = 'http://127.0.0.1:' + server.address().port;
 const rpc = async (method, args) => {
-  const res = await fetch(base + '/dsh-cc-studio-rpc/' + method, {
+  const res = await route.fetch(new Request('http://local/api/cc-studio', {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ type: 'client-request', rpcId: 'a-' + method, method, payload: { args } }),
-  });
+  }));
   return (JSON.parse(await res.text()) || {}).result || {};
 };
 /** 简易 PNG tEXt 块扫描（测试自己解）。 */
@@ -330,7 +325,6 @@ check('③k cc_exportCharx：CHARX 容器仍是 card.json，target 只影响导�
     JSON.stringify(missing.error && missing.error.details));
 }
 
-await new Promise(r => server.close(r));
 rmSync(sandboxHome, { recursive: true, force: true });
 process.env.HOME = originalHome; process.env.USERPROFILE = originalUserProfile; process.env.DSH_HOME = originalDshHome;
 
