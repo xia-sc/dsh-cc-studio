@@ -104,7 +104,7 @@ tests/fixtures/       L2 组合快照（由 npm run fixture:dump 生成）
 
 
 
-**远程导入（推给本机 SillyTavern）。** 平台差异只在 adapter 的 `remote` 描述里（探测/CSRF/世界书列表/世界书导入/卡导入的路径与字段名、默认地址、认证方式）；纯计算在 `lib/compat/remote.js`；宿主只做 IO（`cc_stProbe` / `cc_stImport`）；客户端只按 `cc_listTargets` 里带 `remote` 的目标渲染区块。**先导世界书、后导卡**，卡副本的 `extensions.world` 必须用平台**返回的实际书名**。ST 默认 CORS 拒绝浏览器跨域、CSRF token 与 session cookie 绑定，所以请求必须由宿主代发。
+**远程导入（推给本机 SillyTavern）。** 平台差异只在 adapter 的 `remote` 描述里（探测/CSRF/世界书列表/世界书导入/角色卡列表/卡导入的路径与字段名、默认地址、认证方式）；纯计算在 `lib/compat/remote.js`；宿主只做 IO（`cc_stProbe` / `cc_stImport`）；客户端只按 `cc_listTargets` 里带 `remote` 的目标渲染区块。**先导世界书、后导卡**，卡副本的 `extensions.world` 必须用平台**返回的实际书名**。ST 默认 CORS 拒绝浏览器跨域、CSRF token 与 session cookie 绑定，所以请求必须由宿主代发。**同名卡**（0.27.1）：导入前用 `card.list`（`/api/characters/all`）查重；默认不传 `preserved_name`（ST 按文件存在性加后缀、不覆盖用户已有的卡），只有显式 `overwriteCard:true` 才把 ST 实际 `avatar` 当 `preserved_name` 覆盖那一张。别改回「无脑另存」——ST 删角色后可能用 fallback 重建同名 PNG，那会变成两张同名卡。
 
 
 

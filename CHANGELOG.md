@@ -4,6 +4,22 @@
 
 格式：最新版本按「新增 / 修复」写；更早的小节按现象 → 根因 → 修法 → 生效方式。
 
+## 0.27.1
+
+**修「重复导入到 SillyTavern 出现两张同名卡」。**
+
+### 修复
+
+- 现象：导入一张卡 → 在 ST 里删除角色 → 删除世界书时 ST 报 `Failed to read image: data/default-user/characters/白十三.png ... ENOENT`（它用 fallback 图把同名 PNG 又写了回来）→ 再从插件导入，ST 里出现两张「白十三」。
+- 根因：ST 的 `POST /api/characters/import` 在不传 `preserved_name` 时用 `getPngName()` 按「文件是否存在」加后缀（`白十三1.png`）；插件一直走「另存」路径（有意不覆盖）。当 ST 侧删除角色没清干净、又被 fallback 重建了同名 PNG 时，第二次导入就变成两张同名卡。
+- 修法：导入前先 `POST /api/characters/all` 查同名卡。导出区块新增「覆盖 ST 里的同名角色卡（只保留一张）」开关，**默认关**（保持不覆盖用户已有卡）；勾选时把 ST 实际 `avatar` 作为 `preserved_name` 传过去，ST 直接覆盖那一张（底图是本次上传的 PNG，不会再 fallback、不会多一张）。未勾选时返回 `card.existing` 与 `st-card-exists` 警告，界面明确说「已另存为 白十三1.png」。
+- 生效方式：重启 dsh + 刷新页面。
+
+### 说明
+
+- 插件无法替 ST 清理「删角色后 fallback 重建同名 PNG」的残留，但可以不再静默制造第二张同名卡：查重 → 告知实际文件名 → 需要时显式覆盖。
+- 覆盖是破坏性动作，所以默认关；词表文案与 footnote 都写明「只保留一张」。
+
 ## 0.27.0
 
 **RPC 传输迁到官方 `/api` 共享通道的 exact Fetch route（架构变更，对外行为不变）。**

@@ -128,6 +128,7 @@ import { check, finish } from './harness.mjs';
 const stState = {
   mode: 'ok',                 // ok | auth | forbidden | csrf-fail
   worlds: [],
+  cards: [],                  // 0.27.1：/api/characters/all 返回的角色摘要
   worldImportStatus: 200,
   cardImportStatus: 200,
   token: 'tok-1',
@@ -201,6 +202,10 @@ const stServer = createServer(async function(req, res){
   if(req.url === '/version' && req.method === 'GET'){ sendJson(200, { pkgVersion: '1.19.0' }); return; }
   if(req.url === '/api/worldinfo/list' && req.method === 'POST'){
     sendJson(200, stState.worlds.map(function(n){ return { file_id: n, name: n }; }));
+    return;
+  }
+  if(req.url === '/api/characters/all' && req.method === 'POST'){
+    sendJson(200, stState.cards);
     return;
   }
   if(req.url === '/api/worldinfo/import' && req.method === 'POST'){
@@ -281,6 +286,7 @@ writeFileSync(join(sandboxHome, 'cc-books', 'g1.json'), JSON.stringify({
 function resetStState(){
   stState.mode = 'ok';
   stState.worlds = [];
+  stState.cards = [];
   stState.worldImportStatus = 200;
   stState.cardImportStatus = 200;
   stState.requests.length = 0;
@@ -349,8 +355,8 @@ function resetStState(){
   const v = r.json && r.json.result && r.json.result.value;
   check('④a cc_stImport 成功：返回卡文件名 + 世界书动作', !!v && v.card && v.card.fileName === '工坊测试卡.png' && v.world && v.world.action === 'imported',
     JSON.stringify(v));
-  check('④b 先 GET /csrf-token，再 list → world import → card import（顺序固定）',
-    stState.requests.map(function(x){ return x.url; }).join(',') === '/csrf-token,/api/worldinfo/list,/api/worldinfo/import,/api/characters/import',
+  check('④b 先 GET /csrf-token，再 list → world import → 查角色 → card import（顺序固定）',
+    stState.requests.map(function(x){ return x.url; }).join(',') === '/csrf-token,/api/worldinfo/list,/api/worldinfo/import,/api/characters/all,/api/characters/import',
     stState.requests.map(function(x){ return x.url; }).join(','));
   const wi = stState.worldImports[0];
   check('④c 世界书 multipart：字段名 avatar、文件名 = 书名.json、内容顶层只有 entries',
@@ -444,6 +450,34 @@ function resetStState(){
   stState.mode = 'csrf-fail';
   const r = await rpc('cc_stImport', { sessionId: 's-st', baseUrl: stBase });
   check('④q CSRF 被拒 → 不会误报成功', failCode(r.json) !== null, failCode(r.json));
+}
+// 0.27.1：ST 里已有同名卡。默认另存（不覆盖用户已有的卡），但要明确告知冲突；
+// 勾选「覆盖同名卡」时把 ST 实际 avatar 作为 preserved_name 传过去，只保留一张。
+{
+  resetStState();
+  stState.cards = [{ name: '工坊测试卡', avatar: '工坊测试卡.png' }];
+  const r = await rpc('cc_stImport', { sessionId: 's-st', baseUrl: stBase, groupId: 'g1', stWorld: '共享书一' });
+  const v = r.json && r.json.result && r.json.result.value;
+  const ci = stState.cardImports[0];
+  const preserved = ci && ci.parts.filter(function(p){ return p.name === 'preserved_name'; })[0];
+  check('④r 同名卡 + 未勾覆盖 → 不传 preserved_name（ST 另存），返回冲突信息 + st-card-exists 警告',
+    !!v && v.card.overwritten === false && !!v.card.existing && v.card.existing.count === 1
+    && v.card.existing.avatars[0] === '工坊测试卡.png'
+    && !preserved && (v.warnings || []).some(function(w){ return w.code === 'st-card-exists'; }),
+    JSON.stringify({ card: v && v.card, preserved: !!preserved }));
+}
+{
+  resetStState();
+  stState.cards = [{ name: '工坊测试卡', avatar: '工坊测试卡.png' }];
+  const r = await rpc('cc_stImport', { sessionId: 's-st', baseUrl: stBase, groupId: 'g1', stWorld: '共享书一', overwriteCard: true });
+  const v = r.json && r.json.result && r.json.result.value;
+  const ci = stState.cardImports[0];
+  const preserved = ci && ci.parts.filter(function(p){ return p.name === 'preserved_name'; })[0];
+  check('④s 同名卡 + overwriteCard → 把实际 avatar 作为 preserved_name 传过去（ST 覆盖那一张，不再多一张）',
+    !!v && v.card.overwritten === true
+    && !!preserved && preserved.data.toString('utf8') === '工坊测试卡.png'
+    && !(v.warnings || []).some(function(w){ return w.code === 'st-card-exists'; }),
+    JSON.stringify({ preserved: preserved && preserved.data.toString('utf8'), card: v && v.card }));
 }
 
 // ============================================================
