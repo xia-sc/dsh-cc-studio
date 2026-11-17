@@ -8,7 +8,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 
 | Item | Value |
 | --- | --- |
-| Package / version | `@xia-sc/dsh-cc-studio` `0.27.1` |
+| Package / version | `@xia-sc/dsh-cc-studio` `0.27.2` |
 | Compatibility | DSH `>=0.2.2-rc.1` (incl. Desktop), Node `>=22`, **zero runtime dependencies**; see [Compatibility & permissions](#compatibility--permissions) |
 | Storage | `<DSH_HOME>/cc-library/` (cards), `cc-drafts/` (session drafts + creation lock + backups), `cc-groups/` (relationship groups), `cc-books/` (group shared lorebook); `DSH_HOME` defaults to `~/.dsh` |
 | Docs | This file; read [AGENTS.md](./AGENTS.md) before changing code; history in [CHANGELOG.md](./CHANGELOG.md) |
@@ -163,6 +163,7 @@ npm test    # all test files, serial; must be green
 
 Full history: [CHANGELOG.md](./CHANGELOG.md) (0.12.0 onwards).
 
+- `0.27.2` **"Last card won't fully delete"**: deleting a card from the library now clears the draft in memory and writes an empty draft to disk (through the creation lock if needed), so you no longer end up with an empty library while the deleted card still fills the studio and Delete is greyed out.
 - `0.27.1` **Fix duplicate same-named cards when importing to SillyTavern twice**: the import checks `/api/characters/all` first and adds an "overwrite the same-named card" switch (off by default); without it the UI says exactly which file was saved instead of silently producing a second card.
 - `0.27.0` **RPC transport moved onto the official `/api` shared channel** (architecture change, same external behaviour): host endpoints now register `/api/cc-studio` through `connection.fetch.register`, so dsh owns authentication and body limits; the ~200-line hand-rolled wire layer is gone and the client `rpc()` uses same-origin fetch. **Restart dsh and reload the page** — old client and new host do not interoperate in this version.
 - `0.26.1` **Matrix gains `0.2.2-rc.3`** (the current desktop build): isolated verification passed (L2 composition, full L3 smoke, and every package the preset names resolving inside the rc.3 install tree). Runtime code unchanged; the extra `tool-office` / `interrupt:false` / `customSkillDirs` rows in rc.3's `standard` are capability differences and stay out.

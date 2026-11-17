@@ -97,6 +97,8 @@ tests/fixtures/       L2 组合快照（由 npm run fixture:dump 生成）
 
 
 **草稿锁的判定只有一份。** `lib/draft-lock.js`（`normalizeLock` / `isLockStale` / `lockBlocksDraftWrite`）两半共用。LLM 每次写草稿自动上锁（sidecar `<draft>.lock.json`，30 分钟无写入失效）；锁 active 时浏览器写草稿端点被拦，载入/导入只回只读预览；`force:true` 才放行。覆盖型动作前 `backupDraftSync` 备份到 `<draftDir>/backups/`。新增写草稿端点必须接这把锁。
+**删除库卡是唯一例外**（0.27.2）：用户已二次确认删除 = 明确放弃这张卡 → 客户端 `clearDraft(true)` 强制清内存 + 强制落盘空卡（`pushDraftToHost(force)` 带 `force:true` 穿锁），并撤掉预览与锁状态；判定用「内存 `currentLibraryId === id`」**或**宿主回包 `originCleared`（刷新页面 / 只读预览时内存里的 id 可能是 null）。别退回「只读时只提示、不清草稿」—— 盘上旧草稿会被 4 秒轮询画回界面，而删除按钮早已 disabled（0.27.2 的用户截图就是这个死锁）。
+
 
 
 
