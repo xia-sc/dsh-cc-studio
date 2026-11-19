@@ -44,7 +44,7 @@
 
 dsh 兼容下限从 `0.2.0-rc.2` 抬到 `0.2.2-rc.1`。**运行时代码零改动**：为 0.2.0 / 0.2.1 写的分支在 0.12.0 抬到 0.2.0-rc.2 时已经清完，这次只清声明层 —— 删 `tool-subagent.modelSelectionSettings` 旧键、补回 `tool-schedule` / `tool-plugin-market` 两行、改矩阵与测试。
 
-对照依据：本机源码 checkout `E:\dsh\deepseek-harness\deepseek-harness` 的 HEAD 恰好是 `0.2.2-rc.1`（顶层 `package.json` 的 `version`），直接读 `packages/bundle/web-app/presets/standard.patch.yml` 与 `packages/subagent/tool-subagent/src/index.ts` 核对，不必猜包名。
+对照依据：本机源码 checkout（`<deepseek-harness checkout>`）的 HEAD 恰好是 `0.2.2-rc.1`（顶层 `package.json` 的 `version`），直接读 `packages/bundle/web-app/presets/standard.patch.yml` 与 `packages/subagent/tool-subagent/src/index.ts` 核对，不必猜包名。
 
 ### 记录：`connection.fetch.register` 的两次判断（0.26.x 不改 → 0.27.0 已迁）
 

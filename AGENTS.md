@@ -192,6 +192,8 @@ tests/fixtures/       L2 组合快照（由 npm run fixture:dump 生成）
 
 - 破坏性动作（清空卡）二次确认在按钮侧；拿不到确认框一律不动数据。
 - **草稿「未保存」判定只有一份**（0.24.3 / 0.25.3 / 0.25.4）：`draftFingerprint` / `stableJson` / `draftHasContent` / `draftIsUnsaved` 是唯一判定，`confirmBeforeDiscardDraft` 只在「载入 / 导入会覆盖草稿」时问一句（可先保存再切换；拿不到确认框就中止；锁 active 直接放行）。三条硬约束：① 指纹**必须忽略 `data.modification_date`**（宿主每次 `setDraftFor` 都刷它，载入后轮询把宿主草稿拉回来就会误判成「未保存」），除它以外一个字段都不忽略（模型真写了内容照样拦）；② 两半指纹必须**逐字节同构**（`stableJson` 递归排序键 + 忽略时间戳，`tests/fingerprint-parity.test.mjs` 钉住）—— 库卡文件与草稿槽是两次独立写入、键序不同，用 `JSON.stringify` 直接比会算出两个指纹；③ 基线不能只靠前端内存：`savedFingerprint` 只在「本次页面里载入 / 保存过」时有值，刷新页面或换会话后是空的，所以 `cc_getDraft` 必须回传 `originFingerprint`（库卡内容指纹，4 秒 TTL 缓存，保存 / 删除 / 改名时失效），`draftIsUnsaved` 用它兜底。换会话时旧会话的来源 id 与两个基线要一起清。别改用 rev：前端拿不到草稿文件里的 rev。
+- **传输失败绝不允许静默**（0.27.3）：`rpc()`（factory 级）把「端点回 `ok:false`」（连得上，这次不行）与「传输失败」（HTTP 非 2xx / 非信封 / 网络异常）分开——后者一律 `notifyRpcFailure` → `store.rpcError` → 工坊顶部红色横幅（端点 + 错误码 + 重试按钮），连上后自动消失；`rpc()` 必须自带 `catch`，别让网络异常变成 unhandled rejection。`refreshLibrary` 用 `libraryLoaded` 区分「读不到角色库」与「空库」，左栏文案必须分开（以前读不到也显示「还没有已存角色」，用户会以为卡片被自己删光了）。孤儿草稿（库已加载且为空 + 无来源 + 草稿有内容）给「清空草稿」出口；`pullDraft` 把「来源 id 不在库里」当孤儿（`currentLibraryId=null`），别让动作栏「删除」指向一张不存在的卡。
+
 - **「让模型修」的提示模板只有一份**（0.24.0）：`MODEL_FIX_RULES` + `modelFixTail()` 是唯一来源，体检条目（`buildFixPrompt`）与选中即引用的弹框（`buildCustomPrompt`）都调它；规则里那条「只改相关字段、不要重写整张卡」是这段能力的质量核心，别删。入口只在 `isCcMode && currentSessionId` 时可用（非 CC 模式下模型手里没有 cc_* 工具），禁用时必须用 tooltip 说明原因。发送走 `store.promptModel` → `cc_promptSession`，**不要直连 composer、不要操作输入框 DOM**。选中即引用（`quoteBubble()`）只监听 `#cc-scroller` 内的选区、至少 4 个字，位置/字段来源是 `data-cc-ref` —— 新增「可被引用的正文区」时记得给它挂一个 `data-cc-ref`（格式 `data.<字段>` / `character_book.entries[i]`），否则模型拿不到定位。浮条**用 absolute 相对 `#cc-scroller`**（不许用 fixed —— overlay 的 `backdrop-filter` 会把包含块改成 overlay，浮条会飘到窗口左上角，0.24.0 实测踩过）；textarea / input 内的选区 rect 在 Chrome 里全 0，必须回退到元素自身 rect。
 - **体检报告只有一处渲染**（0.23.1）：总览章节的 `auditReport()` 按 结构 / 时间锚定 / 设定铁律 / 未结案钩子 / 世界书 / 其他 六组铺开（`auditGroups()` 归类、`AUDIT_FIX` 提供 `workshop.fix.*` 修法），每条带「去修 →」调 `scrollToSection`。导出弹层只放 `auditDigest()` 摘要 —— 同一份清单别在两处各铺一遍（导出弹层原来是平铺字符串，已删）。结构类问题来自宿主的 `structural.errors/warnings`，**不只**来自 `consistency.issues`；`store.validate` 的快照必须同时留 `valid` 与 `structural`，否则报告里结构组永远是空的。结果还要带 `key = 卡 id#rev`（`store.reportKey()`）：切卡 / 模型改稿后旧结论立刻作废（`setDraftFromHost` 里比对），面板打开时由一个 effect 自动重跑一次（一个 key 只试一次）—— 0.24.2 的教训是「切角色后总览还显示上一张卡的 3 个必须修」。
 
@@ -243,6 +245,7 @@ tests/fixtures/       L2 组合快照（由 npm run fixture:dump 生成）
 
 - manifest 契约（STORE 门禁）由 `tests/preset-install.test.mjs` 钉住：canonical `repository`、`engines.node`、完整 SemVer 的 dshReleases、零依赖、无 install 脚本、`files` 非空、宿主/预设半只 import `node:` 与相对路径。不要为商城扫描改运行时代码。
 
+- **发布日志与文档里不出现任何真实卡名 / 玩家名 / 本机路径 / 具体会话 id**（用户明确要求，之前几次发版都踩过）：CHANGELOG、README 与由它们抽取的 Release 正文一律写成「那张卡」「<角色名>1.png」「<本机路径>」「session-<id>」这类占位；**已经发出去的 Release 正文也要一并改**（`gh release edit <tag> --notes-file <file>`）—— 只改仓库不够，Release 是公开的。`tests/privacy-scrub.test.mjs` 在 `npm test` 里会挡，它只认可泛化的形态、**不硬编码任何卡名**（仓库是公开的，名单本身也是泄露）。
 - 发布走 CI：打 `v*` tag → `npm test` → `npm publish --provenance` → Release（正文由 `.github/scripts/release-notes.mjs` 从 CHANGELOG 该版本小节抽取，所以顶部小节要写好）。发版前三处版本号 + commit + tag。发布后有传播延迟（约 1-3 分钟），别重发；`--dry-run` 不验证 OIDC。
 
 - 不过 `dist/*.zip`（历史归档）；保留中文注释（它们解释「为什么」和踩过的坑）。
