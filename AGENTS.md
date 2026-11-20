@@ -102,6 +102,7 @@ tests/fixtures/       L2 组合快照（由 npm run fixture:dump 生成）
 
 
 
+**诊断日志只有一份实现**（0.28.0）：判定全在 `lib/log.js`（`normalizeLogLevel` / `shouldLog` / `sanitizeLogData` / `formatLogLine` / `shouldRotate` / `parseLogSettings`）；宿主 IO 在 `lib/index.js`（`<DSH_HOME>/cc-logs/`，超过 512KB 滚成 `.1`，内存另留最近 800 条）；客户端只做「等级过滤 + 队列 + 批量上报」（手写 bundle 不能 import，等级表靠 `tests/log.test.mjs` 逐字比对）。硬规则：**日志只记结构**（端点 / id 前 8 位 / 错误码 / 耗时），**卡名与卡内正文绝不进来** —— 用户会把日志直接贴给作者；新增埋点时 data 只放标量，别传 `draft` / `card`。任何 IO 失败静默（日志不能成为新故障源）；`cc_log` 自身不记（防自激）。
 **兼容层只有一份。** 新增平台 = 加 `lib/compat/adapters/<id>.js` + 在 `registry.js` 注册（或 `registerTarget()`）；不许在 `index.js` / `client.js` / `agent.js` 写平台分支。adapter 是纯函数零 IO，路径/字段名/能力矩阵都写在它里面。浏览器半不 import compat —— 导出/转换一律走宿主 RPC。卡导出副本才写平台字段（绑定/投影），草稿与库里的卡一个字节不动。
 
 

@@ -211,6 +211,29 @@ try {
     && String(exportedCard.data.system_prompt || '').includes('时间线规则'),
     JSON.stringify(exportedCard && { name: exportedCard.data.name, first: String(exportedCard.data.first_mes).slice(0, 30) }));
 
+  // —— 0.28.0：诊断日志端到端（设等级 → 上报 → 导出）——
+  const setLog = await rpc('cc_setLogLevel', { level: 'debug' });
+  const setLogValue = setLog.json && setLog.json.result && setLog.json.result.ok ? setLog.json.result.value : null;
+  check('cc_setLogLevel → 等级写进宿主（cc-logs/settings.json）',
+    !!setLogValue && setLogValue.level === 'debug', JSON.stringify(setLogValue));
+
+  const logInfo = await rpc('cc_getLogLevel');
+  const logInfoValue = logInfo.json && logInfo.json.result && logInfo.json.result.ok ? logInfo.json.result.value : null;
+  check('cc_getLogLevel → 回传目录与生效等级（目录在 cc-logs 下）',
+    !!logInfoValue && logInfoValue.level === 'debug' && String(logInfoValue.dir || '').includes('cc-logs'),
+    JSON.stringify(logInfoValue && { level: logInfoValue.level }));
+
+  const posted = await rpc('cc_log', { entries: [{ level: 'info', event: 'e2e.marker', data: { tag: 'smoke' } }] });
+  const postedValue = posted.json && posted.json.result && posted.json.result.ok ? posted.json.result.value : null;
+  check('cc_log → 客户端上报被接收', !!postedValue && postedValue.written >= 1, JSON.stringify(postedValue));
+
+  const dump = await rpc('cc_logDump');
+  const dumpValue = dump.json && dump.json.result && dump.json.result.ok ? dump.json.result.value : null;
+  const dumpText = dumpValue && typeof dumpValue.content === 'string' ? dumpValue.content : '';
+  check('cc_logDump → 带诊断表头、含刚上报的标记、文件名是 .log',
+    dumpText.includes('# dsh-cc-studio 诊断日志') && dumpText.includes('e2e.marker') && dumpText.includes('tag=smoke')
+    && /\.log$/.test(String(dumpValue && dumpValue.filename || '')),
+    dumpText.slice(0, 120));
   // —— 0.25.4：cc_getDraft 必须回传「库卡内容指纹」（originFingerprint）——
   // 它是客户端「未保存」判定的权威基线：刷新页面 / 新开会话后前端内存基线为空，只能靠宿主这份。
   const saved = await rpc('cc_saveToLibrary', { sessionId: 'e2e', draft: card });

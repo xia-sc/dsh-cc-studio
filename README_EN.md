@@ -8,7 +8,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 
 | Item | Value |
 | --- | --- |
-| Package / version | `@xia-sc/dsh-cc-studio` `0.27.3` |
+| Package / version | `@xia-sc/dsh-cc-studio` `0.28.0` |
 | Compatibility | DSH `>=0.2.2-rc.1` (incl. Desktop), Node `>=22`, **zero runtime dependencies**; see [Compatibility & permissions](#compatibility--permissions) |
 | Storage | `<DSH_HOME>/cc-library/` (cards), `cc-drafts/` (session drafts + creation lock + backups), `cc-groups/` (relationship groups), `cc-books/` (group shared lorebook); `DSH_HOME` defaults to `~/.dsh` |
 | Docs | This file; read [AGENTS.md](./AGENTS.md) before changing code; history in [CHANGELOG.md](./CHANGELOG.md) |
@@ -163,6 +163,7 @@ npm test    # all test files, serial; must be green
 
 Full history: [CHANGELOG.md](./CHANGELOG.md) (0.12.0 onwards).
 
+- `0.28.0` **Diagnostic log**: pick a level in Settings (off / errors / warnings / info / debug); it records endpoints, the first 8 chars of ids, error codes and timings (never card names or card text), and "Export log" downloads a file you can send back as-is.
 - `0.27.3` **No more silent link failures**: when the client cannot reach dsh the studio shows a red bar with the endpoint, the error code and a Retry button; an unreachable library no longer pretends to be empty, and orphan drafts get a "Clear draft" exit — the earlier "won't delete / won't save" reports were exactly this kind of silent failure.
 - `0.27.2` **"Last card won't fully delete"**: deleting a card from the library now clears the draft in memory and writes an empty draft to disk (through the creation lock if needed), so you no longer end up with an empty library while the deleted card still fills the studio and Delete is greyed out.
 - `0.27.1` **Fix duplicate same-named cards when importing to SillyTavern twice**: the import checks `/api/characters/all` first and adds an "overwrite the same-named card" switch (off by default); without it the UI says exactly which file was saved instead of silently producing a second card.
