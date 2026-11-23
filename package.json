@@ -1,6 +1,6 @@
 {
   "name": "@xia-sc/dsh-cc-studio",
-  "version": "0.28.0",
+  "version": "0.28.1",
   "description": "CCv3 角色卡工坊：融合工坊 + CC 模式 + JSON/PNG/CHARX + 中英双语（跟随全局）",
   "icon": "./icon.svg",
   "keywords": [
@@ -67,7 +67,8 @@
       "dshReleases": {
         "0.2.2-rc.1": "compatible",
         "0.2.2-rc.2": "compatible",
-        "0.2.2-rc.3": "compatible"
+        "0.2.2-rc.3": "compatible",
+        "0.2.3-alpha.2": "compatible"
       }
     }
   },

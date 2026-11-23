@@ -6,6 +6,51 @@
 
 ---
 
+## 0.2.3-alpha.2（2026-11-23，插件 0.28.1）
+
+### 结论
+
+桌面版当前版本 `0.2.3-alpha.2` 与插件兼容，**运行时代码零改动**，只补 `dshReleases` 与文档。L2 快照仍由 rc.1 生成（锚定下限），alpha.2 只作为实测版本。
+
+### 升级影响（0.2.2-rc.3 → 0.2.3-alpha.2）
+
+读了 4 段、42 条破坏性条目：`v0.2.2-rc.3` / `v0.2.2-rc.4` / `v0.2.2-rc.5` / `v0.2.3-alpha.1`（索引里没有 `v0.2.3-alpha.2` 段，说明 alpha.2 自身无独立破坏）。逐条对插件表面（`agents` / `agentPresets` / `sessionController` / `connection.fetch.register`、三个客户端槽、两个 YAML patch）求交集，只命中两条：
+
+1. **alpha.1 抬高 Node 下限到 24.22.3 / 26.13.1** —— 桌面版内置 Node 实测 `24.22.3`，恰好达线；系统 Node `26.13.1` 也满足。无代码动作。
+2. **rc.3 起 Loader 校验 entry 选项、Include 按 YAML 1.2 解析** —— 两个 patch 在 alpha.2 上组合通过（L2 dump 成功），无代码动作。
+
+其余 40 条（forge / PTC / CUA / Office skill / 个性化推荐 / `sessionQuery.inspectSession` / `list_agents` 返回形状 / `settings.plugins.tab` / conversation facet retain / action cards / web search / workspace-write 边界）都不在插件表面内。
+
+### 实测四层
+
+1. **运行时组合**（`cordis_inspect`，直接跑在桌面版实例上）：Loader 有 `include:dsh-cc-studio`；Config `status: absent`（与内置 `timer` / `llm` / `agent` 同语义 = 无 Config schema 可投影，不是失败）；客户端 `conversation.input.dock` → `dsh-cc-studio-pill`、`shell.overlay` → `dsh-cc-studio-overlay`、`settings.section` → `cc-studio` 三个 occupant 全部 `active`。
+2. **L2 组合**：`node scripts/dump-config.mjs --out .compat-tmp/alpha2-composition.json`，dump 成功；与 `tests/fixtures/preset-composition.json` 比对，`topRows` / `presetRows` / `nestedRows` / `presetConfig` 逐字节一致。fixture 保持 rc.1，不覆盖。
+3. **L3 全链路**：`node scripts/e2e-smoke.mjs`，0 失败（启动 / token 换 cookie / boot 清单 / 客户端资源与 rev 契约 / RPC / 草稿 / 导出 / 日志四端点 / 落库 / `originFingerprint`）。
+4. **引擎范围**：用安装自带 semver + `{ includePrerelease: true }` 判定 `>=0.2.2-rc.1` 满足 `0.2.3-alpha.2`（严格 SemVer 判 false 是预期，不能据此误报）。
+
+### 踩坑
+
+#### 1. `DSH_INSTALL_DIR` 可能指向 native API 看不透的 asar 路径
+
+本机 `DSH_INSTALL_DIR` 指向 `...\app.asar\dsh\node_modules\@deepseek-ai\dsh`，`Test-Path` / 普通 node 的 `fs` 恒为「不存在」。读版本与 upgrade-guide 必须用文件读取工具，或 `ELECTRON_RUN_AS_NODE=1 "<安装目录>\DeepSeek Harness.exe" -e "..."` 在 Electron 的 fs 上读。
+
+#### 2. `Config` 目录里的 `absent` 不是「加载失败」
+
+它表示该 entry 没有 Config schema 可投影；内置 `timer` / `llm` / `agent` 也是 `absent`。判断插件是否加载成功，要看客户端槽 occupant 是否 `active` 与 `--dump-config` 是否组合出预期行集。
+
+### 可复现命令骨架
+
+```powershell
+# 运行时组合（宿主侧）
+cordis_inspect { platform:'host', provider:'Runtime', method:'getVersion' }
+# 客户端槽（三处都应 active）
+cordis_inspect { platform:'client', provider:'Slots', method:'listSubTree', input:{ root:'conversation.input.dock' } }
+# L2
+node scripts/dump-config.mjs --out .compat-tmp/alpha2-composition.json
+# L3
+node scripts/e2e-smoke.mjs
+```
+
 ## 0.2.2-rc.3（2026-11-16，插件 0.26.1）
 
 ### 结论
