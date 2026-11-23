@@ -8,7 +8,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 
 | Item | Value |
 | --- | --- |
-| Package / version | `@xia-sc/dsh-cc-studio` `0.28.1` |
+| Package / version | `@xia-sc/dsh-cc-studio` `0.28.2` |
 | Compatibility | DSH `>=0.2.2-rc.1` (incl. Desktop), Node `>=22`, **zero runtime dependencies**; see [Compatibility & permissions](#compatibility--permissions) |
 | Storage | `<DSH_HOME>/cc-library/` (cards), `cc-drafts/` (session drafts + creation lock + backups), `cc-groups/` (relationship groups), `cc-books/` (group shared lorebook); `DSH_HOME` defaults to `~/.dsh` |
 | Docs | This file; read [AGENTS.md](./AGENTS.md) before changing code; history in [CHANGELOG.md](./CHANGELOG.md) |
@@ -163,6 +163,7 @@ npm test    # all test files, serial; must be green
 
 Full history: [CHANGELOG.md](./CHANGELOG.md) (0.12.0 onwards).
 
+- `0.28.2` **Settings moved to the plugin detail page**: log level, draft polling, auto-validate and the rest now live on the plugin detail page instead of a separate Settings entry; the page shows one concise feature image (`meta.detail`) rather than falling back to the full README.
 - `0.28.1` **Matrix gains dsh `0.2.3-alpha.2`** (the current desktop build): isolated verification passed (all three runtime mounts active, the L2 composition identical byte-for-byte to the rc.1 snapshot, the full L3 smoke at zero failures); runtime code unchanged. alpha.1 raised the Node floor (24.22.3 / 26.13.1), which the desktop's bundled Node already meets.
 - `0.28.0` **Diagnostic log**: pick a level in Settings (off / errors / warnings / info / debug); it records endpoints, the first 8 chars of ids, error codes and timings (never card names or card text), and "Export log" downloads a file you can send back as-is.
 - `0.27.3` **No more silent link failures**: when the client cannot reach dsh the studio shows a red bar with the endpoint, the error code and a Retry button; an unreachable library no longer pretends to be empty, and orphan drafts get a "Clear draft" exit — the earlier "won't delete / won't save" reports were exactly this kind of silent failure.

@@ -16,7 +16,7 @@ lib/index.js       宿主半：RPC 端点 / 草稿落盘 + LLM 创作锁 / 角�
 
 lib/agent.js       预设半：CC 模式的 33 个 Tool（只随 CC 预设挂载）
 
-lib/client.js      浏览器半：手写 bundle（胶囊 + 工坊 + 设置页）；factory 只能 require("react")
+lib/client.js      浏览器半：手写 bundle（胶囊 + 工坊 + 插件详情页设置面板）；factory 只能 require("react")
 
 lib/group-layer.js 卡组层：作用域 / 统计 / 体检（纯函数，两半 import）
 
@@ -28,7 +28,8 @@ presets/cc.patch.yml  预设的声明行（唯一载体；插件不写用户目�
 
 cordis.patch.yml      宿主组合里的插件行
 
-locale/               插件元数据：zh.json / en.json 只放 meta.title + meta.description（插件管理器在未激活时读它）
+locale/               插件元数据：zh.json / en.json 只放 meta.title + meta.description + meta.detail（插件管理器在未激活时读它）
+docs/                 插件详情页文档：DETAIL.md / DETAIL.zh.md（各一行特性图）+ preview.svg；改了两语言与 files 都要同步
 
 ROADMAP.md            待办与决策记录（不是承诺清单；每条做完就删）
 
@@ -178,7 +179,7 @@ tests/fixtures/       L2 组合快照（由 npm run fixture:dump 生成）
 
 
 
-- 三个挂载点：`conversation.input.dock`（胶囊）、`shell.overlay`（工坊）、`settings.section`（设置页）。
+- 三个挂载点：`conversation.input.dock`（胶囊）、`shell.overlay`（工坊）、`plugins.bundle.config`（设置面板，keyed by 包名，渲染在插件详情页）。**不要**再注册 `settings.section`：同一个面板会在设置导航与插件页面各出现一次（0.28.2 起只留详情页）。
 - **工坊布局（0.22.0）**：左侧 250px 角色库（选对象，可折叠成 56px 头像条：`»` + 一列头像，点头像即载入，折叠时不渲染文字，组间一条 20px 短横线分隔）+ 顶部横向锚点栏（选章节：总览/角色/五维/世界书/开场/关系/共享书）+ 锚点栏右侧常驻「校验 / 导出 / 保存 / 清空」。七个章节**常驻渲染在同一页**（`section[data-cur]`），滚动容器是 `#cc-scroller`；点击锚点走 `scrollToSection`（**用 rect 差算位置，不能用 `offsetTop`** —— `.sec` 的 offsetParent 不是滚动容器），滚动高亮由 `#cc-scroller` 的 scroll 监听反推（**按顶部 24px 判定，不能用中线** —— 会漏掉 ~300px 高的短章节；监听 effect 依赖 `[s.panelOpen]`，**不能依赖 `[s.cur]`** —— 面板关着时 Workshop 也挂在 overlay 上，首帧拿不到 `#cc-scroller`，打开面板时 `cur` 没变就不会重绑，监听器一次都装不上；点击锚点后的平滑滚动窗口内不反推，滚轮/触摸/按键立即解锁；滚到底直接认最后一节）。**别再退回「左侧导航列 + 分页渲染」**：用户明确说左列占掉了黄金横向空间。0.23.0：重命名 / ＋ 组在动作栏右侧，点击开 `inputDialog` 输入弹框；左侧「⋯」菜单只留「导入」；「另存为新」已删（保存只有 `cc_saveToLibrary` 一条路径）；`renderGroupedList` 已删，关系章节自带「选择分组」下拉；**左栏按分组分节**（组首一行 11px 小字 + 张数 + 可选 📖，组内卡片平铺；组首不可折叠、不可点）—— 0.22.0 曾把分组节标题整块删掉，分组关系当场看不出，别为了「简洁」再删一次。
 
 - CC 模式探测只有 `useCcPreset()` 一份；状态带会话归属（`ccSessionId` / `ccSource`），未知时绝不沿用上一个会话的结论；组件读 store 必须走 `useStoreSnapshot()`，且放在 `useCcPreset` 之前（effect 顺序会丢「切会话清状态」那次 emit）。
@@ -279,7 +280,7 @@ npm test    # 全部测试文件串行；全绿才算过
 
 - **CI**：`.github/workflows/e2e.yml`（手动触发）在 ubuntu-latest 上 `npm i -g @deepseek-ai/dsh`（Node 24），再用 `DSH_EXE` / `DSH_BIN` 跑上面两条；`publish.yml` 不跑 L2 重生成与 L3。
 
-- **DOM 三挂载点**：`npm run e2e` 只验到 boot 清单与 RPC；要看真渲染，用 Playwright MCP 打开实例的 token URL（`node scripts/e2e-smoke.mjs --keep` 保留实例后手工起 web），按「选工作区 → 选 CC 模式 → 胶囊出现 → 点开工坊 overlay → 设置 → 角色卡工坊」看。2026-11 实测三处都在（见 ROADMAP 4.1）。
+- **DOM 三挂载点**：`npm run e2e` 只验到 boot 清单与 RPC；要看真渲染，用 Playwright MCP 打开实例的 token URL（`node scripts/e2e-smoke.mjs --keep` 保留实例后手工起 web），按「选工作区 → 选 CC 模式 → 胶囊出现 → 点开工坊 overlay → 插件详情页看设置面板与特性图」看。2026-11 实测三处都在（见 ROADMAP 4.1）。
 
 - **改宿主/客户端**：重启 `dsh web` + 刷新页面。客户端资源 URL 含 `??` 与批次 `rev`，缺一个就 404。
 

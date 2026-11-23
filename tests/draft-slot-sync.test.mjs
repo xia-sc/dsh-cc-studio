@@ -82,8 +82,8 @@ await mod.apply(fakeCtx);
 
 const dock = registered['conversation.input.dock'];
 const overlay = registered['shell.overlay'];
-check('三个挂载点都注册了（dock / overlay / settings）',
-  !!(dock && overlay && registered['settings.section']),
+check('三个挂载点都注册了（dock / overlay / 插件详情页配置）',
+  !!(dock && overlay && registered['plugins.bundle.config']),
   Object.keys(registered).join(','));
 const store = dock.opts.inject('warmup').store;
 const t = (k) => k;

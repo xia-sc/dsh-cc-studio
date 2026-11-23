@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300" viewBox="0 0 640 300" role="img" aria-label="Character card studio">
+  <rect width="640" height="300" fill="#eef1f7"/>
+  <rect x="40" y="34" width="560" height="232" rx="16" fill="#ffffff" stroke="#d5dce8" stroke-width="2"/>
+  <rect x="248" y="50" width="144" height="26" rx="13" fill="#7c5cff"/>
+  <circle cx="264" cy="63" r="6" fill="#ffffff" opacity="0.9"/>
+  <rect x="278" y="58" width="86" height="10" rx="5" fill="#ffffff" opacity="0.85"/>
+  <rect x="62" y="92" width="128" height="150" rx="10" fill="#f3f6fb" stroke="#dde4ee"/>
+  <rect x="74" y="104" width="104" height="14" rx="7" fill="#c9d3e4"/>
+  <rect x="74" y="128" width="104" height="14" rx="7" fill="#dbe3f0"/>
+  <rect x="74" y="152" width="104" height="14" rx="7" fill="#dbe3f0"/>
+  <rect x="74" y="176" width="104" height="14" rx="7" fill="#dbe3f0"/>
+  <rect x="74" y="200" width="104" height="14" rx="7" fill="#dbe3f0"/>
+  <rect x="206" y="92" width="372" height="150" rx="10" fill="#f8fafe" stroke="#dde4ee"/>
+  <rect x="222" y="108" width="160" height="16" rx="8" fill="#c9d3e4"/>
+  <rect x="222" y="136" width="300" height="10" rx="5" fill="#e1e8f2"/>
+  <rect x="222" y="154" width="280" height="10" rx="5" fill="#e1e8f2"/>
+  <rect x="222" y="172" width="240" height="10" rx="5" fill="#e1e8f2"/>
+  <rect x="222" y="196" width="84" height="20" rx="10" fill="#7c5cff" opacity="0.85"/>
+  <rect x="318" y="196" width="84" height="20" rx="10" fill="#e0e7f2"/>
+</svg>
