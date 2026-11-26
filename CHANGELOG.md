@@ -25,7 +25,8 @@
 
 ### 测试
 
-- 新增 `tests/yubagu.test.mjs`（25 条）：脚本形状 / 正则可解析 / 命中与不误伤 / JSON 可解析与深拷贝 / 宿主端点与客户端调用链 / 默认关 / 双语键 / 未内联词表 / 已挂进 `npm test`。
+- 新增 `tests/yubagu.test.mjs`（44 条）：脚本形状 / 正则可解析 / 命中与不误伤 / 幂等与「无随机宏、无 maxDepth」（缓存友好）/ JSON 可解析与深拷贝 / 制卡期体检的范围与不误报 / 宿主按开关动态加载 / 删除清单与标记守卫 / 双语键 / 未内联词表 / 已挂进 `npm test`。
+- L3 smoke 新增两条：`cc_yubaguScripts` 回 3 条安全档位脚本；`validate` 关着时报告里没有 `yubagu`、打开时多 1 条 warning 且 `valid` 不变。
 
 ### 生效方式
 
