@@ -58,9 +58,12 @@ export function findDsh() {
  * 建隔离实例：`<root>/.compat-tmp/<name>-gen/` 下放一个临时 DSH_HOME 与 profile，
  * profile 的 bundles = dsh-base + dsh-web-app + 本插件（插件文件复制过去）。
  * 返回 `{ work, home, profileDir, profile, env, cleanup() }`。
+ *
+ * `instanceRoot` 只换「实例放哪」，插件源目录永远是仓库根 `root` —— 两者分开是必须的：
+ * 工作区可能带上一轮沙箱留下的 Low 完整性标签，`.compat-tmp` 建不出来，而换根不等于换插件。
  */
-export function prepareInstance({ name = 'l2', root = ROOT } = {}) {
-  const work = join(root, '.compat-tmp', `${name}-gen`);
+export function prepareInstance({ name = 'l2', root = ROOT, instanceRoot = null } = {}) {
+  const work = join(instanceRoot || root, '.compat-tmp', `${name}-gen`);
   rmSync(work, { recursive: true, force: true });
   mkdirSync(work, { recursive: true });
   const home = join(work, 'home');

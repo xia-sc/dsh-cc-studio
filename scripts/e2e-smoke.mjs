@@ -51,7 +51,10 @@ if (!dsh) {
 }
 log(`dsh: ${dsh.exe}`);
 
-const instance = prepareInstance({ name: 'e2e' });
+// `CC_E2E_ROOT` 是逃生口：工作区本身可能带着上一轮沙箱留下的 Low 完整性标签，
+// 那时 `.compat-tmp` 下建子目录会被拒（EPERM），把实例放临时目录即可继续验，
+// 不必为了跑一次 smoke 去改工作区权限。插件源仍从仓库根复制（prepareInstance 的 instanceRoot）。
+const instance = prepareInstance({ name: 'e2e', ...(process.env.CC_E2E_ROOT ? { instanceRoot: process.env.CC_E2E_ROOT } : {}) });
 const port = await freePort();
 const base = `http://127.0.0.1:${port}`;
 const logFile = join(instance.work, 'web.log');
@@ -234,6 +237,42 @@ try {
     dumpText.includes('# dsh-cc-studio 诊断日志') && dumpText.includes('e2e.marker') && dumpText.includes('tag=smoke')
     && /\.log$/.test(String(dumpValue && dumpValue.filename || '')),
     dumpText.slice(0, 120));
+  // —— [DEEPSEEK-TUNING] 0.29.0：DeepSeek 专项优化 → 导出 ST 正则脚本（删功能时连这段一起删）——
+  // 这条只能在这一层验：规则真源在宿主（lib/yubagu.js），客户端只负责把返回值下载下来。
+  const yubagu = await rpc('cc_yubaguScripts');
+  const yubaguValue = yubagu.json && yubagu.json.result && yubagu.json.result.ok ? yubagu.json.result.value : null;
+  let yubaguScripts = null;
+  try { yubaguScripts = yubaguValue ? JSON.parse(yubaguValue.content) : null; } catch { /* 内容坏了 */ }
+  check('cc_yubaguScripts → 3 条 ST 正则脚本（可解析、placement 含 AI 输出、预设安全档位、文件名是 .json）',
+    Array.isArray(yubaguScripts) && yubaguScripts.length === 3
+    && yubaguScripts.every((s) => typeof s.findRegex === 'string' && Array.isArray(s.placement) && s.placement.includes(2))
+    && yubaguScripts.every((s) => s.markdownOnly === true && s.promptOnly === true)
+    && /\.json$/.test(String(yubaguValue && yubaguValue.filename || '')),
+    JSON.stringify(yubaguValue && { count: yubaguValue.count, file: yubaguValue.filename }));
+
+  // 制卡期体检：同一个开关。关着时报告里没有 yubagu，打开时多一条 warning 且不影响 valid。
+  const probe = {
+    spec: 'chara_card_v3', spec_version: '3.0',
+    data: {
+      name: '鱼八股探针', description: 'probe',
+      first_mes: '[时间：2026-01-01 08:00]\n他点了下头。我记下了。',
+      system_prompt: '【时间线规则】以 [时间：YYYY-MM-DD HH:MM] 开头。',
+      post_history_instructions: '生成前自检：先确认上一段时间。',
+      mes_example: '{{char}}: 还行，我认。',
+    },
+  };
+  const valOff = await rpc('validate', { card: probe });
+  const valOn = await rpc('validate', { card: probe, deepseekTuning: true });
+  const offValue = valOff.json && valOff.json.result && valOff.json.result.ok ? valOff.json.result.value : null;
+  const onValue = valOn.json && valOn.json.result && valOn.json.result.ok ? valOn.json.result.value : null;
+  const issuesOf = (v) => (v && v.consistency && Array.isArray(v.consistency.issues)) ? v.consistency.issues : [];
+  const ybOff = issuesOf(offValue).filter((i) => i.code === 'yubagu');
+  const ybOn = issuesOf(onValue).filter((i) => i.code === 'yubagu');
+  check('validate → 开关关着时不出现 yubagu 体检项', !!offValue && ybOff.length === 0, String(ybOff.length));
+  check('validate → 开关打开时出现 1 条 warning 级 yubagu（且不影响 valid）',
+    !!onValue && ybOn.length === 1 && ybOn[0].level === 'warning' && onValue.valid === offValue.valid,
+    JSON.stringify({ on: ybOn.length, validOn: onValue && onValue.valid, validOff: offValue && offValue.valid }));
+
   // —— 0.25.4：cc_getDraft 必须回传「库卡内容指纹」（originFingerprint）——
   // 它是客户端「未保存」判定的权威基线：刷新页面 / 新开会话后前端内存基线为空，只能靠宿主这份。
   const saved = await rpc('cc_saveToLibrary', { sessionId: 'e2e', draft: card });

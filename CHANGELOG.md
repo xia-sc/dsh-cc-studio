@@ -4,6 +4,33 @@
 
 格式：最新版本按「新增 / 修复」写；更早的小节按现象 → 根因 → 修法 → 生效方式。
 
+## 0.29.0
+
+**DeepSeek 专项优化（默认关）：插件详情页给 ST 侧参数建议 + 一键导出 ST 正则脚本。**
+
+### 新增
+
+- **设置面板新增「DeepSeek 专项优化」块**（`plugins.bundle.config`，默认关）：打开后显示 ST 侧的三条参数建议（关「显示思考」、temperature 1.3–1.5、文风约束只放一处），并提供「⬇ 导出 ST 正则脚本」。关着时设置页与导出弹层与 0.28.x 完全一致。设置值仍存 `localStorage:dsh-cc-studio-settings`（新键 `deepseekTuning`），升级不丢。
+- **制卡期体检（默认关，跟着开关走）**：工坊点「校验」时，报告里多出一组「文风（DeepSeek）」，扫 `first_mes` / `alternate_greetings[]` / `group_only_greetings[]` / `mes_example` 里写死的鱼八股（自我标记、比较句式），每条带样本并可一键「✨ 让模型改」。只报 warning、不阻塞导出；**不扫** `description` / `scenario`（设定文档误报高），**必扫** `mes_example`（示例是模仿源，与「未结案钩子」的取舍相反）。开关关着时宿主**不加载** `lib/yubagu.js`（`case "validate"` 里 `await import`）。
+- **可整块删除**：本功能全部落在 `lib/yubagu.js` 一个文件 + 两个接线点上，全仓库用 `DEEPSEEK-TUNING` 标记；文件头写明「安全删除」清单（7 步，含让用户去 ST 删那三条正则），`tests/yubagu.test.mjs` ⑥a-⑥e 钉住「清单没漏、标记还在」。模型哪天自己不长这个毛病，按清单删干净即可。
+- **`lib/yubagu.js`（新）**：3 条 ST 正则脚本的唯一真源 —— 自指标记（整句）、比较句式、自指点评。字段名与 `placement` 枚举（`2 = AI 输出`）对 SillyTavern 1.19.0 的 `public/scripts/extensions/regex/engine.js` 核对过。规则一律整行匹配（`^…$`），理由是清单里的 `xx` 占位与单字词（稳 / 很平 / 我跟）无法判定，按包含匹配会误伤正常描写。
+- **宿主端点 `cc_yubaguScripts`**：返回与 `cc_exportJson` / `cc_logDump` 同形的 `{content, filename, mime, count}`，客户端直接走 `downloadTextExport` 下载。客户端**不内联**这份词表（手写 bundle 不能 import 本仓模块），测试 `tests/yubagu.test.mjs` ④i 钉住这一点。
+- **导出弹层**：开关打开时多一块「DeepSeek 正则脚本」。导出的脚本已预设 `markdownOnly: true` + `promptOnly: true`（ST 界面里 `Alter Chat Display` / `Alter Outgoing Prompt` 两个勾都勾上）：只清理显示与提示，聊天记录保留原文 —— 若两者都为 false，ST 会在写入历史前就地替换，原文永久丢失。
+
+### 说明
+
+- 核对结论（写进 `docs/deepseek-yubagu-tuning.md`）：ST 1.19.0 **会**透传 `reasoning_effort`，但只在 `show_thoughts` 开启时；关闭时 ST 显式发 `thinking: { type: "disabled" }`，此时 `temperature` 才生效。ST 无法表达 DeepSeek 的 `none`（`min` / `low` 都映射成 `low`），所以「只把 effort 调低、不关显示思考」没有效果。
+- 这个开关**只做提示与导出**：不写卡、不改导出产物、也不影响模型（校验里那组只是 warning）。它读不到宿主/预设半，所以不能宣称「开了就不出现鱼八股」。
+- **缓存与费用**：导出物刻意规避三种会打掉 DeepSeek 前缀缓存（命中/未命中价差 50 倍）的写法 —— 替换串无随机/时间宏、不设 `maxDepth`、替换幂等；`tests/yubagu.test.mjs` ③e-③g 钉住。推算与自测方法见 `docs/deepseek-yubagu-tuning.md` §2.4。
+
+### 测试
+
+- 新增 `tests/yubagu.test.mjs`（25 条）：脚本形状 / 正则可解析 / 命中与不误伤 / JSON 可解析与深拷贝 / 宿主端点与客户端调用链 / 默认关 / 双语键 / 未内联词表 / 已挂进 `npm test`。
+
+### 生效方式
+
+**宿主 + 客户端都改了：重启 `dsh web` 并刷新页面**（只验证界面可先刷新页面，但新端点要宿主重启后才存在）。
+
 ## 0.28.2
 
 **设置面板搬到插件详情页；详情页改用一张简洁特性图。**

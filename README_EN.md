@@ -8,7 +8,7 @@ A DSH (DeepSeek Harness) plugin: a capsule above the composer opens a fullscreen
 
 | Item | Value |
 | --- | --- |
-| Package / version | `@xia-sc/dsh-cc-studio` `0.28.2` |
+| Package / version | `@xia-sc/dsh-cc-studio` `0.29.0` |
 | Compatibility | DSH `>=0.2.2-rc.1` (incl. Desktop), Node `>=22`, **zero runtime dependencies**; see [Compatibility & permissions](#compatibility--permissions) |
 | Storage | `<DSH_HOME>/cc-library/` (cards), `cc-drafts/` (session drafts + creation lock + backups), `cc-groups/` (relationship groups), `cc-books/` (group shared lorebook); `DSH_HOME` defaults to `~/.dsh` |
 | Docs | This file; read [AGENTS.md](./AGENTS.md) before changing code; history in [CHANGELOG.md](./CHANGELOG.md) |
@@ -128,7 +128,17 @@ The seed of the loop is not in the runtime — it is in the **opening**. So this
 
 Two ways to fix: close it in the opening ("the porridge has been poured out"), or delete the hook.
 
-**If it still loops after importing into ST, that is a runtime problem.** In-card rules are secondary; the runtime outcome depends on the model and ST's sampler settings (repetition penalties etc.) — no card can guarantee it, and this plugin does not inject anything at runtime.
+**If it still loops after importing into ST, that is a runtime problem.** In-card rules are secondary; the runtime outcome depends on the model and ST's parameters/regexes (turning off "Show thoughts", `temperature`, output filtering) — no card can guarantee it, and this plugin injects nothing at runtime beyond `depth_prompt`.
+
+### DeepSeek tuning (0.29.0, off by default)
+
+Targets DeepSeek's "fish eight-legged" cadence (short lines like `我记下了` / `行，我认` / `声音比刚才稳`). A **default-off** switch on the plugin detail page:
+
+- When on, it lists three SillyTavern parameter suggestions (turn off "Show thoughts" so temperature applies, `temperature` 1.3–1.5, keep the style constraint in one place), grounded in SillyTavern 1.19.0 source.
+- It also offers "⬇ Export ST regex scripts": three regexes (self-markers / comparison clauses / self-commentary) that filter the output side once imported into ST's regex extension. The single source of truth is `lib/yubagu.js`; the host's `cc_yubaguScripts` endpoint assembles the JSON for the client to download.
+- **Authoring-time check**: with the switch on, the Studio "Validate" report gains a "Style (DeepSeek)" group that scans the opening and `mes_example` for baked-in cadence (examples get imitated every turn, and a runtime regex cannot remove them). Each item shows samples and offers one-click "✨ Have the model fix it"; warnings only, never blocks export.
+- **Removable as a block**: all logic lives in `lib/yubagu.js`, marked `DEEPSEEK-TUNING` across the repo, with a 7-step removal checklist in its header — when the model stops doing this, delete it cleanly ([docs/deepseek-yubagu-tuning.md](./docs/deepseek-yubagu-tuning.md) §4).
+- The switch is **advice and export only**: it never writes a card, never alters export output and never touches the model — with it off, behaviour is identical to 0.28.x (the validate group does not even appear). Full evaluation and settings: [docs/deepseek-yubagu-tuning.md](./docs/deepseek-yubagu-tuning.md).
 
 ### Relationships & shared lorebook
 
@@ -163,6 +173,7 @@ npm test    # all test files, serial; must be green
 
 Full history: [CHANGELOG.md](./CHANGELOG.md) (0.12.0 onwards).
 
+- `0.29.0` **DeepSeek tuning (off by default)**: a new switch on the plugin detail page. When on it shows SillyTavern parameter advice (turn off "Show thoughts" so temperature applies, temperature 1.3–1.5, keep the style constraint in one place), offers "⬇ Export ST regex scripts" (three regexes checked against SillyTavern 1.19.0 source: self-markers / comparison clauses / self-commentary), and adds a "Style (DeepSeek)" group to the Studio "Validate" report (scans the opening and `mes_example`, warnings only, one-click model fix). All logic lives in one file under the `DEEPSEEK-TUNING` marker with a 7-step removal checklist.
 - `0.28.2` **Settings moved to the plugin detail page**: log level, draft polling, auto-validate and the rest now live on the plugin detail page instead of a separate Settings entry; the page shows one concise feature image (`meta.detail`) rather than falling back to the full README.
 - `0.28.1` **Matrix gains dsh `0.2.3-alpha.2`** (the current desktop build): isolated verification passed (all three runtime mounts active, the L2 composition identical byte-for-byte to the rc.1 snapshot, the full L3 smoke at zero failures); runtime code unchanged. alpha.1 raised the Node floor (24.22.3 / 26.13.1), which the desktop's bundled Node already meets.
 - `0.28.0` **Diagnostic log**: pick a level in Settings (off / errors / warnings / info / debug); it records endpoints, the first 8 chars of ids, error codes and timings (never card names or card text), and "Export log" downloads a file you can send back as-is.
